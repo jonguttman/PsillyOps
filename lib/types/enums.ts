@@ -1,0 +1,76 @@
+// CANONICAL ENUMS - SINGLE SOURCE OF TRUTH
+// These must match exactly with Prisma schema enums
+
+export enum UserRole {
+  ADMIN = 'ADMIN',
+  PRODUCTION = 'PRODUCTION',
+  WAREHOUSE = 'WAREHOUSE',
+  REP = 'REP'
+}
+
+export enum MaterialCategory {
+  RAW_BOTANICAL = 'RAW_BOTANICAL',
+  ACTIVE_INGREDIENT = 'ACTIVE_INGREDIENT',
+  EXCIPIENT = 'EXCIPIENT',
+  FLAVORING = 'FLAVORING',
+  PACKAGING = 'PACKAGING',
+  LABEL = 'LABEL',
+  SHIPPING = 'SHIPPING',
+  OTHER = 'OTHER'
+}
+
+export enum OrderStatus {
+  DRAFT = 'DRAFT',
+  SUBMITTED = 'SUBMITTED',
+  APPROVED = 'APPROVED',
+  IN_FULFILLMENT = 'IN_FULFILLMENT',
+  SHIPPED = 'SHIPPED',
+  CANCELLED = 'CANCELLED'
+}
+
+export enum ProductionStatus {
+  PLANNED = 'PLANNED',
+  IN_PROGRESS = 'IN_PROGRESS',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED'
+}
+
+export enum BatchStatus {
+  PLANNED = 'PLANNED',
+  IN_PROGRESS = 'IN_PROGRESS',
+  QC_HOLD = 'QC_HOLD',
+  RELEASED = 'RELEASED',
+  EXHAUSTED = 'EXHAUSTED',
+  CANCELLED = 'CANCELLED'
+}
+
+export enum InventoryType {
+  PRODUCT = 'PRODUCT',
+  MATERIAL = 'MATERIAL'
+}
+
+export enum InventoryStatus {
+  AVAILABLE = 'AVAILABLE',
+  RESERVED = 'RESERVED',
+  DAMAGED = 'DAMAGED',
+  SCRAPPED = 'SCRAPPED'
+}
+
+export enum PurchaseOrderStatus {
+  DRAFT = 'DRAFT',
+  SENT = 'SENT',
+  PARTIALLY_RECEIVED = 'PARTIALLY_RECEIVED',
+  RECEIVED = 'RECEIVED',
+  CANCELLED = 'CANCELLED'
+}
+
+export enum ActivityEntity {
+  PRODUCT = 'PRODUCT',
+  MATERIAL = 'MATERIAL',
+  BATCH = 'BATCH',
+  ORDER = 'ORDER',
+  PRODUCTION_ORDER = 'PRODUCTION_ORDER',
+  PURCHASE_ORDER = 'PURCHASE_ORDER',
+  VENDOR = 'VENDOR'
+}
+

@@ -1,0 +1,662 @@
+// PSILLYOPS PRISMA SCHEMA - SINGLE SOURCE OF TRUTH
+// This schema defines all 14+ core entities for the inventory management system
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ========================================
+// CANONICAL ENUMS
+// ========================================
+
+enum UserRole {
+  ADMIN
+  PRODUCTION
+  WAREHOUSE
+  REP
+}
+
+enum OrderStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  IN_FULFILLMENT
+  SHIPPED
+  CANCELLED
+}
+
+enum ProductionStatus {
+  PLANNED
+  IN_PROGRESS
+  BLOCKED
+  COMPLETED
+  CANCELLED
+}
+
+enum UnitOfMeasure {
+  GRAM
+  KILOGRAM
+  MILLILITER
+  LITER
+  UNIT
+  EACH
+  PACK
+  BOX
+}
+
+enum MovementType {
+  ADJUST
+  MOVE
+  CONSUME
+  PRODUCE
+  RECEIVE
+  RETURN
+  RESERVE
+  RELEASE
+}
+
+enum QCStatus {
+  NOT_REQUIRED
+  PENDING
+  HOLD
+  PASSED
+  FAILED
+}
+
+enum BatchStatus {
+  PLANNED
+  IN_PROGRESS
+  QC_HOLD
+  RELEASED
+  EXHAUSTED
+  CANCELLED
+}
+
+enum InventoryType {
+  PRODUCT
+  MATERIAL
+}
+
+enum InventoryStatus {
+  AVAILABLE
+  RESERVED
+  QUARANTINED
+  DAMAGED
+  SCRAPPED
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  SENT
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+enum ActivityEntity {
+  PRODUCT
+  MATERIAL
+  BATCH
+  ORDER
+  PRODUCTION_ORDER
+  PURCHASE_ORDER
+  VENDOR
+  INVENTORY
+  WORK_CENTER
+}
+
+enum MaterialCategory {
+  RAW_BOTANICAL
+  ACTIVE_INGREDIENT
+  EXCIPIENT
+  FLAVORING
+  PACKAGING
+  LABEL
+  SHIPPING
+  OTHER
+}
+
+// ========================================
+// CORE MODELS
+// ========================================
+
+model User {
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  password      String
+  role          UserRole
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  // Relations
+  createdOrders             RetailerOrder[]    @relation("OrderCreator")
+  approvedOrders            RetailerOrder[]    @relation("OrderApprover")
+  createdProductionOrders   ProductionOrder[]  @relation("ProductionOrderCreator")
+  createdPurchaseOrders     PurchaseOrder[]    @relation("PurchaseOrderCreator")
+  batches                   BatchMaker[]
+  activityLogs              ActivityLog[]
+  assignedRetailers         Retailer[]
+  laborEntries              LaborEntry[]
+  
+  @@index([email])
+  @@index([role])
+}
+
+model Product {
+  id                String   @id @default(cuid())
+  name              String
+  sku               String   @unique
+  unitOfMeasure     String
+  defaultBatchSize  Int?
+  leadTimeDays      Int      @default(0)
+  reorderPoint      Int      @default(0)
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  bom               BOMItem[]
+  inventory         InventoryItem[]
+  orderLines        OrderLineItem[]
+  productionOrders  ProductionOrder[]
+  batches           Batch[]
+  productionTemplates ProductionTemplate[]
+  
+  @@index([sku])
+  @@index([active])
+}
+
+model RawMaterial {
+  id                String           @id @default(cuid())
+  name              String
+  sku               String           @unique
+  unitOfMeasure     String
+  category          MaterialCategory @default(OTHER)
+  description       String?
+  currentStockQty   Float            @default(0)
+  reorderPoint      Float            @default(0)
+  reorderQuantity   Float            @default(0)
+  moq               Float            @default(0)
+  leadTimeDays      Int              @default(0)
+  shelfLifeDays     Int?
+  expiryWarningDays Int?
+  active            Boolean          @default(true)
+  preferredVendorId String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  
+  // Relations
+  preferredVendor           Vendor?                   @relation("PreferredVendor", fields: [preferredVendorId], references: [id])
+  vendors                   MaterialVendor[]
+  bomUsage                  BOMItem[]
+  inventory                 InventoryItem[]
+  poLineItems               PurchaseOrderLineItem[]
+  costHistory               MaterialCostHistory[]
+  attachments               MaterialAttachment[]
+  productionOrderMaterials  ProductionOrderMaterial[]
+  
+  @@index([sku])
+  @@index([active])
+  @@index([preferredVendorId])
+  @@index([category])
+}
+
+model Vendor {
+  id                  String   @id @default(cuid())
+  name                String
+  contactName         String?
+  contactEmail        String?
+  contactPhone        String?
+  address             String?
+  paymentTerms        String?
+  defaultLeadTimeDays Int      @default(0)
+  notes               String?
+  active              Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  // Relations
+  materials         MaterialVendor[]
+  purchaseOrders    PurchaseOrder[]
+  preferredFor      RawMaterial[]         @relation("PreferredVendor")
+  costHistory       MaterialCostHistory[]
+  
+  @@index([name])
+  @@index([active])
+}
+
+model MaterialVendor {
+  id            String   @id @default(cuid())
+  materialId    String
+  vendorId      String
+  leadTimeDays  Int?
+  lastPrice     Float?
+  moq           Float    @default(0)
+  preferred     Boolean  @default(false)
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  material      RawMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  vendor        Vendor      @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  
+  @@unique([materialId, vendorId])
+  @@index([materialId])
+  @@index([vendorId])
+  @@index([preferred])
+}
+
+model BOMItem {
+  id              String   @id @default(cuid())
+  productId       String
+  materialId      String
+  quantityPerUnit Float
+  version         Int      @default(1)
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  
+  product         Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  material        RawMaterial @relation(fields: [materialId], references: [id])
+  
+  @@unique([productId, materialId, version])
+  @@index([productId])
+  @@index([materialId])
+}
+
+model Location {
+  id                  String   @id @default(cuid())
+  name                String   @unique
+  type                String
+  isDefaultReceiving  Boolean  @default(false)
+  isDefaultShipping   Boolean  @default(false)
+  active              Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  
+  inventory           InventoryItem[]
+  
+  @@index([type])
+}
+
+model Batch {
+  id                String      @id @default(cuid())
+  productId         String
+  batchCode         String      @unique
+  plannedQuantity   Int
+  actualQuantity    Int?
+  status            BatchStatus @default(PLANNED)
+  productionOrderId String?
+  productionDate    DateTime?
+  manufactureDate   DateTime?
+  expirationDate    DateTime?
+  expectedYield     Float?
+  actualYield       Float?
+  lossQty           Float?
+  lossReason        String?
+  qcStatus          QCStatus    @default(NOT_REQUIRED)
+  notes             String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  
+  product           Product            @relation(fields: [productId], references: [id])
+  productionOrder   ProductionOrder?   @relation(fields: [productionOrderId], references: [id])
+  makers            BatchMaker[]
+  inventory         InventoryItem[]
+  laborEntries      LaborEntry[]
+  
+  @@index([productId])
+  @@index([status])
+  @@index([batchCode])
+  @@index([productionOrderId])
+  @@index([qcStatus])
+}
+
+model BatchMaker {
+  id        String   @id @default(cuid())
+  batchId   String
+  userId    String
+  createdAt DateTime @default(now())
+  
+  batch     Batch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  user      User  @relation(fields: [userId], references: [id])
+  
+  @@unique([batchId, userId])
+  @@index([batchId])
+  @@index([userId])
+}
+
+model InventoryItem {
+  id                String          @id @default(cuid())
+  type              InventoryType
+  productId         String?
+  materialId        String?
+  batchId           String?
+  locationId        String
+  quantityOnHand    Float
+  quantityReserved  Float           @default(0)
+  unitOfMeasure     String
+  unitCost          Float?
+  externalRef       String?
+  status            InventoryStatus @default(AVAILABLE)
+  lotNumber         String?
+  expiryDate        DateTime?
+  source            String          @default("MANUAL")
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  
+  product           Product?      @relation(fields: [productId], references: [id])
+  material          RawMaterial?  @relation(fields: [materialId], references: [id])
+  batch             Batch?        @relation(fields: [batchId], references: [id])
+  location          Location      @relation(fields: [locationId], references: [id])
+  
+  @@index([type])
+  @@index([productId])
+  @@index([materialId])
+  @@index([batchId])
+  @@index([locationId])
+  @@index([status])
+  @@index([expiryDate])
+}
+
+model Retailer {
+  id              String   @id @default(cuid())
+  name            String
+  contactEmail    String?
+  contactPhone    String?
+  shippingAddress String?
+  billingAddress  String?
+  notes           String?
+  salesRepId      String?
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  salesRep        User?           @relation(fields: [salesRepId], references: [id])
+  orders          RetailerOrder[]
+  
+  @@index([salesRepId])
+  @@index([name])
+}
+
+model RetailerOrder {
+  id                String      @id @default(cuid())
+  orderNumber       String      @unique
+  retailerId        String
+  createdByUserId   String
+  status            OrderStatus @default(DRAFT)
+  requestedShipDate DateTime?
+  approvedByUserId  String?
+  approvedAt        DateTime?
+  shippedAt         DateTime?
+  trackingNumber    String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  
+  retailer          Retailer         @relation(fields: [retailerId], references: [id])
+  createdBy         User             @relation("OrderCreator", fields: [createdByUserId], references: [id])
+  approvedBy        User?            @relation("OrderApprover", fields: [approvedByUserId], references: [id])
+  lineItems         OrderLineItem[]
+  
+  @@index([retailerId])
+  @@index([status])
+  @@index([orderNumber])
+  @@index([createdByUserId])
+}
+
+model OrderLineItem {
+  id                  String   @id @default(cuid())
+  orderId             String
+  productId           String
+  quantityOrdered     Int
+  quantityAllocated   Int      @default(0)
+  shortageQuantity    Int      @default(0)
+  allocationDetails   Json?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  order               RetailerOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product             Product       @relation(fields: [productId], references: [id])
+  
+  @@index([orderId])
+  @@index([productId])
+}
+
+model ProductionOrder {
+  id                      String           @id @default(cuid())
+  orderNumber             String           @unique
+  productId               String
+  quantityToMake          Int
+  batchSize               Float?
+  status                  ProductionStatus @default(PLANNED)
+  scheduledDate           DateTime?
+  dueDate                 DateTime?
+  startedAt               DateTime?
+  completedAt             DateTime?
+  workCenterId            String?
+  templateId              String?
+  createdByUserId         String
+  linkedRetailerOrderIds  Json?
+  materialRequirements    Json?
+  createdAt               DateTime         @default(now())
+  updatedAt               DateTime         @updatedAt
+  
+  product                 Product                   @relation(fields: [productId], references: [id])
+  createdBy               User                      @relation("ProductionOrderCreator", fields: [createdByUserId], references: [id])
+  workCenter              WorkCenter?               @relation(fields: [workCenterId], references: [id])
+  template                ProductionTemplate?       @relation(fields: [templateId], references: [id])
+  batches                 Batch[]
+  materials               ProductionOrderMaterial[]
+  
+  @@index([productId])
+  @@index([status])
+  @@index([orderNumber])
+  @@index([createdByUserId])
+  @@index([workCenterId])
+  @@index([scheduledDate])
+}
+
+model PurchaseOrder {
+  id                    String               @id @default(cuid())
+  poNumber              String               @unique
+  vendorId              String
+  status                PurchaseOrderStatus  @default(DRAFT)
+  createdByUserId       String
+  sentAt                DateTime?
+  expectedDeliveryDate  DateTime?
+  receivedAt            DateTime?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  
+  vendor                Vendor                    @relation(fields: [vendorId], references: [id])
+  createdBy             User                      @relation("PurchaseOrderCreator", fields: [createdByUserId], references: [id])
+  lineItems             PurchaseOrderLineItem[]
+  
+  @@index([vendorId])
+  @@index([status])
+  @@index([poNumber])
+  @@index([createdByUserId])
+}
+
+model PurchaseOrderLineItem {
+  id                String   @id @default(cuid())
+  purchaseOrderId   String
+  materialId        String
+  quantityOrdered   Float
+  quantityReceived  Float    @default(0)
+  unitCost          Float?
+  lotNumber         String?
+  expiryDate        DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  purchaseOrder     PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  material          RawMaterial   @relation(fields: [materialId], references: [id])
+  
+  @@index([purchaseOrderId])
+  @@index([materialId])
+}
+
+model ActivityLog {
+  id          String         @id @default(cuid())
+  entityType  ActivityEntity
+  entityId    String
+  action      String
+  userId      String?
+  summary     String
+  diff        Json?
+  details     Json?
+  tags        String[]
+  createdAt   DateTime       @default(now())
+  
+  user        User?  @relation(fields: [userId], references: [id])
+  
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([tags])
+  @@index([action])
+}
+
+// ========================================
+// MATERIAL COST & ATTACHMENT TRACKING
+// ========================================
+
+model MaterialCostHistory {
+  id          String      @id @default(cuid())
+  materialId  String
+  vendorId    String?
+  price       Float
+  source      String      @default("MANUAL") // MANUAL, PO, IMPORT, etc.
+  notes       String?
+  createdAt   DateTime    @default(now())
+  
+  material    RawMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  vendor      Vendor?     @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  
+  @@index([materialId])
+  @@index([vendorId])
+  @@index([createdAt])
+}
+
+model MaterialAttachment {
+  id          String      @id @default(cuid())
+  materialId  String
+  fileName    String
+  fileUrl     String
+  fileType    String      @default("OTHER") // COA, MSDS, SPEC, OTHER
+  notes       String?
+  uploadedAt  DateTime    @default(now())
+  
+  material    RawMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  
+  @@index([materialId])
+  @@index([fileType])
+}
+
+// ========================================
+// INVENTORY MOVEMENTS & PRODUCTION TRACKING
+// ========================================
+
+model InventoryMovement {
+  id           String       @id @default(cuid())
+  inventoryId  String?
+  materialId   String?
+  productId    String?
+  batchId      String?
+  type         MovementType
+  quantity     Float
+  fromLocation String?
+  toLocation   String?
+  reason       String?
+  reference    String?
+  userId       String?
+  createdAt    DateTime     @default(now())
+  
+  @@index([materialId])
+  @@index([productId])
+  @@index([batchId])
+  @@index([inventoryId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+model ProductionOrderMaterial {
+  id                String          @id @default(cuid())
+  productionOrderId String
+  materialId        String
+  requiredQty       Float
+  issuedQty         Float           @default(0)
+  shortage          Float           @default(0)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  
+  productionOrder   ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  material          RawMaterial     @relation(fields: [materialId], references: [id])
+  
+  @@unique([productionOrderId, materialId])
+  @@index([productionOrderId])
+  @@index([materialId])
+}
+
+model WorkCenter {
+  id               String            @id @default(cuid())
+  name             String
+  description      String?
+  active           Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  
+  productionOrders ProductionOrder[]
+  
+  @@index([active])
+}
+
+model ProductionTemplate {
+  id               String            @id @default(cuid())
+  name             String
+  productId        String
+  defaultBatchSize Float
+  instructions     String?
+  active           Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  
+  product          Product           @relation(fields: [productId], references: [id])
+  productionOrders ProductionOrder[]
+  
+  @@index([productId])
+  @@index([active])
+}
+
+model LaborEntry {
+  id        String   @id @default(cuid())
+  batchId   String
+  userId    String
+  minutes   Int
+  role      String?
+  notes     String?
+  createdAt DateTime @default(now())
+  
+  batch     Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id])
+  
+  @@index([batchId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model UnitConversion {
+  id         String        @id @default(cuid())
+  fromUnit   UnitOfMeasure
+  toUnit     UnitOfMeasure
+  multiplier Float
+  
+  @@unique([fromUnit, toUnit])
+}
+
