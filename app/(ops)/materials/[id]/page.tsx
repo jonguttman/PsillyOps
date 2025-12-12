@@ -482,3 +482,4 @@ export default async function MaterialDetailPage({
     </div>
   );
 }
+

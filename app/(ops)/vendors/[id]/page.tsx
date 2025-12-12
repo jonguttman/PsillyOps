@@ -378,3 +378,4 @@ export default async function VendorDetailPage({
     </div>
   );
 }
+

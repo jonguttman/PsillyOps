@@ -24,3 +24,4 @@ export function ArchiveButton({ productId, archiveAction }: ArchiveButtonProps) 
     </form>
   );
 }
+

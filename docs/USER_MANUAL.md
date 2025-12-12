@@ -1,6 +1,6 @@
 # PsillyOps User Manual
 
-**Version 0.4.0**  
+**Version 0.6.0**  
 **Last Updated: December 12, 2024**
 
 ---
@@ -13,12 +13,14 @@
 4. [Admin Guide](#admin-guide)
 5. [Production Guide](#production-guide)
 6. [Warehouse Guide](#warehouse-guide)
-7. [Sales Rep Guide](#sales-rep-guide)
-8. [Product Management](#product-management)
-9. [Feature Tutorials](#feature-tutorials)
-10. [QR Workflows](#qr-workflows)
-11. [Troubleshooting](#troubleshooting)
-12. [Glossary](#glossary)
+7. [Wholesale Pricing & Invoicing](#wholesale-pricing--invoicing)
+8. [Sales Rep Guide](#sales-rep-guide)
+9. [Product Management](#product-management)
+10. [Feature Tutorials](#feature-tutorials)
+11. [QR Workflows](#qr-workflows)
+12. [AI Tools](#ai-tools)
+13. [Troubleshooting](#troubleshooting)
+14. [Glossary](#glossary)
 
 ---
 
@@ -40,6 +42,9 @@ PsillyOps is a comprehensive inventory management system designed for mushroom s
 - ✅ **Intelligent Logging**: Complete audit trail with field-level changes
 - ✅ **Real-time Dashboards**: Monitor inventory, orders, and production
 - ✅ **Role-Based Access**: Secure permissions for each user type
+- ✅ **Wholesale Pricing**: Set product prices with automatic order snapshots
+- ✅ **Invoicing**: Generate PDF invoices from shipped orders
+- ✅ **Packing Slips**: Create shipping manifests for fulfillment
 
 ---
 
@@ -900,6 +905,268 @@ All inventory changes are tracked with movement types:
 
 ---
 
+## Wholesale Pricing & Invoicing
+
+This section covers the lightweight operational accounting features in PsillyOps for tracking wholesale prices, generating invoices, and creating packing slips.
+
+### Role-Based Access
+
+| Role        | Set Prices | View Orders | Generate Invoice | Download PDF | Packing Slip |
+|-------------|------------|-------------|------------------|--------------|--------------|
+| ADMIN       | ✅ Yes     | ✅ Full     | ✅ Yes           | ✅ Yes       | ✅ Yes       |
+| PRODUCTION  | ❌ No      | ✅ Full     | ❌ No            | ✅ Yes       | ✅ Yes       |
+| WAREHOUSE   | ❌ No      | ✅ Full     | ❌ No            | ✅ Yes       | ✅ Yes       |
+| REP         | ❌ No      | 🚫 Limited  | ❌ No            | ❌ No        | ❌ No        |
+
+### Understanding the Invoice Flow
+
+```mermaid
+flowchart LR
+    A[Set Wholesale Prices] --> B[Create Order]
+    B --> C[Submit Order]
+    C --> D[Prices Snapshotted]
+    D --> E[Allocate & Fulfill]
+    E --> F[Ship Order]
+    F --> G[Generate Invoice]
+    G --> H[Download PDF]
+```
+
+**Key Principle:** Prices are captured when orders are **submitted**, not when invoices are generated. This ensures invoices always reflect what was actually sold.
+
+---
+
+### Setting Wholesale Prices
+
+**Configure Product Prices:**
+1. Navigate to **Products** → Click **"View"** on a product
+2. Click **"Edit"** button
+3. Enter the **Wholesale Price** (e.g., $24.99)
+4. Click **"Save Changes"**
+
+**Price Behavior:**
+- Wholesale price is the **default** unit price for retailer orders
+- Prices are **snapshotted** when orders are submitted (not calculated live)
+- Historical order prices are preserved even if product price changes later
+
+**Example:**
+| Product | Current Price | Order Submitted | Invoice Shows |
+|---------|---------------|-----------------|---------------|
+| Hercules Caps | $29.99 | Dec 1 @ $24.99 | $24.99 |
+| Lion's Mane | $19.99 | Dec 5 @ $19.99 | $19.99 |
+
+Even if you change Hercules Caps to $34.99 on Dec 10, the Dec 1 order will still show $24.99.
+
+---
+
+### Price Snapshots
+
+When an order is submitted, the system:
+1. Captures the current wholesale price for each product
+2. Stores `unitWholesalePrice` on each line item
+3. Calculates and stores `lineTotal` (qty × price)
+4. These values are **immutable** after submission
+
+This ensures invoices always reflect what was **actually sold**, not current prices.
+
+---
+
+### Orders List Page
+
+**URL:** `/orders`
+
+**Access:** Navigate via sidebar → **Orders**
+
+**What the Page Displays:**
+
+| Column | Description |
+|--------|-------------|
+| Order | Order number (clickable link to detail) |
+| Retailer | Customer name |
+| Status | DRAFT, SUBMITTED, APPROVED, IN_FULFILLMENT, SHIPPED, CANCELLED |
+| Items | Total quantity of items |
+| Total | Order subtotal (sum of line totals) |
+| Invoice | ✓ Invoiced / Awaiting / — |
+| Date | Order creation date |
+
+**Invoice Status Badges:**
+- **✓ Invoiced** (green): Invoice has been generated
+- **Awaiting** (amber): Order shipped but not invoiced
+- **—** (gray): Order not yet shipped
+
+---
+
+### Order Detail Page
+
+**URL:** `/orders/[id]`
+
+**Access:** Click order number in the Orders list
+
+**Page Layout:**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ HEADER                                                       │
+│ Order ORD-ABC123   [SHIPPED]                                │
+│ For Wellness Hub • Created Dec 10, 2024                     │
+├─────────────────────────────────────────────────────────────┤
+│ SUMMARY CARDS                                                │
+│ ┌────────────────┬────────────────┬────────────────┐        │
+│ │ Order Total    │ Allocation     │ Invoice        │        │
+│ │ $1,249.50      │ 50 / 50        │ INV-20241212   │        │
+│ │ 50 items       │ Fully allocated│ Issued Dec 12  │        │
+│ └────────────────┴────────────────┴────────────────┘        │
+├─────────────────────────────────────────────────────────────┤
+│ ORDER ITEMS                                                  │
+│ ┌────────────────────────────────────────────────────────┐  │
+│ │ Product        │ Qty │ Allocated │ Unit Price │ Total  │  │
+│ │ Hercules Caps  │ 30  │ 30        │ $24.99     │ $749.70│  │
+│ │ Lion's Mane    │ 20  │ 20        │ $24.99     │ $499.80│  │
+│ └────────────────────────────────────────────────────────┘  │
+│                                          Subtotal: $1,249.50│
+├─────────────────────────────────────────────────────────────┤
+│ SIDEBAR                                                      │
+│ ┌─────────────────────────┐  ┌────────────────────────────┐ │
+│ │ RETAILER                │  │ DOCUMENTS                  │ │
+│ │ Wellness Hub            │  │ [Generate Invoice]         │ │
+│ │ contact@wellness.com    │  │ [Download Invoice PDF]     │ │
+│ │ 123 Main St             │  │ [Download Packing Slip]    │ │
+│ └─────────────────────────┘  └────────────────────────────┘ │
+│                              ┌────────────────────────────┐ │
+│                              │ ORDER DETAILS              │ │
+│                              │ Tracking: 1Z999AA10123     │ │
+│                              │ Updated: Dec 12, 2024      │ │
+│                              └────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Generating Invoices
+
+**Who can generate:** Admin users only
+
+**When to invoice:** After order is shipped
+
+**Step-by-Step:**
+1. Navigate to **Orders** → Click order number
+2. Ensure order status is **SHIPPED**
+3. In the **Documents** section, click **"Generate Invoice"**
+4. Wait for confirmation message
+5. Invoice is created with unique number (INV-YYYYMMDD-XXXX)
+6. Click **"Download Invoice PDF"** to save
+
+**Invoice Contents:**
+- Company header and contact info (PsillyOps)
+- Retailer billing details
+- Order number and invoice number
+- Issue date
+- Line items with:
+  - Product name and SKU
+  - Quantity
+  - Unit price (snapshotted)
+  - Line total
+- Subtotal
+- Optional notes
+
+**Invoice Numbering:**
+- Format: `INV-YYYYMMDD-XXXX`
+- Example: `INV-20241212-A7B3`
+- Each invoice has a unique, sequential-style number
+
+---
+
+### Downloading Packing Slips
+
+Packing slips (manifests) can be downloaded at any time for any order.
+
+**Step-by-Step:**
+1. Navigate to **Orders** → Click order number
+2. In the **Documents** section, click **"Download Packing Slip"**
+3. PDF opens with shipping details and item checklist
+
+**Packing Slip Contents:**
+- Ship-from address (PsillyOps)
+- Ship-to address (retailer)
+- Order number and dates
+- Tracking number (if available)
+- Product list with:
+  - Product name and SKU
+  - Quantity ordered
+  - Quantity to ship (allocated)
+- Verification checkboxes:
+  - □ Items verified
+  - □ Packed by: ___________
+  - □ Date: ___________
+
+---
+
+### AI Invoice Commands
+
+You can use AI commands to generate invoices:
+
+| Command | Action |
+|---------|--------|
+| "Generate invoice for order ORD-ABC" | Creates invoice for specific order |
+| "Invoice Leaf order" | Creates invoice for Leaf's most recent shipped order |
+| "Invoice Mighty Caps" | Creates invoice for retailer's shipped order |
+| "Create packing slip for The Other Path" | Downloads manifest for retailer's order |
+| "Manifest for order ORD-456" | Downloads packing slip for specific order |
+
+**How AI Commands Work:**
+1. Open AI Command Bar (Cmd+K or click AI button)
+2. Type your command
+3. Review the interpreted action
+4. Click "Confirm & Execute"
+5. Download link provided in success message
+
+---
+
+### Dashboard Alerts
+
+The dashboard shows invoice-related alerts:
+
+**Alerts Panel:**
+- **Orders awaiting invoice**: Count of shipped orders without invoices
+- Click "View" to go to Orders list filtered to shipped orders
+
+**Stats Strip:**
+- **Awaiting Invoice**: Count displayed alongside other stats
+- Updates in real-time as orders ship and invoices are generated
+
+---
+
+### Complete Invoice Workflow Example
+
+1. **Admin sets prices:**
+   - Go to Products → Hercules Caps → Edit
+   - Set Wholesale Price: $24.99
+   - Save
+
+2. **Rep creates order:**
+   - Wellness Hub orders 50 Hercules Caps
+   - Order saved as Draft
+
+3. **Order submitted:**
+   - Rep submits order
+   - System snapshots $24.99 per unit
+   - Line total: 50 × $24.99 = $1,249.50
+
+4. **Order fulfilled:**
+   - Warehouse picks and packs
+   - Admin ships order with tracking number
+
+5. **Invoice generated:**
+   - Admin goes to Order detail
+   - Clicks "Generate Invoice"
+   - Downloads PDF: INV-20241212-A7B3
+   - Sends to Wellness Hub
+
+6. **Price change (later):**
+   - Admin changes Hercules to $29.99
+   - Original order still shows $24.99
+
+---
+
 ## Sales Rep Guide
 
 ### Managing Retailers
@@ -1055,6 +1322,7 @@ The detail page is organized into distinct sections:
 | Reorder Point      | Number   | Stock level that triggers reorder suggestions  |
 | Lead Time Days     | Number   | Days required to produce or restock            |
 | Default Batch Size | Number   | Standard quantity for production batches       |
+| Wholesale Price    | Currency | Default unit price for retailer orders         |
 | Active             | Boolean  | Whether product appears in active lists        |
 
 ---
@@ -1547,6 +1815,76 @@ QR scanning works best on mobile devices:
 
 ---
 
+## AI Tools
+
+PsillyOps includes an AI-powered command system for quick data entry using natural language.
+
+### AI Command Console
+
+**Who can use it:** Admin, Production, and Warehouse users
+
+**How to open:**
+- Click the **AI** button in the header
+- Or press **Cmd+K** (Mac) / **Ctrl+K** (Windows)
+
+**How it works:**
+1. Type a natural language command
+2. Review the interpreted action
+3. Click "Confirm & Execute" to apply
+
+### Example Commands
+
+| What you type | What happens |
+|---------------|--------------|
+| "Purchased PE for 500" | Receives 500 units of Penis Envy material |
+| "Received 2kg lions mane powder, lot LM-44 exp 12/26" | Receives material with lot and expiry |
+| "Leaf ordered 10 Herc and 5 MC caps" | Creates order for Leaf retailer |
+| "Batch HERC-44 yield 842 units loss 18" | Completes batch with yield/loss |
+| "Move 40 Herc jars to Finished Goods" | Moves inventory between locations |
+| "Adjust LM down by 30g spilled" | Adjusts inventory with reason |
+| "Generate invoice for order ORD-123" | Creates invoice for shipped order |
+| "Invoice Mighty Caps order" | Creates invoice for retailer's shipped order |
+| "Create packing slip for The Other Path" | Downloads packing slip PDF |
+
+### Common Abbreviations
+
+The system recognizes these shortcuts:
+- **PE** → Penis Envy
+- **LM** → Lions Mane
+- **GT** → Golden Teacher
+- **HERC** → Hercules (product)
+- **MC** → Micro Caps (product)
+- **RAW** → Raw Materials (location)
+- **FG** → Finished Goods (location)
+
+### AI Document Ingest
+
+**Location:** Activity → AI Ingest (in navigation)
+
+**Purpose:** Parse documents like invoices, receipts, or batch sheets into commands.
+
+**How to use:**
+1. Go to the AI Ingest page
+2. Paste document text into the textarea
+3. Click "Analyze Document"
+4. Review the parsed commands
+5. Click "Approve & Apply" or "Reject"
+
+**Supported document types:**
+- Purchase receipts
+- Retailer orders
+- Batch completion logs
+- Inventory adjustments
+
+### Security Notes
+
+- Only Admin, Production, and Warehouse roles can execute commands
+- All AI commands are logged with full audit trail
+- Commands go through the same validation as manual entry
+- REP users can view AI imports but cannot execute commands
+
+---
+
 ## Glossary
 
 **Allocation**: Reserving specific inventory items to fulfill an order
@@ -1567,7 +1905,19 @@ QR scanning works best on mobile devices:
 
 **Lot Number**: Vendor's tracking number for material batches
 
+**Invoice**: Document-based record of a sale, generated after order is shipped
+
+**Invoice Number**: Unique identifier for an invoice (format: INV-YYYYMMDD-XXXX)
+
+**Line Total**: Calculated value for an order line (quantity × unit price)
+
+**Manifest**: See Packing Slip
+
 **MRP (Material Requirements Planning)**: Automated system for detecting shortages and suggesting orders
+
+**Packing Slip**: Document listing items to be shipped (also called manifest)
+
+**Price Snapshot**: Wholesale price captured at order submission, preserved for invoicing
 
 **Production Order**: Work order to manufacture a specific quantity of product
 
@@ -1585,7 +1935,11 @@ QR scanning works best on mobile devices:
 
 **SKU**: Stock Keeping Unit (unique product/material identifier)
 
+**Unit Wholesale Price**: Snapshotted price per unit at order submission
+
 **Vendor Scorecard**: Performance metrics for suppliers
+
+**Wholesale Price**: Default unit price set on a product for retailer orders
 
 ---
 

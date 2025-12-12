@@ -20,3 +20,4 @@ export function SetPreferredButton({ materialId, vendorId, action }: SetPreferre
     </form>
   );
 }
+

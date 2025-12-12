@@ -28,6 +28,8 @@ async function updateProduct(formData: FormData) {
   const leadTimeDays = parseInt(formData.get("leadTimeDays") as string, 10) || 0;
   const defaultBatchSizeStr = formData.get("defaultBatchSize") as string;
   const defaultBatchSize = defaultBatchSizeStr ? parseInt(defaultBatchSizeStr, 10) : null;
+  const wholesalePriceStr = formData.get("wholesalePrice") as string;
+  const wholesalePrice = wholesalePriceStr ? parseFloat(wholesalePriceStr) : null;
 
   await prisma.product.update({
     where: { id },
@@ -38,6 +40,7 @@ async function updateProduct(formData: FormData) {
       reorderPoint,
       leadTimeDays,
       defaultBatchSize,
+      wholesalePrice,
     },
   });
 
@@ -254,6 +257,26 @@ export default async function ProductDetailPage({
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                 />
               </div>
+              <div>
+                <label htmlFor="wholesalePrice" className="block text-sm font-medium text-gray-700">
+                  Wholesale Price ($)
+                </label>
+                <div className="mt-1 relative rounded-md shadow-sm">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <span className="text-gray-500 sm:text-sm">$</span>
+                  </div>
+                  <input
+                    type="number"
+                    name="wholesalePrice"
+                    id="wholesalePrice"
+                    defaultValue={product.wholesalePrice ?? ""}
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                    className="mt-1 block w-full pl-7 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                  />
+                </div>
+              </div>
             </div>
             <div className="pt-4">
               <button
@@ -265,7 +288,7 @@ export default async function ProductDetailPage({
             </div>
           </form>
         ) : (
-          <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
             <div>
               <dt className="text-sm font-medium text-gray-500">Unit of Measure</dt>
               <dd className="mt-1 text-sm text-gray-900">{product.unitOfMeasure}</dd>
@@ -282,6 +305,14 @@ export default async function ProductDetailPage({
               <dt className="text-sm font-medium text-gray-500">Default Batch Size</dt>
               <dd className="mt-1 text-sm text-gray-900">
                 {product.defaultBatchSize ?? "Not set"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-sm font-medium text-gray-500">Wholesale Price</dt>
+              <dd className="mt-1 text-sm text-gray-900 font-semibold">
+                {product.wholesalePrice !== null
+                  ? `$${product.wholesalePrice.toFixed(2)}`
+                  : "Not set"}
               </dd>
             </div>
           </dl>
@@ -412,3 +443,4 @@ export default async function ProductDetailPage({
     </div>
   );
 }
+

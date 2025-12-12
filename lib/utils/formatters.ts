@@ -47,3 +47,4 @@ export function generateBatchCode(productSku: string, date: Date = new Date()): 
   return `${productSku}-${dateStr}-${random}`;
 }
 
+

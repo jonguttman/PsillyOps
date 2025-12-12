@@ -24,3 +24,4 @@ export function ArchiveButton({ materialId, archiveAction }: ArchiveButtonProps)
     </form>
   );
 }
+

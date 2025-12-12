@@ -42,3 +42,4 @@ next-env.d.ts
 *.db-journal
 node_modules/
 .next/
+

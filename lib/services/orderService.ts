@@ -89,7 +89,7 @@ export async function createOrder(params: CreateOrderParams): Promise<string> {
 }
 
 /**
- * Submit order - triggers allocation and shortage handling
+ * Submit order - triggers allocation, price snapshot, and shortage handling
  */
 export async function submitOrder(orderId: string, userId: string): Promise<{
   allocated: boolean;
@@ -118,6 +118,20 @@ export async function submitOrder(orderId: string, userId: string): Promise<{
       ErrorCodes.INVALID_STATUS,
       'Only draft orders can be submitted'
     );
+  }
+
+  // Snapshot wholesale prices on each line item
+  for (const lineItem of order.lineItems) {
+    const unitPrice = lineItem.product.wholesalePrice ?? 0;
+    const lineTotal = unitPrice * lineItem.quantityOrdered;
+    
+    await prisma.orderLineItem.update({
+      where: { id: lineItem.id },
+      data: {
+        unitWholesalePrice: unitPrice,
+        lineTotal: lineTotal
+      }
+    });
   }
 
   // Update status to SUBMITTED

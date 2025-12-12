@@ -267,3 +267,4 @@ export default async function NewMaterialPage() {
     </div>
   );
 }
+

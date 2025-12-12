@@ -7,6 +7,306 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.0] - 2024-12-12
+
+### Summary
+
+**Wholesale Pricing, Invoicing & Shipping Manifests** - Added lightweight operational accounting features for tracking wholesale prices, generating invoices, and creating packing slips. This is document-based (not payment-based) with prices snapshotted at order submission.
+
+### Core Principles
+
+- **Document-based, not payment-based**: No payments, taxes, or ledgers
+- **Price snapshots**: Prices captured at order submission, preserved for invoicing
+- **Invoices derived from orders**: Generated after order is shipped
+- **PDFs only**: Downloadable, printable documents
+
+### Added
+
+#### New Files Created
+
+```
+lib/services/
+└── invoiceService.ts           # Invoice generation and PDF creation (NEW)
+
+app/(ops)/orders/
+├── page.tsx                     # Orders list page (ENHANCED)
+└── [id]/
+    ├── page.tsx                 # Order detail page (NEW)
+    └── OrderDocuments.tsx       # Client component for document actions (NEW)
+
+app/api/invoices/
+├── route.ts                     # List invoices endpoint (NEW)
+├── [orderId]/
+│   └── route.ts                 # Generate invoice endpoint (NEW)
+└── [id]/
+    └── pdf/
+        └── route.ts             # Download invoice PDF (NEW)
+
+app/api/orders/[id]/
+└── manifest/
+    └── route.ts                 # Download packing slip PDF (NEW)
+```
+
+#### Prisma Schema Updates (`prisma/schema.prisma`)
+
+**New Models:**
+- `Invoice` - Stores invoice records for shipped orders
+  - Fields: `id`, `invoiceNo` (unique), `orderId`, `retailerId`, `issuedAt`, `subtotal`, `notes`
+  - Indexes on `orderId`, `retailerId`, `invoiceNo`, `issuedAt`
+
+**Updated Models:**
+- `Product` - Added `wholesalePrice: Float?` for default unit pricing
+- `OrderLineItem` - Added `unitWholesalePrice: Float?` and `lineTotal: Float?` for price snapshots
+- `RetailerOrder` - Added relation to `Invoice[]`
+- `Retailer` - Added relation to `Invoice[]`
+- `ActivityEntity` enum - Added `INVOICE` value
+
+#### TypeScript Enum Updates (`lib/types/enums.ts`)
+
+- Added `INVOICE = 'INVOICE'` to `ActivityEntity` enum
+
+#### Service Layer
+
+**New `lib/services/invoiceService.ts` (340 lines):**
+- `generateInvoice(params)` - Create invoice for shipped order with snapshotted prices
+- `generateInvoicePdf(invoiceId)` - Generate PDF buffer for invoice download
+- `generateManifestPdf(orderId)` - Generate packing slip PDF for any order
+- `generateInvoiceNumber()` - Create unique invoice number (INV-YYYYMMDD-XXXX)
+- `getInvoice(invoiceId)` - Get invoice by ID with relations
+- `getInvoiceByOrderId(orderId)` - Get invoice by order ID
+- `getInvoices(filters?)` - List invoices with optional filters
+- `getOrdersAwaitingInvoice()` - Get shipped orders without invoices
+- `countOrdersAwaitingInvoice()` - Count orders awaiting invoice
+
+**Updated `lib/services/orderService.ts`:**
+- `submitOrder()` enhanced to snapshot wholesale prices:
+  - Loops through line items
+  - Captures `product.wholesalePrice` to `lineItem.unitWholesalePrice`
+  - Calculates `lineItem.lineTotal = unitPrice × quantityOrdered`
+
+**Updated `lib/services/aiCommandService.ts`:**
+- Added `GenerateInvoiceCommand` type definition
+- Added `GenerateManifestCommand` type definition
+- Extended `AICommandInterpretation` union type
+- Added command mapping in `mapRawResultToCommand()`
+- Added resolver logic in `resolveCommandReferences()`
+- Added validation in `validateCommand()`
+- Added `executeGenerateInvoice()` handler
+- Added `executeGenerateManifest()` handler
+- Updated `getCommandTag()` with 'invoice' and 'shipping' tags
+
+**Updated `lib/services/aiClient.ts`:**
+- Added `parseInvoiceCommand()` function for natural language parsing
+- Updated help text in error messages
+- Supports patterns:
+  - "Generate invoice for order ORD-123"
+  - "Invoice Leaf order"
+  - "Invoice Mighty Caps"
+  - "Create packing slip for The Other Path order"
+  - "Manifest for order ORD-456"
+
+#### API Routes
+
+**Invoice Endpoints:**
+
+| Method | Route | Handler | Description |
+|--------|-------|---------|-------------|
+| POST | `/api/invoices/[orderId]` | `POST` | Generate invoice for order (Admin only) |
+| GET | `/api/invoices/[orderId]` | `GET` | Get invoice for specific order |
+| GET | `/api/invoices/[id]/pdf` | `GET` | Download invoice as PDF |
+| GET | `/api/invoices` | `GET` | List all invoices |
+| GET | `/api/invoices?awaiting=true` | `GET` | List orders awaiting invoice |
+
+**Manifest Endpoint:**
+
+| Method | Route | Handler | Description |
+|--------|-------|---------|-------------|
+| GET | `/api/orders/[id]/manifest` | `GET` | Download packing slip PDF |
+
+#### UI Updates
+
+**New Order Detail Page (`app/(ops)/orders/[id]/page.tsx`):**
+- Complete order detail view with:
+  - Header with order number, status badge, retailer info
+  - Summary cards: Order Total, Allocation status, Invoice status
+  - Line items table with product, qty, allocated, unit price, total
+  - Order timeline showing creation, approval, shipping, invoicing events
+  - Sidebar with retailer contact info
+  - Documents section with action buttons
+  - Order details card with tracking number
+
+**New OrderDocuments Component (`app/(ops)/orders/[id]/OrderDocuments.tsx`):**
+- Client component for document actions
+- "Generate Invoice" button (disabled if invoice exists or not shipped)
+- "Download Invoice PDF" button
+- "Download Packing Slip" button
+- Loading states and error handling
+- Success/failure feedback messages
+
+**Enhanced Orders List Page (`app/(ops)/orders/page.tsx`):**
+- Complete table view with columns:
+  - Order number (link to detail)
+  - Retailer name
+  - Status badge
+  - Item count
+  - Total value
+  - Invoice status badge
+  - Created date
+- Invoice status badges:
+  - ✓ Invoiced (green)
+  - Awaiting (amber)
+  - — (gray)
+
+**Updated Product Detail Page (`app/(ops)/products/[id]/page.tsx`):**
+- Added Wholesale Price field to view mode (5 columns now)
+- Added Wholesale Price input to edit mode
+- Currency input with $ prefix
+- Displays "Not set" when null
+
+**Updated Product API (`app/api/products/[id]/route.ts`):**
+- PATCH handler accepts `wholesalePrice` field
+- Parses as float, allows null
+
+**Updated Dashboard (`app/(ops)/dashboard/page.tsx`):**
+- Added query for `ordersAwaitingInvoice`
+- Added query for `awaitingInvoiceCount`
+- Passes new props to AlertsPanel and StatsStrip
+
+**Updated AlertsPanel (`components/dashboard/AlertsPanel.tsx`):**
+- Added `ordersAwaitingInvoice` prop
+- New alert item: "X orders awaiting invoice"
+- Emerald indicator dot
+- Link to Orders page
+
+**Updated StatsStrip (`components/dashboard/StatsStrip.tsx`):**
+- Added `awaitingInvoiceCount` prop
+- New stat: "Awaiting Invoice"
+- Grid now 5 columns on desktop
+
+#### Dependencies
+
+**Added to `package.json`:**
+```json
+{
+  "dependencies": {
+    "pdfkit": "^0.15.0"
+  },
+  "devDependencies": {
+    "@types/pdfkit": "^0.13.0"
+  }
+}
+```
+
+### Changed
+
+- `Product` model now has optional `wholesalePrice` field
+- `OrderLineItem` model stores snapshot pricing
+- Product detail shows 5 columns in view mode
+- Product API PATCH endpoint accepts `wholesalePrice`
+- Orders submitted after this update will have price snapshots
+- Dashboard displays invoice-related alerts and stats
+- AI command system supports invoice/manifest generation
+
+### Migration Notes
+
+- Run `npx prisma db push` to apply schema changes
+- Existing orders will have null `unitWholesalePrice` and `lineTotal`
+- Set wholesale prices on products before creating new orders
+- Invoices can only be generated for orders submitted after this update (with snapshotted prices)
+
+---
+
+## [0.5.0] - 2024-12-12
+
+### Summary
+
+**AI Command Console & Document Ingest** - Implemented an AI-powered command system for natural language inventory operations and document parsing capabilities.
+
+### Added
+
+#### Prisma Schema Updates
+
+**New Models:**
+- `AICommandLog` - Tracks natural language command interpretation and execution
+  - Fields: inputText, normalized, status, aiResult, executedPayload, error, appliedAt
+  - Indexes on status and createdAt
+- `AIDocumentImport` - Tracks document-based imports (invoices, receipts, batch sheets)
+  - Fields: sourceType, originalName, contentType, textPreview, status, confidence, aiResult
+  - Indexes on status and createdAt
+
+**Updated Models:**
+- `User` - Added relations to `AICommandLog[]` and `AIDocumentImport[]`
+
+#### Service Layer
+
+**New `aiClient.ts`:**
+- `interpretNaturalLanguageCommand()` - Parse text to structured command
+- `parseDocumentContent()` - Parse document to multiple commands
+- Basic pattern matching fallback when AI provider not configured
+
+**New `aiCommandService.ts`:**
+- `interpretCommand()` - Full pipeline: AI call → type mapping → reference resolution → log creation
+- `executeInterpretedCommand()` - Route to domain services with validation and logging
+- `resolveCommandReferences()` - Map fuzzy references to database IDs
+- Resolver helpers for materials, products, retailers, batches, locations, vendors
+- Typed command unions: `ReceiveMaterialCommand`, `MoveInventoryCommand`, `AdjustInventoryCommand`, `CreateRetailerOrderCommand`, `CompleteBatchCommand`, `CreateMaterialCommand`
+
+**New `aiIngestService.ts`:**
+- `createDocumentImport()` - Parse document text and create import record
+- `listDocumentImports()` - Query imports with pagination and filters
+- `getDocumentImport()` - Get single import details
+- `applyDocumentImport()` - Execute all parsed commands
+- `rejectDocumentImport()` - Mark import as rejected
+
+#### API Routes
+
+**Command Endpoint:**
+- `POST /api/ai/command` - Interpret and optionally execute natural language command
+
+**Ingest Endpoints:**
+- `POST /api/ai/ingest` - Create new document import
+- `GET /api/ai/ingest` - List document imports
+- `GET /api/ai/ingest/[id]` - Get import details
+- `POST /api/ai/ingest/[id]/apply` - Apply all commands
+- `POST /api/ai/ingest/[id]/reject` - Reject import
+
+#### UI Components
+
+**AI Command Bar (`components/ai/AiCommandBar.tsx`):**
+- Modal dialog with keyboard shortcut (Cmd+K)
+- Two-step flow: Interpret → Confirm & Execute
+- Example commands display
+- Resolved reference preview
+- Success/error states
+
+**AI Ingest Page (`app/(ops)/ai-ingest/page.tsx`):**
+- Paste textarea for document input
+- Recent imports list with status badges
+- Detail panel with parsed commands
+- Apply/Reject action buttons
+- Raw JSON preview for debugging
+
+#### RBAC Updates
+
+- Added `ai` resource permissions:
+  - `command`: ADMIN, PRODUCTION, WAREHOUSE
+  - `ingest`: ADMIN, PRODUCTION, WAREHOUSE
+  - `view`: ADMIN, PRODUCTION, WAREHOUSE, REP
+- Added `canUseAICommand()` and `canUseAIIngest()` helper functions
+
+#### Logging Integration
+
+- AI commands log to ActivityLog with entityType: SYSTEM
+- Tags: `['ai_command', 'inventory']` (domain-specific)
+- Domain-level logging preserved through existing services
+
+### Changed
+
+- Updated ops layout to include AI Command button in header
+- Added AI Ingest link to navigation
+
+---
+
 ## [0.4.0] - 2024-12-12
 
 ### Summary

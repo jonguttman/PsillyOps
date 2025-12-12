@@ -117,3 +117,4 @@ export async function getAllVendorScorecards(
   return scorecards.sort((a, b) => b.totalValuePurchased - a.totalValuePurchased);
 }
 
+

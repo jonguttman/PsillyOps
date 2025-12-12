@@ -19,7 +19,7 @@ export async function PATCH(
 
     const { id } = await params;
     const body = await request.json();
-    const { name, sku, unitOfMeasure, reorderPoint, leadTimeDays, defaultBatchSize } = body;
+    const { name, sku, unitOfMeasure, reorderPoint, leadTimeDays, defaultBatchSize, wholesalePrice } = body;
 
     // Check if product exists
     const existingProduct = await prisma.product.findUnique({
@@ -54,6 +54,9 @@ export async function PATCH(
         ...(leadTimeDays !== undefined && { leadTimeDays: parseInt(leadTimeDays, 10) }),
         ...(defaultBatchSize !== undefined && {
           defaultBatchSize: defaultBatchSize ? parseInt(defaultBatchSize, 10) : null,
+        }),
+        ...(wholesalePrice !== undefined && {
+          wholesalePrice: wholesalePrice !== null && wholesalePrice !== '' ? parseFloat(wholesalePrice) : null,
         }),
       },
     });
@@ -109,3 +112,4 @@ export async function DELETE(
     );
   }
 }
+

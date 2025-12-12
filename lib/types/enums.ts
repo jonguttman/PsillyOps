@@ -71,6 +71,27 @@ export enum ActivityEntity {
   ORDER = 'ORDER',
   PRODUCTION_ORDER = 'PRODUCTION_ORDER',
   PURCHASE_ORDER = 'PURCHASE_ORDER',
-  VENDOR = 'VENDOR'
+  VENDOR = 'VENDOR',
+  INVENTORY = 'INVENTORY',
+  WORK_CENTER = 'WORK_CENTER',
+  INVOICE = 'INVOICE',
+  SYSTEM = 'SYSTEM'
+}
+
+// AI Command Status values
+export enum AICommandStatus {
+  PENDING = 'PENDING',
+  CONFIRMED = 'CONFIRMED',
+  APPLIED = 'APPLIED',
+  FAILED = 'FAILED'
+}
+
+// AI Document Import Status values
+export enum AIDocumentStatus {
+  PENDING_REVIEW = 'PENDING_REVIEW',
+  PARSED = 'PARSED',
+  APPLIED = 'APPLIED',
+  REJECTED = 'REJECTED',
+  FAILED = 'FAILED'
 }
 

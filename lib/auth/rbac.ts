@@ -89,6 +89,11 @@ export const PERMISSIONS = {
     update: [UserRole.ADMIN],
     delete: [UserRole.ADMIN],
     view: [UserRole.ADMIN]
+  },
+  ai: {
+    command: [UserRole.ADMIN, UserRole.PRODUCTION, UserRole.WAREHOUSE],
+    ingest: [UserRole.ADMIN, UserRole.PRODUCTION, UserRole.WAREHOUSE],
+    view: [UserRole.ADMIN, UserRole.PRODUCTION, UserRole.WAREHOUSE, UserRole.REP]
   }
 } as const;
 
@@ -160,5 +165,19 @@ export function canManageProduction(userRole: UserRole): boolean {
  */
 export function canManageWarehouse(userRole: UserRole): boolean {
   return [UserRole.ADMIN, UserRole.WAREHOUSE].includes(userRole);
+}
+
+/**
+ * Check if user can use AI command features
+ */
+export function canUseAICommand(userRole: UserRole): boolean {
+  return [UserRole.ADMIN, UserRole.PRODUCTION, UserRole.WAREHOUSE].includes(userRole);
+}
+
+/**
+ * Check if user can use AI ingest features
+ */
+export function canUseAIIngest(userRole: UserRole): boolean {
+  return [UserRole.ADMIN, UserRole.PRODUCTION, UserRole.WAREHOUSE].includes(userRole);
 }
 

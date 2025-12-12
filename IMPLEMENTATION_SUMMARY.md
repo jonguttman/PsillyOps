@@ -1476,11 +1476,493 @@ All core requirements from the official specification have been fully implemente
 
 ---
 
+## 🧩 Local Development vs Production Database
+
+PsillyOps is designed to support two modes of operation for simplicity and reliability:
+
+### **Local Development (SQLite)**
+During development, PsillyOps uses a lightweight SQLite database:
+
+- Zero setup required  
+- No external network connectivity  
+- Fast local migrations using `prisma db push`  
+- Safe to experiment without affecting production  
+- SQLite database stored as `dev.db` in the project root  
+- `.env` should contain:  
+  ```
+  DATABASE_URL="file:./dev.db"
+  NEXTAUTH_URL="http://localhost:3000"
+  NEXTAUTH_SECRET="<your-local-secret>"
+  ```
+
+This mode is ideal for:
+- Feature development
+- Offline work
+- Rapid prototyping
+
+### **Production Deployment (Managed Postgres Recommended)**
+For production hosting, PsillyOps supports any Postgres-compatible provider, including Railway, Supabase, Neon, or RDS.
+
+Recommended provider: **Railway Postgres**
+- Easy setup
+- Automatic backups
+- SSL support
+- No exposed ports by default
+- Simple environment variable configuration
+
+Production `.env.production` example:
+```
+DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db>?sslmode=require"
+NEXTAUTH_SECRET="<your-production-secret>"
+NEXTAUTH_URL="https://your-production-domain.com"
+```
+
+### **Important Notes**
+- Switching between SQLite (dev) and Postgres (prod) requires only updating `DATABASE_URL`.
+- Prisma automatically generates the correct client for each provider.
+- Development and production environments remain fully isolated.
+- All service logic works identically regardless of the database backend.
+
+This design ensures PsillyOps is easy for a small business to run locally while maintaining a clean path to scalable production deployment.
+
+---
+
+## 💰 Wholesale Pricing, Invoicing & Manifests
+
+### Overview
+
+The Invoicing module provides lightweight operational accounting for tracking wholesale prices, generating invoices, and creating packing slips. This is document-based (not payment-based), with prices snapshotted at order submission to ensure historical accuracy.
+
+**Key Principles:**
+- Prices are snapshotted, not calculated live
+- Invoices are derived from shipped orders
+- No payments, taxes, or ledgers
+- PDFs only (downloadable, printable)
+
+### Data Relationships
+
+```mermaid
+erDiagram
+    Product ||--o{ OrderLineItem : "ordered as"
+    Product {
+        string id PK
+        string name
+        string sku UK
+        float wholesalePrice
+    }
+    
+    RetailerOrder ||--o{ OrderLineItem : "contains"
+    RetailerOrder ||--o{ Invoice : "invoiced by"
+    RetailerOrder {
+        string id PK
+        string orderNumber UK
+        string retailerId FK
+        string status
+    }
+    
+    OrderLineItem {
+        string id PK
+        string orderId FK
+        string productId FK
+        int quantityOrdered
+        float unitWholesalePrice
+        float lineTotal
+    }
+    
+    Retailer ||--o{ RetailerOrder : "places"
+    Retailer ||--o{ Invoice : "billed to"
+    Retailer {
+        string id PK
+        string name
+        string billingAddress
+    }
+    
+    Invoice {
+        string id PK
+        string invoiceNo UK
+        string orderId FK
+        string retailerId FK
+        datetime issuedAt
+        float subtotal
+        string notes
+    }
+```
+
+### Module Architecture
+
+```
+app/(ops)/orders/
+├── page.tsx                 # Orders list with invoice status
+└── [id]/
+    ├── page.tsx             # Order detail with Documents section
+    └── OrderDocuments.tsx   # Client component for invoice/manifest actions
+
+app/api/invoices/
+├── route.ts                 # List invoices
+├── [orderId]/
+│   └── route.ts             # Generate invoice for order
+└── [id]/
+    └── pdf/
+        └── route.ts         # Download invoice PDF
+
+app/api/orders/[id]/
+└── manifest/
+    └── route.ts             # Download packing slip PDF
+
+lib/services/
+└── invoiceService.ts        # Invoice generation and PDF creation
+```
+
+### Data Flow
+
+```mermaid
+sequenceDiagram
+    participant Admin
+    participant Product
+    participant Rep
+    participant Order
+    participant LineItem
+    participant Warehouse
+    participant Invoice
+    participant PDF
+    
+    Note over Admin,Product: Step 1: Configure Pricing
+    Admin->>Product: Set wholesalePrice ($24.99)
+    
+    Note over Rep,LineItem: Step 2: Order Submission
+    Rep->>Order: Create draft order
+    Rep->>Order: Submit order
+    Order->>Product: Read wholesalePrice
+    Order->>LineItem: Store unitWholesalePrice
+    Order->>LineItem: Calculate lineTotal
+    
+    Note over Warehouse,Order: Step 3: Fulfillment
+    Warehouse->>Order: Pick and pack
+    Warehouse->>Order: Ship (status = SHIPPED)
+    
+    Note over Admin,PDF: Step 4: Invoicing
+    Admin->>Invoice: Generate invoice
+    Invoice->>LineItem: Read snapshotted prices
+    Invoice->>Invoice: Calculate subtotal
+    Invoice->>PDF: Generate PDF
+    Admin->>PDF: Download
+```
+
+### Price Snapshot Lifecycle
+
+```mermaid
+flowchart TD
+    A[Product Created] --> B[Admin Sets wholesalePrice]
+    B --> C[Order Created as DRAFT]
+    C --> D[Order Submitted]
+    D --> E{Snapshot Prices}
+    E --> F[unitWholesalePrice stored]
+    E --> G[lineTotal calculated]
+    F --> H[Order Allocated]
+    G --> H
+    H --> I[Order Shipped]
+    I --> J[Generate Invoice]
+    J --> K[Use Snapshotted Values]
+    K --> L[PDF Generated]
+    
+    style E fill:#f9f,stroke:#333,stroke-width:2px
+    style K fill:#9f9,stroke:#333,stroke-width:2px
+```
+
+### Key Features
+
+| Feature | Description |
+|---------|-------------|
+| **Wholesale Pricing** | Products have optional `wholesalePrice` field |
+| **Price Snapshots** | Prices captured at order submission, not live |
+| **Invoice Generation** | Create invoices from shipped orders |
+| **Invoice PDFs** | Professional PDF documents for download |
+| **Packing Slips** | Manifest PDFs with verification checkboxes |
+| **AI Commands** | Natural language invoice/manifest generation |
+| **Dashboard Alerts** | Track orders awaiting invoice |
+
+### Price Snapshot Flow
+
+1. **Product Setup**: Admin sets `wholesalePrice` on Product
+2. **Order Submission**: System captures price to `OrderLineItem.unitWholesalePrice`
+3. **Line Total**: System calculates `lineTotal = qty × unitWholesalePrice`
+4. **Invoice Generation**: Uses snapshotted values, not current prices
+
+### Invoice Model
+
+```typescript
+model Invoice {
+  id          String   @id @default(cuid())
+  invoiceNo   String   @unique    // INV-YYYYMMDD-XXXX
+  orderId     String              // Reference to order
+  retailerId  String              // Reference to retailer
+  issuedAt    DateTime @default(now())
+  subtotal    Float               // Sum of line totals
+  notes       String?             // Optional notes
+  
+  order       RetailerOrder @relation(...)
+  retailer    Retailer      @relation(...)
+}
+```
+
+### OrderLineItem Extensions
+
+```typescript
+// Added fields for price snapshots
+model OrderLineItem {
+  // ... existing fields ...
+  unitWholesalePrice  Float?   // Snapshotted at submission
+  lineTotal           Float?   // qty × unitWholesalePrice
+}
+```
+
+### Invoice Service Functions
+
+```typescript
+// lib/services/invoiceService.ts
+
+// Generate invoice from shipped order
+generateInvoice(params: {
+  orderId: string;
+  notes?: string;
+  userId?: string;
+}): Promise<string>
+
+// Generate PDF buffer
+generateInvoicePdf(invoiceId: string): Promise<Buffer>
+
+// Generate packing slip
+generateManifestPdf(orderId: string): Promise<Buffer>
+
+// Query functions
+getInvoice(invoiceId: string): Promise<Invoice | null>
+getInvoiceByOrderId(orderId: string): Promise<Invoice | null>
+getInvoices(filters?: InvoiceFilters): Promise<Invoice[]>
+getOrdersAwaitingInvoice(): Promise<Order[]>
+countOrdersAwaitingInvoice(): Promise<number>
+```
+
+### AI Command Support
+
+```
+# Invoice Commands
+"Generate invoice for order ORD-123"
+"Invoice Leaf order"
+"Invoice Mighty Caps order"
+
+# Manifest Commands
+"Create packing slip for The Other Path order"
+"Manifest for order ORD-456"
+```
+
+### API Endpoints
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/api/invoices/[orderId]` | Admin | Generate invoice for order |
+| GET | `/api/invoices/[orderId]` | All | Get invoice by order |
+| GET | `/api/invoices/[id]/pdf` | All | Download invoice PDF |
+| GET | `/api/invoices` | All | List all invoices |
+| GET | `/api/invoices?awaiting=true` | All | Orders awaiting invoice |
+| GET | `/api/orders/[id]/manifest` | All | Download packing slip PDF |
+
+### PDF Generation
+
+PDFs are generated server-side using `pdfkit`:
+
+**Invoice PDF Contents:**
+- Company header (PsillyOps)
+- Invoice number and date
+- Bill-to information (retailer)
+- Order reference
+- Line items table (product, SKU, qty, unit price, total)
+- Subtotal
+- Notes section
+- Footer
+
+**Packing Slip PDF Contents:**
+- Ship-from address
+- Ship-to address
+- Order number and dates
+- Tracking number
+- Items table (product, SKU, ordered, ship qty)
+- Verification checkboxes
+- Footer with generation date
+
+### Dashboard Integration
+
+**AlertsPanel:**
+- Shows count of orders awaiting invoice
+- Links to Orders page
+
+**StatsStrip:**
+- New "Awaiting Invoice" stat
+- Real-time count from database
+
+### Role-Based Access
+
+| Action | Admin | Production | Warehouse | Rep |
+|--------|-------|------------|-----------|-----|
+| Set wholesale price | ✅ | ❌ | ❌ | ❌ |
+| View orders | ✅ | ✅ | ✅ | Limited |
+| Generate invoice | ✅ | ❌ | ❌ | ❌ |
+| Download invoice PDF | ✅ | ✅ | ✅ | ❌ |
+| Download packing slip | ✅ | ✅ | ✅ | ❌ |
+
+### What Is NOT Included
+
+Per the specification, the following are explicitly not implemented:
+
+- ❌ Payments (Stripe, ACH, etc.)
+- ❌ Taxes
+- ❌ Accounting exports
+- ❌ Accounts Receivable/Payable
+- ❌ Profit & Loss
+- ❌ CSV invoicing
+- ❌ Email delivery (future enhancement)
+
+---
+
+## 🤖 AI Command Console & Document Ingest
+
+### Overview
+
+The AI Command Console allows authorized users to execute inventory operations using natural language commands. The Document Ingest system enables parsing of documents (invoices, receipts, batch sheets) into executable commands.
+
+### New Database Models
+
+#### AICommandLog
+Tracks each natural language command, its interpretation, and execution status.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | CUID | Primary key |
+| `userId` | String? | User who issued command |
+| `inputText` | String | Raw natural language input |
+| `normalized` | String? | Normalized command name (e.g., "RECEIVE_MATERIAL") |
+| `status` | String | PENDING, CONFIRMED, APPLIED, FAILED |
+| `aiResult` | Json? | Raw AI interpretation result |
+| `executedPayload` | Json? | Final resolved command payload |
+| `error` | String? | Error message if failed |
+| `createdAt` | DateTime | When command was issued |
+| `appliedAt` | DateTime? | When command was executed |
+
+#### AIDocumentImport
+Tracks document-based imports from uploads, pastes, or emails.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | CUID | Primary key |
+| `userId` | String? | User who imported |
+| `sourceType` | String | UPLOAD, PASTE, EMAIL |
+| `originalName` | String? | Original filename |
+| `contentType` | String? | MIME type |
+| `textPreview` | String? | Truncated preview |
+| `status` | String | PENDING_REVIEW, PARSED, APPLIED, REJECTED, FAILED |
+| `confidence` | Float? | AI confidence score (0-1) |
+| `aiResult` | Json? | Parsed commands and metadata |
+| `error` | String? | Error message |
+
+### Service Layer
+
+#### aiCommandService.ts
+- **interpretCommand()**: Parse natural language → structured command
+- **executeInterpretedCommand()**: Execute via domain services
+- **resolveCommandReferences()**: Map fuzzy refs to database IDs
+- **Resolver helpers**: `resolveMaterialRef`, `resolveProductRef`, `resolveRetailerRef`, `resolveBatchRef`, `resolveLocationRef`, `resolveVendorRef`
+
+#### aiIngestService.ts
+- **createDocumentImport()**: Parse text document → commands
+- **listDocumentImports()**: Query with filters
+- **getDocumentImport()**: Get single import detail
+- **applyDocumentImport()**: Execute all parsed commands
+- **rejectDocumentImport()**: Mark as rejected
+
+#### aiClient.ts
+Pluggable AI abstraction (currently stubbed with basic pattern matching):
+- **interpretNaturalLanguageCommand()**: Text → command structure
+- **parseDocumentContent()**: Document → multiple commands
+
+### Supported Commands
+
+| Command | Example Input | Action |
+|---------|---------------|--------|
+| RECEIVE_MATERIAL | "Purchased PE for 500" | Receive materials to inventory |
+| MOVE_INVENTORY | "Move 40 Herc jars to Finished Goods" | Transfer between locations |
+| ADJUST_INVENTORY | "Adjust LM down by 30g spilled" | Increase/decrease stock |
+| CREATE_RETAILER_ORDER | "Leaf ordered 10 Herc and 5 MC caps" | Create order |
+| COMPLETE_BATCH | "Batch HERC-44 yield 842 units loss 18" | Complete production batch |
+| CREATE_MATERIAL | "New material cacao powder SKU CACAO-01" | Add new material |
+
+### Reference Resolution
+
+The system includes fuzzy matching for common abbreviations:
+- **Materials**: PE → Penis Envy, LM → Lions Mane, GT → Golden Teacher
+- **Products**: HERC → Hercules, MC → Micro Caps
+- **Locations**: RAW → Raw Materials, FG → Finished Goods, QA → QA Hold
+
+### API Routes
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/ai/command` | POST | Interpret (and optionally execute) a command |
+| `/api/ai/ingest` | POST | Create document import |
+| `/api/ai/ingest` | GET | List document imports |
+| `/api/ai/ingest/[id]` | GET | Get import details |
+| `/api/ai/ingest/[id]/apply` | POST | Apply all commands |
+| `/api/ai/ingest/[id]/reject` | POST | Reject import |
+
+### RBAC Permissions
+
+```typescript
+ai: {
+  command: [ADMIN, PRODUCTION, WAREHOUSE],
+  ingest: [ADMIN, PRODUCTION, WAREHOUSE],
+  view: [ADMIN, PRODUCTION, WAREHOUSE, REP]
+}
+```
+
+### UI Components
+
+1. **AI Command Bar** (`components/ai/AiCommandBar.tsx`)
+   - Modal triggered from header or Cmd+K
+   - Two-step flow: Interpret → Confirm → Execute
+   - Shows resolved references and summary
+
+2. **AI Ingest Page** (`app/(ops)/ai-ingest/page.tsx`)
+   - Paste text area for document input
+   - List of recent imports with status
+   - Detail view with parsed commands
+   - Apply/Reject actions
+
+### Logging Integration
+
+All AI commands log to ActivityLog with:
+- `entityType: SYSTEM`
+- `action: 'ai_command_executed'` or `'ai_document_applied'`
+- `tags: ['ai_command', 'inventory']` (domain-specific)
+
+Domain-level logging is preserved through existing services.
+
+---
+
 **Implementation Date**: December 2024  
-**Version**: 0.3.0  
+**Version**: 0.5.0  
 **Built By**: Cursor AI following PsillyOps Official Specification
 
-**Recent Updates (v0.3.0):**
+**Recent Updates (v0.5.0):**
+- AI Command Console with natural language command interpretation
+- AI Document Ingest system for parsing documents
+- AICommandLog and AIDocumentImport Prisma models
+- aiCommandService with typed command unions and resolver helpers
+- aiIngestService for document parsing and management
+- API routes for AI command and ingest operations
+- AI Command Bar UI component with Cmd+K shortcut
+- AI Ingest page with paste input and import list
+- RBAC permissions for AI features
+- Integration with existing service layer and logging system
+
+**Previous Updates (v0.3.0):**
 - Full Materials module with CRUD, categories, and MRP fields
 - Full Vendors module with CRUD and performance scorecards
 - Multi-vendor support with preferred vendor logic

@@ -2,7 +2,7 @@
 // This schema defines all 14+ core entities for the inventory management system
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -108,6 +108,8 @@ enum ActivityEntity {
   VENDOR
   INVENTORY
   WORK_CENTER
+  INVOICE
+  SYSTEM
 }
 
 enum MaterialCategory {
@@ -144,6 +146,8 @@ model User {
   activityLogs              ActivityLog[]
   assignedRetailers         Retailer[]
   laborEntries              LaborEntry[]
+  aiCommandLogs             AICommandLog[]
+  aiDocumentImports         AIDocumentImport[]
   
   @@index([email])
   @@index([role])
@@ -157,6 +161,7 @@ model Product {
   defaultBatchSize  Int?
   leadTimeDays      Int      @default(0)
   reorderPoint      Int      @default(0)
+  wholesalePrice    Float?   // Default wholesale price per unit
   active            Boolean  @default(true)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
@@ -379,6 +384,7 @@ model Retailer {
   
   salesRep        User?           @relation(fields: [salesRepId], references: [id])
   orders          RetailerOrder[]
+  invoices        Invoice[]
   
   @@index([salesRepId])
   @@index([name])
@@ -402,6 +408,7 @@ model RetailerOrder {
   createdBy         User             @relation("OrderCreator", fields: [createdByUserId], references: [id])
   approvedBy        User?            @relation("OrderApprover", fields: [approvedByUserId], references: [id])
   lineItems         OrderLineItem[]
+  invoices          Invoice[]
   
   @@index([retailerId])
   @@index([status])
@@ -417,6 +424,8 @@ model OrderLineItem {
   quantityAllocated   Int      @default(0)
   shortageQuantity    Int      @default(0)
   allocationDetails   Json?
+  unitWholesalePrice  Float?   // Snapshotted at order submission
+  lineTotal           Float?   // Snapshotted at order submission (qty * price)
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
   
@@ -511,7 +520,7 @@ model ActivityLog {
   summary     String
   diff        Json?
   details     Json?
-  tags        String[]
+  tags        Json?
   createdAt   DateTime       @default(now())
   
   user        User?  @relation(fields: [userId], references: [id])
@@ -658,5 +667,71 @@ model UnitConversion {
   multiplier Float
   
   @@unique([fromUnit, toUnit])
+}
+
+// ========================================
+// AI COMMAND & DOCUMENT INGEST
+// ========================================
+
+model AICommandLog {
+  id               String    @id @default(cuid())
+  userId           String?
+  inputText        String
+  normalized       String?   // Short normalized command name, e.g. "RECEIVE_MATERIAL"
+  status           String    // "PENDING", "CONFIRMED", "APPLIED", "FAILED"
+  aiResult         Json?     // Raw AI response / parsed structure
+  executedPayload  Json?     // Final executed command payload after resolution
+  correctedCommand Json?     // User-corrected command if they edited it
+  error            String?
+  createdAt        DateTime  @default(now())
+  appliedAt        DateTime?
+  
+  user             User?     @relation(fields: [userId], references: [id])
+  
+  @@index([status])
+  @@index([createdAt])
+}
+
+model AIDocumentImport {
+  id           String    @id @default(cuid())
+  userId       String?
+  sourceType   String    // "UPLOAD", "PASTE", "EMAIL"
+  originalName String?
+  contentType  String?
+  textPreview  String?
+  status       String    // "PENDING_REVIEW", "PARSED", "APPLIED", "REJECTED", "FAILED"
+  confidence   Float?
+  aiResult     Json?     // Parsed structured data and commands
+  createdAt    DateTime  @default(now())
+  reviewedAt   DateTime?
+  appliedAt    DateTime?
+  error        String?
+  
+  user         User?     @relation(fields: [userId], references: [id])
+  
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ========================================
+// INVOICING
+// ========================================
+
+model Invoice {
+  id          String   @id @default(cuid())
+  invoiceNo   String   @unique
+  orderId     String
+  retailerId  String
+  issuedAt    DateTime @default(now())
+  subtotal    Float
+  notes       String?
+  
+  order       RetailerOrder @relation(fields: [orderId], references: [id])
+  retailer    Retailer      @relation(fields: [retailerId], references: [id])
+  
+  @@index([orderId])
+  @@index([retailerId])
+  @@index([invoiceNo])
+  @@index([issuedAt])
 }
 

@@ -342,6 +342,75 @@ shipOrder({ orderId, trackingNumber, userId });
 cancelOrder(orderId, userId);
 ```
 
+### AI Services
+
+#### aiClient.ts
+**Pluggable AI provider abstraction**
+
+```typescript
+// Currently stubbed with basic pattern matching
+interpretNaturalLanguageCommand(text: string): Promise<RawAICommandResult>
+parseDocumentContent(text: string, context: string): Promise<RawAIDocumentResult>
+```
+
+**To integrate a real AI provider:**
+1. Replace the stub implementations in `aiClient.ts`
+2. Add your API key to environment variables
+3. Update the functions to call OpenAI/Anthropic/etc.
+4. The rest of the system will work without changes
+
+#### aiCommandService.ts
+**Natural language command interpretation and execution**
+
+```typescript
+// Interpret text into a typed command
+const { log, command } = await interpretCommand(text, userId);
+
+// Execute after user confirmation
+const result = await executeInterpretedCommand(command, { userId, logId: log.id });
+```
+
+**Command Types (discriminated union):**
+```typescript
+type AICommandInterpretation =
+  | ReceiveMaterialCommand    // "Purchased PE for 500"
+  | MoveInventoryCommand      // "Move 40 Herc to FG"
+  | AdjustInventoryCommand    // "Adjust LM down by 30g"
+  | CreateRetailerOrderCommand // "Leaf ordered 10 Herc"
+  | CompleteBatchCommand      // "Batch HERC-44 yield 842"
+  | CreateMaterialCommand;    // "New material cacao powder"
+```
+
+**Reference Resolution:**
+The service resolves fuzzy references to database IDs:
+- `resolveMaterialRef("PE")` → finds "Penis Envy" material
+- `resolveProductRef("Herc")` → finds "Hercules" product
+- `resolveLocationRef("FG")` → finds "Finished Goods" location
+
+**Adding new commands:**
+1. Define a new command type with required args
+2. Add to the `AICommandInterpretation` union
+3. Add a case to `mapRawResultToCommand()`
+4. Add validation in `validateCommand()`
+5. Add execution handler `execute{CommandName}()`
+
+#### aiIngestService.ts
+**Document parsing and batch command execution**
+
+```typescript
+// Create import from pasted/uploaded text
+const docImport = await createDocumentImport(text, 'PASTE', userId);
+
+// List imports with filters
+const { items, total } = await listDocumentImports({ status: 'PENDING_REVIEW' });
+
+// Apply all commands from a document
+const result = await applyDocumentImport(importId, userId);
+
+// Reject if commands are incorrect
+await rejectDocumentImport(importId, 'Incorrect data', userId);
+```
+
 ---
 
 ## API Routes
@@ -689,6 +758,20 @@ npx prisma migrate deploy
 # Be careful - only run once!
 npm run db:seed
 ```
+
+### Local-Only Development Note (SQLite)
+
+PsillyOps can be developed entirely using a local SQLite database for convenience.  
+This mode is recommended during early development for maximum speed, zero setup, and no network dependencies.
+
+**Key points:**
+- `.env` should use `file:./dev.db` for `DATABASE_URL`
+- No cloud database is required while developing locally
+- All Prisma migrations and `db push` operations will apply to the local SQLite file
+- Production deployment can later switch to a managed database (Railway, Turso, etc.) without affecting local development
+- The codebase is already compatible with both SQLite (local) and PostgreSQL (production)
+
+You may continue working locally and revisit production configuration later.
 
 ---
 

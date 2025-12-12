@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import QRCodeDisplay from "./QRCodeDisplay";
 
 // Category labels
 const CATEGORY_LABELS: Record<string, string> = {
@@ -20,12 +21,13 @@ export default async function MaterialQRPage({
 }: {
   params: Promise<{ materialId: string }>;
 }) {
+  const paramsResolved = await params;
+  const { materialId } = paramsResolved;
+  
   const session = await auth();
   const isAuthenticated = !!session?.user;
   const isInternalUser = isAuthenticated && session.user.role !== "REP";
-
-  const { materialId } = await params;
-
+  
   const material = await prisma.rawMaterial.findUnique({
     where: { id: materialId },
     include: {
@@ -100,6 +102,12 @@ export default async function MaterialQRPage({
       </div>
 
       <div className="max-w-2xl mx-auto px-6 py-6 space-y-6">
+        {/* QR Code Display */}
+        <QRCodeDisplay 
+          url={`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/qr/material/${materialId}`}
+          materialName={material.name}
+        />
+        
         {/* Basic Info */}
         <div className="bg-white rounded-lg shadow p-4">
           <h2 className="text-sm font-medium text-gray-500 mb-3">Basic Information</h2>
@@ -248,3 +256,4 @@ export default async function MaterialQRPage({
     </div>
   );
 }
+

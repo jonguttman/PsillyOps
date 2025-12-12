@@ -62,13 +62,27 @@ export async function logAction({
   const autoTags = generateAutoTags(action, diff, details);
   const allTags = [...new Set([...tags, ...autoTags])];
 
+  // Validate userId exists before creating log entry to avoid FK constraint violation
+  let validUserId = userId;
+  if (userId) {
+    const userExists = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true }
+    });
+    if (!userExists) {
+      // User doesn't exist (possibly stale session after db reseed)
+      // Log without userId to avoid FK constraint violation
+      validUserId = undefined;
+    }
+  }
+
   // Create activity log entry
   await prisma.activityLog.create({
     data: {
       entityType,
       entityId,
       action,
-      userId,
+      userId: validUserId,
       summary,
       diff: Object.keys(diff).length > 0 ? diff : null,
       details: details ? JSON.parse(JSON.stringify(details)) : null,
@@ -274,4 +288,5 @@ export function generateSummary(params: {
   // Default format
   return `${userName} ${action} ${entityName}`;
 }
+
 
