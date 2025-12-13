@@ -1,6 +1,6 @@
 # PsillyOps User Manual
 
-**Version 0.12.0**  
+**Version 0.13.0**  
 **Last Updated: December 13, 2024**
 
 ---
@@ -1901,6 +1901,165 @@ QR scanning works best on mobile devices:
 2. Navigate to **QR Scan**
 3. Browser requests camera permission
 4. Scan codes on the production floor or warehouse
+
+---
+
+## QR Operational UX (Phase 3)
+
+### Dashboard: Recent QR Scans
+
+The Dashboard now includes a **Recent QR Scans** card showing the last 20 scans in real-time.
+
+**Columns:**
+- **Time**: Relative timestamp (e.g., "2 minutes ago")
+- **Token**: Short hash of the QR token
+- **Entity**: Type (PRODUCT/BATCH/INVENTORY) + name
+- **Destination**: Resolution type (TOKEN/GROUP/DEFAULT)
+- **Status**: Token status (ACTIVE/REVOKED/EXPIRED)
+
+**Features:**
+- Auto-refreshes every 30 seconds
+- Refreshes when you switch back to the browser tab
+- Click any row to navigate directly to the QR Detail page
+- Manual refresh button available
+
+**Required Role**: ADMIN, PRODUCTION, or WAREHOUSE
+
+### Internal Scan Page (`/scan`)
+
+A dedicated page for scanning and resolving QR codes, optimized for warehouse and retail use.
+
+**How to Access:**
+1. Click **Scan QR** in the sidebar navigation (under Operations)
+2. Or navigate directly to `/scan`
+
+**Input Methods:**
+- **Paste from Clipboard**: Click the clipboard button to paste a copied QR URL
+- **Manual Entry**: Type or paste a QR URL or token directly
+- **Camera Scan**: Click "Use Camera" to activate the device camera (requires browser permission)
+
+**On Successful Scan:**
+1. QR summary card appears with:
+   - Entity name and type
+   - Status badge (ACTIVE/REVOKED/EXPIRED)
+   - Scan count and redirect type
+   - Current redirect destination
+2. Action buttons:
+   - **Open QR Detail**: Navigate to full detail page
+   - **Test Redirect**: Open redirect URL in new tab
+   - **View Entity**: Go to product/batch/inventory page
+   - **Send to AI**: Open AI command bar with token context
+
+**Example Workflow:**
+```
+1. Warehouse worker scans a product QR code
+2. Sees it's an active token with 5 previous scans
+3. Notices it redirects to product page (DEFAULT)
+4. Clicks "Open QR Detail" to add a note
+```
+
+### QR Detail Page (`/qr/[tokenId]`)
+
+The comprehensive detail page for individual QR tokens, providing full visibility and control.
+
+**How to Access:**
+- Click a row in Dashboard Recent Scans
+- Click "Open QR Detail" from Scan page
+- Navigate directly via URL
+
+**Page Sections:**
+
+#### Header
+- QR preview image
+- Token ID + status badge
+- **Copy URL**: Copy QR URL to clipboard
+- **Test Redirect**: Open current redirect destination
+- Back button
+
+#### Section A: QR Context (Read-Only)
+| Field | Description |
+|-------|-------------|
+| Entity Type | PRODUCT, BATCH, INVENTORY, CUSTOM |
+| Entity | Linked name (click to navigate) |
+| Label Template | Template name |
+| Version | Template version number |
+| Scan Count | Total times scanned |
+| Last Scanned | Timestamp of most recent scan |
+| Effective Redirect | Current destination with resolution type |
+
+#### Section B: Scan History
+- **Filters**: 24h, 7d, 30d, All
+- **Table Columns**: Time, Resolution Type, Destination, Rule Applied
+- Shows how the token was resolved at each scan
+
+#### Section C: Redirect Controls
+*(ADMIN/PRODUCTION only)*
+
+**Token Override:**
+1. Enter redirect URL in the form
+2. Click "Update Override"
+3. Token will now redirect to this URL (ignoring group rules)
+4. Leave empty and submit to clear override
+
+**Quick Presets:**
+- Tripdar Survey
+- Fungapedia
+- Instagram
+- Recall Notice
+
+**Revoke Token** (ADMIN only):
+1. Enter reason for revocation
+2. Click "Revoke Token"
+3. Token will no longer resolve (shows expired/revoked message)
+
+#### Section D: Annotations
+Add notes to any QR token for operational tracking.
+
+1. Enter note in textarea
+2. Click "Add Note"
+3. Note appears in immutable list with:
+   - Timestamp
+   - User name
+   - Message content
+
+**Notes are append-only** - they cannot be edited or deleted, providing a complete audit trail.
+
+### AI Command Bar: QR Integration
+
+The AI Command Bar (Cmd+K / Ctrl+K) now recognizes QR tokens and URLs.
+
+**How it Works:**
+1. Open AI Command Bar
+2. Paste a QR URL (e.g., `https://psillyops.com/qr/qr_abc123...`)
+3. Or paste just the token (e.g., `qr_abc123xyz...`)
+4. Press Enter
+
+**QR Context Display:**
+Instead of interpreting as a command, the AI shows:
+- Token status badge
+- Entity name and type
+- Summary of QR status and scan count
+- Current redirect info
+- Quick action buttons
+
+**Quick Actions:**
+- View QR Details
+- View Entity (Product/Batch/etc.)
+- View Scan History
+- Change Redirect
+- Add Note
+- Revoke Token (Admin only)
+
+### Permissions Summary
+
+| Feature | View | Modify |
+|---------|------|--------|
+| Dashboard Recent Scans | ADMIN, PRODUCTION, WAREHOUSE | — |
+| Internal Scan Page | All authenticated | — |
+| QR Detail Page | All authenticated | — |
+| Add Notes | All authenticated | All authenticated |
+| Redirect Controls | All authenticated | ADMIN, PRODUCTION |
+| Revoke Token | All authenticated | ADMIN |
 
 ---
 

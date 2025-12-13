@@ -1,6 +1,35 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
+
+// QR Context from scanned/pasted QR code
+interface QRContext {
+  type: 'QR_CONTEXT';
+  tokenId: string;
+  tokenValue: string;
+  entityType: string;
+  entityId: string;
+  entityName: string;
+  entityLink: string | null;
+  labelVersion: string | null;
+  currentRedirect: {
+    type: 'TOKEN' | 'GROUP' | 'DEFAULT';
+    url: string;
+    ruleName: string | null;
+  };
+  status: string;
+  scanCount: number;
+  lastScanned: string | null;
+}
+
+interface QRResolveResult {
+  found: boolean;
+  qrContext?: QRContext;
+  suggestedActions?: Array<{ action: string; label: string; link: string }>;
+  summary?: string;
+  message?: string;
+}
 
 interface CommandArgs {
   materialRef?: string;
@@ -66,6 +95,7 @@ export default function AiCommandBar({ isOpen, onClose }: AiCommandBarProps) {
   const [error, setError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editedCommand, setEditedCommand] = useState<ParsedCommand | null>(null);
+  const [qrContext, setQrContext] = useState<QRResolveResult | null>(null);
 
   // Reset state when dialog opens
   useEffect(() => {
@@ -75,8 +105,39 @@ export default function AiCommandBar({ isOpen, onClose }: AiCommandBarProps) {
       setError(null);
       setIsEditing(false);
       setEditedCommand(null);
+      setQrContext(null);
     }
   }, [isOpen]);
+
+  // Check for QR pattern in input
+  const detectQRPattern = (text: string): boolean => {
+    return /qr_[A-Za-z0-9]{22}/.test(text) || /\/qr\/qr_[A-Za-z0-9]+/.test(text);
+  };
+
+  // Resolve QR context
+  const resolveQRContext = useCallback(async (text: string) => {
+    if (!detectQRPattern(text)) {
+      setQrContext(null);
+      return null;
+    }
+
+    try {
+      const response = await fetch('/api/qr-tokens/resolve-context', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: text })
+      });
+      
+      if (response.ok) {
+        const data: QRResolveResult = await response.json();
+        setQrContext(data);
+        return data;
+      }
+    } catch {
+      // Silently fail QR detection
+    }
+    return null;
+  }, []);
 
   // Handle keyboard shortcut to close
   useEffect(() => {
@@ -99,6 +160,16 @@ export default function AiCommandBar({ isOpen, onClose }: AiCommandBarProps) {
     setEditedCommand(null);
 
     try {
+      // First check if input contains a QR pattern
+      const qrResult = await resolveQRContext(inputText);
+      
+      if (qrResult?.found && qrResult.qrContext) {
+        // QR detected - show QR context UI instead of command interpretation
+        setIsLoading(false);
+        return;
+      }
+
+      // Normal command interpretation
       const response = await fetch('/api/ai/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -121,7 +192,7 @@ export default function AiCommandBar({ isOpen, onClose }: AiCommandBarProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [inputText]);
+  }, [inputText, resolveQRContext]);
 
   const executeCommand = useCallback(async (withCorrection: boolean = false) => {
     if (!result?.logId) return;
@@ -197,6 +268,10 @@ export default function AiCommandBar({ isOpen, onClose }: AiCommandBarProps) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // If QR context is shown, don't process further
+    if (qrContext?.found) {
+      return;
+    }
     if (result && !result.executed) {
       if (isEditing && hasChanges()) {
         executeCommand(true); // Execute with correction
@@ -366,8 +441,69 @@ export default function AiCommandBar({ isOpen, onClose }: AiCommandBarProps) {
                 </div>
               )}
 
-              {/* Example commands - only show when no result */}
-              {!result && (
+              {/* QR Context Display */}
+              {qrContext?.found && qrContext.qrContext && (
+                <div className="mb-4 p-4 bg-purple-50 border border-purple-200 rounded-lg">
+                  <div className="flex items-center gap-2 mb-3">
+                    <svg className="w-5 h-5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                    </svg>
+                    <span className="font-medium text-purple-800">QR Token Detected</span>
+                    <span className={`ml-2 px-2 py-0.5 text-xs rounded ${
+                      qrContext.qrContext.status === 'ACTIVE' ? 'bg-green-100 text-green-700' :
+                      qrContext.qrContext.status === 'REVOKED' ? 'bg-red-100 text-red-700' :
+                      'bg-gray-100 text-gray-700'
+                    }`}>
+                      {qrContext.qrContext.status}
+                    </span>
+                  </div>
+                  
+                  <div className="space-y-2 text-sm">
+                    <p className="text-purple-700">{qrContext.summary}</p>
+                    
+                    <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-purple-200">
+                      <div>
+                        <span className="text-xs text-purple-500">Entity</span>
+                        <p className="text-purple-800 font-medium">{qrContext.qrContext.entityName}</p>
+                      </div>
+                      <div>
+                        <span className="text-xs text-purple-500">Type</span>
+                        <p className="text-purple-800">{qrContext.qrContext.entityType}</p>
+                      </div>
+                      <div>
+                        <span className="text-xs text-purple-500">Scans</span>
+                        <p className="text-purple-800">{qrContext.qrContext.scanCount}</p>
+                      </div>
+                      <div>
+                        <span className="text-xs text-purple-500">Redirect</span>
+                        <p className="text-purple-800">{qrContext.qrContext.currentRedirect.type}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Suggested Actions */}
+                  {qrContext.suggestedActions && qrContext.suggestedActions.length > 0 && (
+                    <div className="mt-4 pt-3 border-t border-purple-200">
+                      <span className="text-xs text-purple-500 block mb-2">Quick Actions</span>
+                      <div className="flex flex-wrap gap-2">
+                        {qrContext.suggestedActions.map((action) => (
+                          <Link
+                            key={action.action}
+                            href={action.link}
+                            onClick={onClose}
+                            className="px-3 py-1.5 text-xs font-medium text-purple-700 bg-white border border-purple-300 rounded-md hover:bg-purple-100"
+                          >
+                            {action.label}
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Example commands - only show when no result and no QR context */}
+              {!result && !qrContext?.found && (
                 <div className="mb-4 text-sm text-gray-500">
                   <p className="font-medium mb-1">Example commands:</p>
                   <ul className="list-disc list-inside space-y-1">
@@ -375,6 +511,7 @@ export default function AiCommandBar({ isOpen, onClose }: AiCommandBarProps) {
                     <li>"Received 2kg lions mane powder"</li>
                     <li>"Leaf ordered 10 Herc and 5 MC caps"</li>
                     <li>"Batch HERC-44 yield 842 units"</li>
+                    <li className="text-purple-600">Paste a QR URL or token to view details</li>
                   </ul>
                 </div>
               )}
@@ -384,7 +521,10 @@ export default function AiCommandBar({ isOpen, onClose }: AiCommandBarProps) {
                 <button
                   type="button"
                   onClick={() => {
-                    if (result && !result.executed) {
+                    if (qrContext?.found) {
+                      setQrContext(null);
+                      setInputText('');
+                    } else if (result && !result.executed) {
                       setResult(null);
                       setIsEditing(false);
                       setEditedCommand(null);
@@ -395,10 +535,18 @@ export default function AiCommandBar({ isOpen, onClose }: AiCommandBarProps) {
                   className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                   disabled={isLoading}
                 >
-                  {result && !result.executed ? 'Back' : 'Cancel'}
+                  {qrContext?.found ? 'Clear' : result && !result.executed ? 'Back' : 'Cancel'}
                 </button>
                 
-                {result && !result.executed ? (
+                {qrContext?.found && qrContext.qrContext ? (
+                  <Link
+                    href={`/qr/${qrContext.qrContext.tokenId}`}
+                    onClick={onClose}
+                    className="px-4 py-2 text-sm font-medium text-white bg-purple-600 border border-transparent rounded-lg hover:bg-purple-700 focus:ring-2 focus:ring-purple-500 focus:ring-offset-2"
+                  >
+                    Open QR Details
+                  </Link>
+                ) : result && !result.executed ? (
                   <button
                     type="submit"
                     className={`px-4 py-2 text-sm font-medium text-white border border-transparent rounded-lg focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${

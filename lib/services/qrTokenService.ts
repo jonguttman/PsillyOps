@@ -485,6 +485,292 @@ export async function getTokenStats(entityType: LabelEntityType, entityId: strin
 }
 
 // ========================================
+// RECENT SCANS & DETAIL QUERIES (Phase 3)
+// ========================================
+
+/**
+ * Get recent QR scans from activity logs
+ */
+export async function getRecentQRScans(limit: number = 20) {
+  const scans = await prisma.activityLog.findMany({
+    where: {
+      action: 'qr_token_scanned'
+    },
+    orderBy: { createdAt: 'desc' },
+    take: limit
+  });
+
+  // Enrich with token and entity data
+  const enrichedScans = await Promise.all(
+    scans.map(async (scan) => {
+      const details = scan.details as any;
+      const tokenId = details?.tokenId;
+      
+      let token = null;
+      let entityName = '';
+      
+      if (tokenId) {
+        token = await prisma.qRToken.findUnique({
+          where: { id: tokenId },
+          select: {
+            id: true,
+            token: true,
+            status: true,
+            entityType: true,
+            entityId: true,
+            redirectUrl: true
+          }
+        });
+        
+        // Get entity name
+        if (token) {
+          if (token.entityType === 'PRODUCT') {
+            const product = await prisma.product.findUnique({
+              where: { id: token.entityId },
+              select: { name: true, sku: true }
+            });
+            entityName = product ? `${product.name} (${product.sku})` : token.entityId;
+          } else if (token.entityType === 'BATCH') {
+            const batch = await prisma.batch.findUnique({
+              where: { id: token.entityId },
+              select: { batchCode: true }
+            });
+            entityName = batch ? batch.batchCode : token.entityId;
+          } else if (token.entityType === 'INVENTORY') {
+            const inv = await prisma.inventoryItem.findUnique({
+              where: { id: token.entityId },
+              select: { product: { select: { name: true } }, location: { select: { name: true } } }
+            });
+            entityName = inv ? `${inv.product?.name || 'Item'} @ ${inv.location.name}` : token.entityId;
+          } else {
+            entityName = token.entityId;
+          }
+        }
+      }
+      
+      return {
+        id: scan.id,
+        scannedAt: scan.createdAt,
+        tokenId,
+        tokenShortHash: token?.token ? `${token.token.slice(0, 10)}...` : null,
+        entityType: token?.entityType || details?.entityType,
+        entityId: token?.entityId || details?.entityId,
+        entityName,
+        resolutionType: details?.resolutionType || 'DEFAULT',
+        destination: details?.redirectUrl || details?.destination,
+        status: token?.status || 'UNKNOWN'
+      };
+    })
+  );
+
+  return enrichedScans;
+}
+
+/**
+ * Get detailed QR token info including scan history
+ */
+export async function getQRDetail(tokenId: string) {
+  const token = await prisma.qRToken.findUnique({
+    where: { id: tokenId },
+    include: {
+      version: {
+        include: { template: true }
+      },
+      createdBy: {
+        select: { id: true, name: true, email: true }
+      }
+    }
+  });
+
+  if (!token) return null;
+
+  // Get entity name
+  let entityName = '';
+  let entityLink = '';
+  if (token.entityType === 'PRODUCT') {
+    const product = await prisma.product.findUnique({
+      where: { id: token.entityId },
+      select: { name: true, sku: true }
+    });
+    entityName = product ? `${product.name} (${product.sku})` : token.entityId;
+    entityLink = `/products/${token.entityId}`;
+  } else if (token.entityType === 'BATCH') {
+    const batch = await prisma.batch.findUnique({
+      where: { id: token.entityId },
+      select: { batchCode: true }
+    });
+    entityName = batch ? batch.batchCode : token.entityId;
+    entityLink = `/batches/${token.entityId}`;
+  } else if (token.entityType === 'INVENTORY') {
+    const inv = await prisma.inventoryItem.findUnique({
+      where: { id: token.entityId },
+      select: { product: { select: { name: true } }, location: { select: { name: true } } }
+    });
+    entityName = inv ? `${inv.product?.name || 'Item'} @ ${inv.location.name}` : token.entityId;
+    entityLink = `/inventory/${token.entityId}`;
+  } else {
+    entityName = token.entityId;
+  }
+
+  // Get active redirect rule if any
+  const { findActiveRedirectRule } = await import('./qrRedirectService');
+  const activeRule = await findActiveRedirectRule({
+    entityType: token.entityType,
+    entityId: token.entityId,
+    versionId: token.versionId || undefined
+  });
+
+  // Determine effective redirect
+  let effectiveRedirect = {
+    type: 'DEFAULT' as 'TOKEN' | 'GROUP' | 'DEFAULT',
+    url: `${getBaseUrl()}/qr/${token.entityType.toLowerCase()}/${token.entityId}`,
+    ruleName: null as string | null
+  };
+
+  if (token.redirectUrl) {
+    effectiveRedirect = { type: 'TOKEN', url: token.redirectUrl, ruleName: 'Token Override' };
+  } else if (activeRule) {
+    effectiveRedirect = { type: 'GROUP', url: activeRule.redirectUrl, ruleName: activeRule.reason || 'Group Rule' };
+  }
+
+  return {
+    ...token,
+    entityName,
+    entityLink,
+    effectiveRedirect,
+    activeRule: activeRule ? {
+      id: activeRule.id,
+      redirectUrl: activeRule.redirectUrl,
+      reason: activeRule.reason
+    } : null
+  };
+}
+
+/**
+ * Get scan history for a specific token
+ */
+export async function getQRScanHistory(tokenId: string, range: '24h' | '7d' | '30d' | 'all' = '7d') {
+  const token = await prisma.qRToken.findUnique({
+    where: { id: tokenId },
+    select: { entityId: true, token: true }
+  });
+
+  if (!token) return [];
+
+  // Calculate date range
+  let sinceDate: Date | undefined;
+  const now = new Date();
+  switch (range) {
+    case '24h':
+      sinceDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      break;
+    case '7d':
+      sinceDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      break;
+    case '30d':
+      sinceDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      break;
+    default:
+      sinceDate = undefined;
+  }
+
+  const scans = await prisma.activityLog.findMany({
+    where: {
+      action: 'qr_token_scanned',
+      entityId: token.entityId,
+      ...(sinceDate && { createdAt: { gte: sinceDate } })
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 200
+  });
+
+  // Filter to only scans for this specific token
+  return scans.filter(scan => {
+    const details = scan.details as any;
+    return details?.tokenId === tokenId || details?.tokenValue === token.token;
+  }).map(scan => {
+    const details = scan.details as any;
+    return {
+      id: scan.id,
+      timestamp: scan.createdAt,
+      resolutionType: details?.resolutionType || 'DEFAULT',
+      destination: details?.redirectUrl || details?.destination || 'Default',
+      ruleApplied: details?.ruleName || (details?.resolutionType === 'GROUP' ? 'Group Rule' : null)
+    };
+  });
+}
+
+/**
+ * Add a note/annotation to a QR token
+ */
+export async function addQRNote(tokenId: string, message: string, userId: string) {
+  const token = await prisma.qRToken.findUnique({
+    where: { id: tokenId },
+    select: { id: true, token: true, entityType: true, entityId: true }
+  });
+
+  if (!token) {
+    throw new AppError(ErrorCodes.NOT_FOUND, 'Token not found');
+  }
+
+  // Log the note as an activity
+  await logAction({
+    entityType: ActivityEntity.LABEL,
+    entityId: token.entityId,
+    action: 'qr_token_note_added',
+    userId,
+    summary: `Note added to token ${token.token.slice(0, 10)}...`,
+    details: {
+      tokenId: token.id,
+      tokenValue: token.token,
+      entityType: token.entityType,
+      entityId: token.entityId,
+      note: message
+    },
+    tags: ['qr', 'note', 'annotation']
+  });
+
+  return { success: true };
+}
+
+/**
+ * Get notes/annotations for a QR token
+ */
+export async function getQRNotes(tokenId: string) {
+  const token = await prisma.qRToken.findUnique({
+    where: { id: tokenId },
+    select: { entityId: true, token: true }
+  });
+
+  if (!token) return [];
+
+  const notes = await prisma.activityLog.findMany({
+    where: {
+      action: 'qr_token_note_added',
+      entityId: token.entityId
+    },
+    include: {
+      user: { select: { id: true, name: true } }
+    },
+    orderBy: { createdAt: 'desc' }
+  });
+
+  // Filter to notes for this specific token
+  return notes.filter(note => {
+    const details = note.details as any;
+    return details?.tokenId === tokenId;
+  }).map(note => {
+    const details = note.details as any;
+    return {
+      id: note.id,
+      timestamp: note.createdAt,
+      user: note.user?.name || 'System',
+      message: details?.note || ''
+    };
+  });
+}
+
+// ========================================
 // URL HELPERS
 // ========================================
 

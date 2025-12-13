@@ -2662,13 +2662,111 @@ New features added to `/qr-redirects`:
 - Improved status display: Active, Scheduled, Expired Window, Inactive
 - Entity links to detail pages
 
-#### New API Endpoints
+#### New API Endpoints (Phase 3a)
 
 | Route | Method | Auth | Description |
 |-------|--------|------|-------------|
 | `/api/qr-tokens/for-entity` | GET | ADMIN/PRODUCTION/WAREHOUSE | Get tokens for entity with resolved destinations |
 | `/api/qr-tokens/[id]/override` | POST | ADMIN | Set token redirect override |
 | `/api/qr-tokens/[id]/override` | DELETE | ADMIN | Clear token redirect override |
+
+### Phase 3b: QR Operational UX
+
+Phase 3b makes QR tokens actionable in daily operations.
+
+#### Dashboard: Recent QR Scans
+
+```
+components/dashboard/RecentQRScans.tsx
+```
+
+Client-side component showing last 20 scans:
+- Auto-refresh every 30s + refresh on focus
+- Columns: time, token hash, entity, resolution type, status
+- Click row → navigate to QR detail page
+- Uses `/api/qr-tokens/recent-scans` endpoint
+
+#### QR Detail Page
+
+```
+app/(ops)/qr/[tokenId]/page.tsx
+```
+
+Comprehensive QR token management:
+
+**Sections:**
+1. **Header**: QR preview, token ID, status, copy URL, test redirect
+2. **QR Context**: Entity info, label version, scan count, effective redirect
+3. **Scan History**: Filterable table (24h/7d/30d/all)
+4. **Redirect Controls**: Override form, quick presets, revoke (admin)
+5. **Annotations**: Append-only notes system
+
+**Server Actions:**
+- `addNote(formData)` - Add annotation to token
+- `setRedirectOverride(formData)` - Set/clear token override
+- `revokeToken(formData)` - Revoke token (admin only)
+
+#### Internal Scan Page
+
+```
+app/(ops)/scan/page.tsx
+```
+
+Dedicated scan interface for ops users:
+- Camera scan button (placeholder for QR library)
+- Clipboard paste button
+- URL/token text input
+- On resolve: summary card with stats, action buttons
+
+#### AI Command Bar: QR Ingestion
+
+Updated `components/ai/AiCommandBar.tsx`:
+- Detects QR patterns: `/qr/qr_[A-Za-z0-9]+` or `qr_[A-Za-z0-9]{22}`
+- Resolves via `/api/qr-tokens/resolve-context`
+- Shows QR context card instead of command interpretation
+- Quick action buttons to navigate, test redirect, etc.
+
+#### Service Layer Additions
+
+New functions in `lib/services/qrTokenService.ts`:
+
+```typescript
+// Recent scans with enriched entity data
+getRecentQRScans(limit: number): Promise<EnrichedScan[]>
+
+// Comprehensive token details
+getQRDetail(tokenId: string): Promise<TokenDetail | null>
+
+// Filtered scan history
+getQRScanHistory(tokenId: string, range: '24h' | '7d' | '30d' | 'all'): Promise<ScanEntry[]>
+
+// Append-only note creation
+addQRNote(tokenId: string, message: string, userId: string): Promise<{ success: boolean }>
+
+// Get notes for token
+getQRNotes(tokenId: string): Promise<Note[]>
+```
+
+#### New API Endpoints (Phase 3b)
+
+| Route | Method | Auth | Description |
+|-------|--------|------|-------------|
+| `/api/qr-tokens/recent-scans` | GET | ADMIN/PRODUCTION/WAREHOUSE | Recent scans for dashboard |
+| `/api/qr-tokens/resolve-context` | POST | All authenticated | Resolve QR to context for AI |
+
+#### Activity Log Events
+
+| Event | Description | Tags |
+|-------|-------------|------|
+| `qr_token_override_set` | Token redirect override applied | `['qr', 'token', 'override']` |
+| `qr_token_override_cleared` | Token redirect override removed | `['qr', 'token', 'override']` |
+| `qr_token_note_added` | Note added to QR token | `['qr', 'note', 'annotation']` |
+
+#### Navigation Update
+
+Sidebar now includes "Scan QR" link in Operations section:
+- Icon: `ScanLine` from lucide-react
+- Positioned after Dashboard
 
 ### Implemented Non-Goals
 

@@ -16,6 +16,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - QR codes are rendered as vector SVG and optimized for small labels (URL-only, error correction level `L`, high contrast)
 - Labels automatically rotate 90° when it increases sheet capacity (no scaling)
 
+## [0.13.0] - 2024-12-13
+
+### Summary
+
+**Phase 3: QR Operational UX** - Makes QR tokens actionable in daily operations by adding real-time scan visibility, comprehensive QR detail pages, AI command integration, and a dedicated internal scan page.
+
+### Added
+
+#### Dashboard: Recent QR Scans
+- **`RecentQRScans` component** on dashboard showing last 20 scans
+- Columns: Time (relative), Token short hash, Entity (type + name), Destination (resolution type), Status
+- Auto-refresh every 30 seconds + refresh on window focus
+- Click row to navigate to QR detail page
+- New API endpoint: `GET /api/qr-tokens/recent-scans`
+
+#### QR Detail Page (`/qr/[tokenId]`)
+- **Header**: QR preview, token ID, status badge, Copy URL, Test Redirect button
+- **Section A: QR Context** (read-only): Token metadata, entity link, label template/version, scan count, last scanned, effective redirect resolution
+- **Section B: Scan History**: Filterable table (24h/7d/30d/all) with timestamp, resolution type, destination, rule applied
+- **Section C: Redirect Controls**: Token-level override form, quick presets (Tripdar, Fungapedia, Instagram, Recall), revoke token (Admin only)
+- **Section D: Annotations**: Append-only notes with add form, immutable list showing timestamp, user, message
+- **Active Rule Info**: Panel showing group rule details if applicable
+
+#### AI Command Bar: QR Ingestion
+- Detects QR URL or token patterns in input (`/qr/qr_[A-Za-z0-9]+` or `qr_[A-Za-z0-9]{22}`)
+- Resolves token and displays QR context card with:
+  - Entity name, type, status
+  - Scan count, redirect type, label version
+  - Current redirect destination
+  - Quick action buttons to navigate to detail, entity, etc.
+- New API endpoint: `POST /api/qr-tokens/resolve-context`
+
+#### Internal Scan Page (`/scan`)
+- Camera scan button (placeholder - requires QR scanning library)
+- Paste from clipboard button
+- URL/token text input with resolve button
+- On resolve: QR summary card, stats (scans, redirect type, version), action buttons (Open Detail, Test Redirect, View Entity, Send to AI)
+- Added to sidebar navigation under Operations
+
+#### Service Layer Additions
+- `getRecentQRScans(limit)` - Fetches recent scans with enriched entity data
+- `getQRDetail(tokenId)` - Comprehensive token details with entity name, redirect resolution
+- `getQRScanHistory(tokenId, range)` - Scan history with time range filtering
+- `addQRNote(tokenId, message, userId)` - Append-only note creation
+- `getQRNotes(tokenId)` - Retrieve notes for a token
+
+### Changed
+- Sidebar navigation: Added "Scan QR" link to Operations section
+- AI Command Bar examples now include hint for QR pasting
+
+### New Activity Log Events
+- `qr_token_override_set` - Token redirect override applied
+- `qr_token_override_cleared` - Token redirect override removed
+- `qr_token_note_added` - Note added to QR token
+
+### API Endpoints
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/qr-tokens/recent-scans` | GET | Recent scans for dashboard |
+| `/api/qr-tokens/resolve-context` | POST | Resolve QR to context for AI |
+
+### Role-Based Access
+| Feature | View | Actions |
+|---------|------|---------|
+| Dashboard Recent Scans | ADMIN, PRODUCTION, WAREHOUSE | — |
+| QR Detail Page | All authenticated | — |
+| Add Note | All authenticated | OPS+ |
+| Redirect Controls | ADMIN, PRODUCTION | ADMIN, PRODUCTION |
+| Revoke Token | ADMIN | ADMIN |
+| Internal Scan Page | All authenticated | All authenticated |
+
 ## [0.12.0] - 2024-12-13
 
 ### Summary

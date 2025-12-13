@@ -5,6 +5,7 @@ import DashboardAiInput from "@/components/dashboard/DashboardAiInput";
 import AlertsPanel from "@/components/dashboard/AlertsPanel";
 import StatsStrip from "@/components/dashboard/StatsStrip";
 import ActivityFeed from "@/components/dashboard/ActivityFeed";
+import RecentQRScans from "@/components/dashboard/RecentQRScans";
 
 export default async function AdminDashboardPage() {
   const session = await auth();
@@ -117,6 +118,9 @@ export default async function AdminDashboardPage() {
         pendingPurchaseOrders={pendingPurchaseOrders}
         awaitingInvoiceCount={awaitingInvoiceCount}
       />
+
+      {/* Recent QR Scans */}
+      <RecentQRScans />
 
       {/* Recent Activity Feed */}
       <ActivityFeed activities={recentActivity} />

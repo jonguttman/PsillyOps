@@ -155,11 +155,19 @@ export default async function QRRedirectsPage({
   }).filter(Boolean))];
 
   // Build filter URL helper
+  // Check if key exists in newParams (even if undefined) to properly clear filters
   const buildFilterUrl = (newParams: Record<string, string | undefined>) => {
     const p = new URLSearchParams();
-    if (newParams.showInactive ?? showInactive) p.set('showInactive', 'true');
-    if (newParams.scopeType ?? scopeFilter) p.set('scopeType', newParams.scopeType ?? scopeFilter);
-    if (newParams.domain ?? domainFilter) p.set('domain', newParams.domain ?? domainFilter);
+    
+    // If key is explicitly passed (even as undefined), use that value; otherwise keep current
+    const showInactiveVal = 'showInactive' in newParams ? newParams.showInactive : (showInactive ? 'true' : undefined);
+    const scopeTypeVal = 'scopeType' in newParams ? newParams.scopeType : scopeFilter;
+    const domainVal = 'domain' in newParams ? newParams.domain : domainFilter;
+    
+    if (showInactiveVal) p.set('showInactive', 'true');
+    if (scopeTypeVal) p.set('scopeType', scopeTypeVal);
+    if (domainVal) p.set('domain', domainVal);
+    
     const query = p.toString();
     return query ? `/qr-redirects?${query}` : '/qr-redirects';
   };

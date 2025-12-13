@@ -18,22 +18,16 @@ export function SidebarSection({
 }: SidebarSectionProps) {
   const storageKey = persistKey ? `sidebar-section-${persistKey}` : null;
   
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SidebarSection.tsx:init',message:'useState init',data:{title,persistKey,storageKey,defaultExpanded,windowDefined:typeof window !== 'undefined'},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'A'})}).catch(()=>{});
-  // #endregion
-  
-  // FIX: Always use defaultExpanded for initial state to match server render
+  // Always use defaultExpanded for initial state to match server render
   // This prevents hydration mismatch - localStorage is read in useEffect after mount
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [hasMounted, setHasMounted] = useState(false);
 
-  // #region agent log
   // Read from localStorage AFTER hydration to prevent mismatch
   useEffect(() => {
     setHasMounted(true);
     if (storageKey) {
       const stored = localStorage.getItem(storageKey);
-      fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SidebarSection.tsx:mount-effect',message:'reading localStorage after mount',data:{title,storageKey,defaultExpanded,storedValue:stored,willUpdate:stored !== null && (stored === 'true') !== defaultExpanded},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'FIX'})}).catch(()=>{});
       if (stored !== null) {
         const storedBool = stored === 'true';
         if (storedBool !== defaultExpanded) {
@@ -41,8 +35,7 @@ export function SidebarSection({
         }
       }
     }
-  }, [storageKey, defaultExpanded, title]);
-  // #endregion
+  }, [storageKey, defaultExpanded]);
 
   // Sync to localStorage when state changes (only after mount)
   useEffect(() => {
@@ -72,4 +65,3 @@ export function SidebarSection({
     </div>
   );
 }
-

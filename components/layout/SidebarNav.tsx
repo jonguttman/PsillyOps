@@ -13,6 +13,7 @@ import {
   FileText,
   Tags,
   QrCode,
+  ScanLine,
   Dna,
   Building2,
   Wrench,
@@ -69,6 +70,7 @@ export function SidebarNav({ userRole }: SidebarNavProps) {
   // OPERATIONS section
   const operationsItems: NavItem[] = [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { href: '/scan', label: 'Scan QR', icon: ScanLine },
     { href: '/products', label: 'Products', icon: Package },
     { href: '/materials', label: 'Materials', icon: Boxes },
     { href: '/inventory', label: 'Inventory', icon: Warehouse },
