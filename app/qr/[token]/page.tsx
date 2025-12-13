@@ -1,7 +1,14 @@
 // QR Token Resolver Page
 // Handles public scanning of QR tokens and redirects to entity pages
+// Supports three-level redirect precedence:
+// 1. Token-level redirectUrl (highest priority)
+// 2. Active QRRedirectRule (group-based)
+// 3. Default entity routing (fallback)
 
-import { resolveToken, isValidTokenFormat } from '@/lib/services/qrTokenService';
+import { resolveToken, isValidTokenFormat, getTokenByValue } from '@/lib/services/qrTokenService';
+import { findActiveRedirectRule } from '@/lib/services/qrRedirectService';
+import { logAction } from '@/lib/services/loggingService';
+import { ActivityEntity } from '@prisma/client';
 import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
 
@@ -24,10 +31,58 @@ export default async function QRTokenResolverPage({ params }: Props) {
     notFound();
   }
 
-  // If token is active, redirect to the entity page
+  // If token is active, determine redirect destination
   if (result.status === 'ACTIVE') {
-    const redirectPath = getRedirectPath(result.entityType, result.entityId);
-    redirect(redirectPath);
+    let destination: string;
+    let resolutionType: 'TOKEN' | 'GROUP' | 'DEFAULT';
+    let ruleId: string | null = null;
+
+    // Get the full token record to check for token-level redirect
+    const tokenRecord = await getTokenByValue(token);
+
+    // 1. Check token-level redirectUrl (highest precedence)
+    if (tokenRecord?.redirectUrl) {
+      destination = tokenRecord.redirectUrl;
+      resolutionType = 'TOKEN';
+    } else {
+      // 2. Check for active QRRedirectRule
+      const rule = await findActiveRedirectRule({
+        entityType: result.entityType,
+        entityId: result.entityId,
+        versionId: tokenRecord?.versionId
+      });
+
+      if (rule) {
+        destination = rule.redirectUrl;
+        resolutionType = 'GROUP';
+        ruleId = rule.id;
+      } else {
+        // 3. Fallback to default entity routing
+        destination = getRedirectPath(result.entityType, result.entityId);
+        resolutionType = 'DEFAULT';
+      }
+    }
+
+    // Log ALL scans with resolution metadata
+    // This captures scan-time destination for audit and analytics
+    await logAction({
+      entityType: ActivityEntity.LABEL,
+      entityId: result.entityId,
+      action: 'qr_token_scanned',
+      summary: `QR token scanned for ${result.entityType} ${result.entityId} → ${resolutionType} resolution`,
+      details: {
+        tokenId: result.token?.id,
+        entityType: result.entityType,
+        entityId: result.entityId,
+        resolutionType,
+        redirectUrl: destination,
+        ruleId,
+        scanCount: result.token?.scanCount
+      },
+      tags: ['qr', 'label', 'scan', resolutionType.toLowerCase()]
+    });
+
+    redirect(destination);
   }
 
   // Token is revoked or expired - show info page

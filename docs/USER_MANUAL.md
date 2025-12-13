@@ -1,7 +1,7 @@
 # PsillyOps User Manual
 
-**Version 0.8.0**  
-**Last Updated: December 12, 2024**
+**Version 0.12.0**  
+**Last Updated: December 13, 2024**
 
 ---
 
@@ -18,6 +18,9 @@
 9. [Product Management](#product-management)
 10. [Feature Tutorials](#feature-tutorials)
 11. [QR Workflows](#qr-workflows)
+    - [QR Redirect Management](#qr-redirect-management-admin-only)
+    - [QR Token Detail Page](#qr-token-detail-page-admin-only)
+    - [QR Behavior Panel](#qr-behavior-panel-entity-detail-pages)
 12. [Label Templates](#label-templates)
 13. [AI Tools](#ai-tools)
 14. [Tooltips & Quick Help](#tooltips--quick-help)
@@ -1966,6 +1969,18 @@ Tooltips are filtered based on your user role:
 - **Cause**: Waiting for admin approval
 - **Solution**: Contact admin to review and approve order
 
+**Problem: QR redirect not working**
+- **Cause**: Rule may be outside time window or inactive
+- **Solution**: Check rule status and time window in QR Redirects page
+
+**Problem: Cannot create redirect rule**
+- **Cause**: Active rule already exists for this scope
+- **Solution**: Deactivate existing rule first, then create new one
+
+**Problem: Redirect not applying to specific tokens**
+- **Cause**: Token may have a direct redirectUrl set (takes precedence)
+- **Solution**: Check token detail page for TOKEN-level redirect
+
 ### Error Messages
 
 **"Insufficient inventory"**
@@ -1983,6 +1998,19 @@ Tooltips are filtered based on your user role:
 **"Permission denied"**
 - User role lacks required permission
 - Contact admin for access
+
+**"An active redirect rule already exists for this scope"**
+- Only one active redirect rule per entity/version
+- Deactivate the existing rule before creating a new one
+- Or wait for the existing rule to expire (if time-limited)
+
+**"Rule is already inactive"**
+- Attempted to deactivate a rule that's already inactive
+- No action needed
+
+**"Redirect rule not found"**
+- Rule ID doesn't exist in database
+- Check that the correct rule ID is being referenced
 
 ---
 
@@ -2057,6 +2085,456 @@ When someone scans a QR code:
 - Token format: `qr_` prefix + 22-character base62 string
 - ~131 bits of entropy (more than UUIDs)
 - URL-safe - no special characters
+
+### QR Redirect Rules
+
+PsillyOps supports group-based redirects for QR codes, allowing you to redirect entire groups of scans without reprinting labels.
+
+**How Redirects Work:**
+
+When a QR code is scanned, the system checks for redirects in this order:
+
+1. **Token-level redirect**: If the specific token has a custom redirect URL set
+2. **Group redirect rule**: If there's an active rule for the product, batch, or label version
+3. **Default routing**: Falls back to the standard entity page
+
+**Use Cases:**
+
+| Scenario | How It Works |
+|----------|--------------|
+| **Promotional Campaign** | Create a rule to redirect all Product X scans to a promotional landing page |
+| **Product Recall** | Create a rule to redirect all Batch Y scans to a recall information page |
+| **Label Version Update** | Redirect scans from old label versions to updated information |
+
+**Key Principles:**
+
+- **QR codes are never reprinted**: Redirects modify behavior, not the physical labels
+- **Redirects are non-destructive**: The original entity relationship is preserved
+- **All changes are audited**: Every rule creation, deactivation, and scan is logged
+- **Rules are reversible**: Deactivating a rule restores default behavior
+- **History is preserved**: Even after deactivation, rule history remains for audit
+
+**Key Concepts:**
+
+- **No reprints needed**: Redirects apply retroactively to already-printed labels
+- **Time-limited**: Rules can have start and end dates for temporary campaigns
+- **Admin-only**: Only administrators can create and manage redirect rules
+- **Audit trail**: All redirect rules and their usage are logged with timestamps
+- **Single rule per scope**: Only one active rule can exist for each entity or label version
+
+**Scan Resolution Types:**
+
+Every scan is logged with its resolution type:
+- **TOKEN**: Redirected by token-level override
+- **GROUP**: Redirected by an active redirect rule
+- **DEFAULT**: Standard routing to entity page
+
+> **Note**: QR Redirect Rules are an admin-only feature. Contact your administrator to set up redirects for campaigns or recalls.
+
+### QR Redirect Management (Admin Only)
+
+PsillyOps provides a full admin interface for managing QR redirect rules.
+
+**Navigate to:** Sidebar → **QR Redirects**
+
+#### Redirect Rules List Page
+
+**URL:** `/qr-redirects`
+
+The main page displays all redirect rules in a table with:
+
+| Column | Description |
+|--------|-------------|
+| **Scope** | PRODUCT, BATCH, INVENTORY, or Template Version |
+| **Target** | Entity name (linked to detail page) |
+| **Redirect URL** | Destination URL for scans |
+| **Status** | Active, Scheduled, or Inactive |
+| **Time Window** | Start and end dates (if set) |
+| **Tokens** | Count of QR tokens affected by this rule |
+| **Created** | Who created the rule and when |
+
+**Stats Strip:**
+- **Active Rules**: Currently redirecting scans
+- **Total Rules**: All rules including inactive
+- **Affected Tokens**: Total tokens affected by active rules
+
+**Available Actions:**
+- **Show Inactive**: Toggle to see deactivated rules
+- **Create Rule**: Navigate to rule creation form
+- **Deactivate**: Stop a rule from matching scans (preserves history)
+
+#### Creating a Redirect Rule
+
+**URL:** `/qr-redirects/new`
+
+**Step-by-Step:**
+
+1. Navigate to **QR Redirects** → Click **"Create Rule"**
+2. Select **Scope Type** (exactly one):
+   - **Product**: Redirect all scans for a specific product
+   - **Batch**: Redirect all scans for a specific batch
+   - **Inventory**: Redirect all scans for a specific inventory item
+   - **Template Version**: Redirect all labels printed with a specific version
+3. Select the target entity from the dropdown
+   - Entities with existing active rules show "— Has active rule"
+4. Enter **Redirect URL** (required)
+   - Must be a valid URL (e.g., `https://promo.example.com/summer`)
+5. Enter **Reason** (optional but recommended)
+   - Document why this redirect exists for audit purposes
+6. Set **Time Window** (optional)
+   - **Start Date/Time**: When the rule becomes active
+   - **End Date/Time**: When the rule expires
+7. Click **"Create Rule"**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Create Redirect Rule                                         │
+├─────────────────────────────────────────────────────────────┤
+│ SCOPE TYPE (select one)                                      │
+│ ┌──────────┬──────────┬──────────┬─────────────────┐        │
+│ │○ Product │○ Batch   │○ Inventory│○ Template Version│       │
+│ └──────────┴──────────┴──────────┴─────────────────┘        │
+├─────────────────────────────────────────────────────────────┤
+│ ENTITY SELECTION                                             │
+│ Product:  [Hercules Caps (HERC-001) ▼]                      │
+│ Batch:    [Select a batch... ▼]                             │
+│ ...                                                          │
+├─────────────────────────────────────────────────────────────┤
+│ REDIRECT URL *                                               │
+│ [https://example.com/promo                        ]          │
+├─────────────────────────────────────────────────────────────┤
+│ REASON                                                       │
+│ [Summer campaign 2024                             ]          │
+├─────────────────────────────────────────────────────────────┤
+│ TIME WINDOW (optional)                                       │
+│ Start: [2024-12-15 09:00]    End: [2024-12-31 23:59]        │
+├─────────────────────────────────────────────────────────────┤
+│ ⚠ Only one active rule can exist per scope.                 │
+│                                                              │
+│                              [Cancel]  [Create Rule]         │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Important Constraints:**
+- Only **one active rule** can exist per scope (entity or version)
+- If an active rule already exists, you must deactivate it first
+- Creating a duplicate will show an error: "An active redirect rule already exists for this scope"
+
+#### Deactivating a Rule
+
+1. Go to **QR Redirects** page
+2. Find the active rule to deactivate
+3. Click **"Deactivate"**
+4. Rule becomes inactive immediately
+5. Scans will fall back to default routing
+
+**What Deactivation Does:**
+- Stops the rule from matching QR scans
+- Preserves the rule record for audit trail
+- Does NOT delete the rule
+- Allows creating a new rule for the same scope
+
+### QR Token Detail Page (Admin Only)
+
+View detailed information about individual QR tokens, including scan history and annotations.
+
+**URL:** `/qr-tokens/[id]`
+
+**How to Access:**
+- From activity logs showing token scans
+- Via direct URL if you have the token ID
+
+#### Token Information
+
+The detail page shows:
+
+| Section | Information |
+|---------|-------------|
+| **Metadata** | Entity type, entity link, label version, status |
+| **Timestamps** | Printed at, last scanned, expires at |
+| **Statistics** | Total scan count |
+| **Current Resolution** | How scans are currently being resolved |
+
+#### Current Redirect Resolution
+
+Shows how scans are currently being handled:
+
+| Resolution Type | Badge Color | Meaning |
+|-----------------|-------------|---------|
+| **TOKEN** | Blue | Token has a direct redirect URL set |
+| **GROUP** | Purple | Matched by an active redirect rule |
+| **DEFAULT** | Gray | Standard entity routing |
+
+#### Scan History
+
+Table showing all recorded scans:
+
+| Column | Description |
+|--------|-------------|
+| **Timestamp** | When the scan occurred |
+| **Resolution Type** | TOKEN, GROUP, or DEFAULT |
+| **Destination** | Where the scan was redirected |
+
+This history captures the resolution at scan time, not the current rule state.
+
+#### Token Annotations (Admin Only)
+
+Add notes to tokens for tracking purposes:
+
+1. Enter note text in the input field
+2. Click **"Add Note"**
+3. Note is recorded as an activity log entry
+
+**Important:**
+- Notes are **append-only** (cannot be edited or deleted)
+- All notes are timestamped with the author
+- Notes are stored as activity logs for full audit trail
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Notes (Admin only, append-only)                              │
+├─────────────────────────────────────────────────────────────┤
+│ [Add a note about this token...                ] [Add Note]  │
+│                                                              │
+│ ┌───────────────────────────────────────────────────────────┐│
+│ │ "Replaced due to printing defect on original label"       ││
+│ │ Admin User • Dec 13, 2024 2:30 PM                         ││
+│ └───────────────────────────────────────────────────────────┘│
+│ ┌───────────────────────────────────────────────────────────┐│
+│ │ "Customer reported scanning issue - investigating"        ││
+│ │ Admin User • Dec 12, 2024 10:15 AM                        ││
+│ └───────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────┘
+```
+
+### QR Behavior Panel (Entity Detail Pages)
+
+Product, Batch, and Inventory detail pages now include a **QR Behavior** panel showing redirect status.
+
+**Where it appears:**
+- `/products/[id]` - Product detail page
+- `/batches/[id]` - Batch detail page
+- `/inventory/[id]` - Inventory detail page (product type only)
+
+#### Panel Information
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ QR Behavior                              [Create Redirect]   │
+├─────────────────────────────────────────────────────────────┤
+│ ┌───────────────────────────────────────────────────────────┐│
+│ │ 🟣 Active Redirect                                        ││
+│ │ Destination: https://promo.example.com/summer             ││
+│ │ Reason: Summer campaign 2024                              ││
+│ │ Window: From Dec 15 Until Dec 31                          ││
+│ └───────────────────────────────────────────────────────────┘│
+│                                                              │
+│ Active QR Tokens: 156                                        │
+│ 156 tokens affected by this redirect                         │
+│                                                              │
+│ QR redirects apply to all scans without reprinting labels.   │
+│ Manage all redirect rules →                                  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**When No Active Rule:**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ QR Behavior                              [Create Redirect]   │
+├─────────────────────────────────────────────────────────────┤
+│ No active redirect rule. QR scans will use default routing. │
+│                                                              │
+│ Active QR Tokens: 42                                         │
+│ 42 tokens using default routing                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### Available Actions
+
+| Action | Who Can Use | Description |
+|--------|-------------|-------------|
+| **Create Redirect** | Admin | Opens rule creation pre-filled with entity |
+| **Deactivate Redirect** | Admin | Stops active rule (if one exists) |
+| **View Count** | All roles | See affected token count |
+| **Manage Rules** | Admin | Link to full redirect management page |
+
+#### Workflow: Create Redirect from Entity Page
+
+1. Open a product, batch, or inventory detail page
+2. Find the **QR Behavior** panel
+3. Click **"Create Redirect"**
+4. You'll be taken to `/qr-redirects/new` with the entity pre-selected
+5. Enter redirect URL and optional details
+6. Click **"Create Rule"**
+7. Return to entity page to see the active redirect
+
+### QR Redirect Workflow Diagrams
+
+#### Redirect Rule Creation Flow
+
+```mermaid
+sequenceDiagram
+    participant Admin
+    participant UI as QR Redirects Page
+    participant API as API Server
+    participant DB as Database
+
+    Admin->>UI: Navigate to /qr-redirects/new
+    UI-->>Admin: Display creation form
+    Admin->>UI: Select scope (Product: Hercules)
+    Admin->>UI: Enter redirect URL
+    Admin->>UI: Click "Create Rule"
+    
+    UI->>API: POST /api/qr-redirects
+    API->>DB: Check for existing active rule
+    DB-->>API: No active rule exists
+    API->>DB: Create QRRedirectRule
+    API->>DB: Log qr_redirect_rule_created
+    API-->>UI: 201 Created
+    UI-->>Admin: Redirect to /qr-redirects
+```
+
+#### Scan Resolution Flow with Rules
+
+```mermaid
+flowchart TD
+    A[QR Scan] --> B{Token exists?}
+    B -->|No| C[404 Page]
+    B -->|Yes| D{Token status?}
+    D -->|REVOKED| E[Revoked Info Page]
+    D -->|EXPIRED| F[Expired Info Page]
+    D -->|ACTIVE| G{Token.redirectUrl?}
+    G -->|Yes| H[Redirect to token URL<br/>resolutionType: TOKEN]
+    G -->|No| I{Find active rule?}
+    I -->|Yes| J[Redirect to rule URL<br/>resolutionType: GROUP]
+    I -->|No| K[Default entity routing<br/>resolutionType: DEFAULT]
+    
+    H --> L[Log scan with metadata]
+    J --> L
+    K --> L
+    
+    style H fill:#e3f2fd
+    style J fill:#f3e5f5
+    style K fill:#f5f5f5
+```
+
+### Role-Based Access Summary
+
+| Feature | Admin | Production | Warehouse | Rep |
+|---------|-------|------------|-----------|-----|
+| View QR Redirects page | ✅ | ❌ | ❌ | ❌ |
+| Create redirect rules | ✅ | ❌ | ❌ | ❌ |
+| Deactivate rules | ✅ | ❌ | ❌ | ❌ |
+| View QR Token detail | ✅ | ❌ | ❌ | ❌ |
+| Add token annotations | ✅ | ❌ | ❌ | ❌ |
+| See QR Behavior panel | ✅ | ✅ | ✅ | ❌ |
+| Create redirect from panel | ✅ | ❌ | ❌ | ❌ |
+| View affected token count | ✅ | ✅ | ✅ | ❌ |
+| View QR Token Inspector | ✅ | ✅ | ✅ | ❌ |
+| Set token override | ✅ | ❌ | ❌ | ❌ |
+| Revoke token | ✅ | ❌ | ❌ | ❌ |
+
+### QR Token Inspector
+
+The QR Token Inspector is a comprehensive tool for viewing and managing individual QR tokens. It's embedded in Product, Batch, and Inventory detail pages.
+
+**Who can view:** Admin, Production, Warehouse roles
+**Who can take actions:** Admin only
+
+#### Inspector Layout
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 📱 QR Token Inspector                            [Refresh]   │
+├─────────────────────────────────────────────────────────────┤
+│ STATS STRIP                                                  │
+│ ┌────────┬────────┬────────┬────────┬────────┐              │
+│ │ Total  │ Active │ Revoked│ Expired│ Scans  │              │
+│ │ 156    │ 142    │ 10     │ 4      │ 2,340  │              │
+│ └────────┴────────┴────────┴────────┴────────┘              │
+├─────────────────────────────────────────────────────────────┤
+│ FILTER: [ACTIVE] [REVOKED] [EXPIRED] [All]                  │
+├─────────────────────────────────────────────────────────────┤
+│ TOKEN TABLE                                                  │
+│ ┌──────────┬────────┬──────────┬─────────────┬──────┬─────┐ │
+│ │ Token    │ Status │ Resolves │ Destination │Scans │Last │ │
+│ ├──────────┼────────┼──────────┼─────────────┼──────┼─────┤ │
+│ │ qr_abc…  │ ACTIVE │ GROUP    │ promo.ex... │ 45   │ 2h  │ │
+│ │ qr_def…  │ ACTIVE │ DEFAULT  │ /qr/prod... │ 12   │ 1d  │ │
+│ └──────────┴────────┴──────────┴─────────────┴──────┴─────┘ │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### Token Information Displayed
+
+| Column | Description |
+|--------|-------------|
+| **Token** | Masked token value (qr_abc…xyz) - expand for full value |
+| **Status** | ACTIVE (green), REVOKED (red), or EXPIRED (gray) |
+| **Resolution** | TOKEN (blue), GROUP (purple), or DEFAULT (gray) |
+| **Destination** | Where scans currently redirect (with external link) |
+| **Scans** | Total scan count for this token |
+| **Last Scan** | Time since last scan (e.g., "2h ago") |
+
+#### Expanded Token Details
+
+Click a token row to expand and see:
+- Full token value
+- Printed timestamp
+- Label version (if applicable)
+- Current override URL (if set)
+- Recent scan history (last 5 scans)
+
+#### Token Actions (Admin Only)
+
+**Set Redirect Override**
+1. Click the link icon on an active token
+2. Enter the destination URL
+3. Click "Set Override"
+4. Token scans now redirect to this URL (bypasses group rules)
+
+**Clear Override**
+1. Click the unlink icon on a token with an override
+2. Confirms immediately
+3. Token scans now follow normal resolution (group rules → default)
+
+**Revoke Token**
+1. Click the X icon on an active token
+2. Enter a reason for revocation
+3. Click "Revoke Token"
+4. Token is permanently invalidated
+5. Scans show revocation message instead of redirecting
+
+#### Resolution Type Explained
+
+When a QR code is scanned, the system determines where to redirect:
+
+| Type | Badge Color | Meaning |
+|------|-------------|---------|
+| **TOKEN** | Blue | Token has a direct redirectUrl override |
+| **GROUP** | Purple | Matched by an active redirect rule |
+| **DEFAULT** | Gray | Standard routing to entity page |
+
+The inspector shows how each token is currently resolving, which helps debug redirect behavior.
+
+### Sidebar Navigation
+
+PsillyOps uses a sidebar navigation organized into collapsible sections:
+
+**OPERATIONS** (expanded by default)
+- Dashboard, Products, Materials, Inventory, Production, Orders, Purchase Orders
+
+**SYSTEM** (collapsed by default)
+- Labels, QR Redirects (admin), Strains, Vendors
+
+**INTELLIGENCE** (expanded by default)
+- AI Ingest, Activity
+
+**SUPPORT** (expanded by default)
+- Help
+
+Section collapse states are saved in your browser, so your preferred layout persists across sessions.
 
 ---
 
@@ -2262,6 +2740,8 @@ The system recognizes these shortcuts:
 
 **Finished Goods**: Completed products ready for sale
 
+**Group Redirect Rule**: See QR Redirect Rule
+
 **Lead Time**: Number of days from order to delivery
 
 **Line Item**: Individual product row on an order (product + quantity)
@@ -2290,15 +2770,27 @@ The system recognizes these shortcuts:
 
 **QC Hold**: Quality control pause before releasing batch
 
+**QR Behavior Panel**: UI component on entity detail pages showing active redirect rules and token count
+
+**QR Redirect Rule**: Database rule that redirects all scans for a product, batch, or label version without reprinting labels
+
+**QR Token**: Unique identifier for each printed label, enabling individual label tracking and revocation
+
 **Raw Material**: Ingredient or component used to make products
 
 **Reorder Point**: Stock level that triggers automatic reorder suggestion
 
+**Resolution Type**: How a QR scan was resolved: TOKEN (direct redirect), GROUP (rule match), or DEFAULT (standard routing)
+
 **Retailer**: Customer who buys products for resale
+
+**Scope (Redirect)**: The target of a redirect rule - either an entity (product/batch/inventory) or a label version
 
 **Shortage**: Gap between required quantity and available inventory
 
 **SKU**: Stock Keeping Unit (unique product/material identifier)
+
+**Token Annotation**: Admin note attached to a QR token for tracking purposes
 
 **Unit Wholesale Price**: Snapshotted price per unit at order submission
 

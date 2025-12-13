@@ -7,6 +7,8 @@ import { ArchiveButton } from "./ArchiveButton";
 import PrintLabelButton from "@/components/labels/PrintLabelButton";
 import { logAction } from "@/lib/services/loggingService";
 import { ActivityEntity } from "@prisma/client";
+import { QRBehaviorPanelServer } from "@/components/qr/QRBehaviorPanelServer";
+import { QRTokenInspector } from "@/components/qr/QRTokenInspector";
 
 const UNIT_OPTIONS = [
   "jar",
@@ -467,6 +469,22 @@ export default async function ProductDetailPage({
           <p className="text-sm text-gray-500">No BOM items configured</p>
         )}
       </div>
+
+      {/* QR Behavior Panel */}
+      <QRBehaviorPanelServer
+        entityType="PRODUCT"
+        entityId={id}
+        entityName={`${product.name} (${product.sku})`}
+        isAdmin={session.user.role === 'ADMIN'}
+      />
+
+      {/* QR Token Inspector */}
+      <QRTokenInspector
+        entityType="PRODUCT"
+        entityId={id}
+        isAdmin={session.user.role === 'ADMIN'}
+        canView={['ADMIN', 'PRODUCTION', 'WAREHOUSE'].includes(session.user.role)}
+      />
 
       {/* Recent Production Card */}
       <div className="bg-white shadow rounded-lg p-6">

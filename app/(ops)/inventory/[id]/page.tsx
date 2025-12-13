@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { formatDate, formatCurrency } from '@/lib/utils/formatters';
 import StatusBadge, { MovementTypeBadge } from '@/components/ui/StatusBadge';
 import TooltipWrapper, { TooltipIcon } from '@/components/ui/TooltipWrapper';
+import { QRBehaviorPanelServer } from '@/components/qr/QRBehaviorPanelServer';
+import { QRTokenInspector } from '@/components/qr/QRTokenInspector';
 
 const STATUS_COLORS: Record<string, string> = {
   AVAILABLE: 'bg-green-100 text-green-800',
@@ -266,6 +268,24 @@ export default async function InventoryDetailPage({
           <p className="text-sm text-gray-500 text-center py-4">No movement history</p>
         )}
       </div>
+
+      {/* QR Behavior Panel - Only for product inventory */}
+      {inventoryItem.type === 'PRODUCT' && (
+        <>
+          <QRBehaviorPanelServer
+            entityType="INVENTORY"
+            entityId={id}
+            entityName={`${inventoryItem.product?.name || 'Unknown'} @ ${inventoryItem.location.name}`}
+            isAdmin={session.user.role === 'ADMIN'}
+          />
+          <QRTokenInspector
+            entityType="INVENTORY"
+            entityId={id}
+            isAdmin={session.user.role === 'ADMIN'}
+            canView={['ADMIN', 'PRODUCTION', 'WAREHOUSE'].includes(session.user.role)}
+          />
+        </>
+      )}
 
       {/* Related Links */}
       <div className="bg-white shadow rounded-lg p-6">

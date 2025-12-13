@@ -255,8 +255,8 @@ export async function resolveToken(tokenValue: string): Promise<ResolveResult | 
   }
 
   // Token is active - increment scan count
-  const isFirstScan = token.scanCount === 0;
-  
+  // Note: Scan logging is handled by the QR resolver page with enriched metadata
+  // (resolutionType, redirectUrl) to avoid duplicate logging
   await prisma.qRToken.update({
     where: { id: token.id },
     data: {
@@ -264,24 +264,6 @@ export async function resolveToken(tokenValue: string): Promise<ResolveResult | 
       lastScannedAt: new Date()
     }
   });
-
-  // Log only the first scan to reduce activity log noise
-  // Subsequent scans still increment scanCount but don't create log entries
-  if (isFirstScan) {
-    await logAction({
-      entityType: ActivityEntity.LABEL,
-      entityId: token.entityId,
-      action: 'qr_token_scanned',
-      summary: `QR token first scanned for ${token.entityType} ${token.entityId}`,
-      details: {
-        tokenId: token.id,
-        entityType: token.entityType,
-        entityId: token.entityId,
-        scanCount: 1
-      },
-      tags: ['qr', 'label', 'scan']
-    });
-  }
 
   return {
     status: 'ACTIVE',

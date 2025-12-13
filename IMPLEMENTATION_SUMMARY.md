@@ -2444,5 +2444,253 @@ The following are deferred to future phases:
 
 ---
 
+## 🔀 QR Redirect Rules (Phase 1 + 2)
+
+### Overview
+
+QR Redirect Rules enable group-based redirects for QR scans without modifying individual tokens. This system supports:
+
+- **Campaign redirects**: Redirect all scans for a product to a promotional landing page
+- **Recall handling**: Redirect batch scans to a recall information page
+- **Version-based redirects**: Redirect all labels printed from a specific template version
+- **Zero reprints**: Apply redirects retroactively to already-printed labels
+
+### Key Principles
+
+- **QR codes are never reprinted**: Redirects modify behavior, not physical labels
+- **Redirects are non-destructive**: Original entity relationships preserved
+- **All changes are audited**: Every rule change and scan is logged
+- **Rules are reversible**: Deactivation restores default behavior
+- **History preserved**: Even after deactivation, rule history remains for audit
+- **Single active rule per scope**: Only one active rule per entity/version
+
+### Redirect Precedence
+
+When a QR token is scanned, the system resolves the destination in this order:
+
+```
+1. Token-level redirectUrl (QRToken.redirectUrl)     ← Highest priority
+2. Active QRRedirectRule (by entityType+entityId OR versionId)
+3. Default entity routing (e.g., /qr/batch/{id})     ← Fallback
+```
+
+### Data Model
+
+```mermaid
+erDiagram
+    QRRedirectRule ||--o| User : "created by"
+    QRToken ||--o| QRRedirectRule : "matched by (runtime)"
+    
+    QRRedirectRule {
+        string id PK
+        LabelEntityType entityType "scope selector"
+        string entityId "scope selector"
+        string versionId "scope selector (alternative)"
+        string redirectUrl
+        boolean active
+        string reason
+        datetime startsAt
+        datetime endsAt
+        string createdById FK
+        datetime createdAt
+    }
+```
+
+### Service Layer (`lib/services/qrRedirectService.ts`)
+
+**Rule Lookup:**
+- `findActiveRedirectRule({ entityType, entityId, versionId })` - Find matching active rule
+
+**Rule Management:**
+- `createRedirectRule(params, userId)` - Create a new rule with validation
+- `deactivateRedirectRule(id, userId)` - Deactivate a rule (preserves audit trail)
+
+**Query Functions:**
+- `getRedirectRule(id)` - Get rule by ID
+- `listRedirectRules(options)` - List rules with filters
+- `getRulesForEntity(entityType, entityId)` - Get rules for entity
+- `getRulesForVersion(versionId)` - Get rules for label version
+
+### API Endpoints
+
+| Route | Method | Auth | Description |
+|-------|--------|------|-------------|
+| `/api/qr-redirects` | POST | ADMIN | Create redirect rule |
+| `/api/qr-redirects` | GET | ADMIN | List redirect rules |
+| `/api/qr-redirects/[id]/deactivate` | POST | ADMIN | Deactivate rule |
+
+### Scope Selectors
+
+Exactly one scope must be specified when creating a rule:
+
+1. **Entity scope** (`entityType` + `entityId`): Redirects all scans for a specific entity
+   - Example: All scans for Product `clm123abc` go to `/promo/summer-sale`
+
+2. **Version scope** (`versionId`): Redirects all scans for labels printed with a specific template version
+   - Example: All labels printed with version `v2.0` go to `/recall/batch-2024-12`
+
+### Time Windows
+
+Rules can optionally specify time windows:
+
+- `startsAt`: Rule becomes active at this time (null = immediately active)
+- `endsAt`: Rule expires at this time (null = never expires)
+
+Rules outside their time window are ignored during lookup.
+
+### Activity Logging
+
+| Action | When | Tags |
+|--------|------|------|
+| `qr_redirect_rule_created` | Rule created | `['qr', 'redirect', 'rule', 'created']` |
+| `qr_redirect_rule_deactivated` | Rule deactivated | `['qr', 'redirect', 'rule', 'deactivated']` |
+| `qr_token_scanned` | Token scanned | `['qr', 'label', 'scan', resolutionType]` |
+| `qr_token_note_added` | Admin adds annotation | `['qr', 'note', 'annotation']` |
+
+All scan logs include:
+- `resolutionType`: `'TOKEN'` | `'GROUP'` | `'DEFAULT'`
+- `redirectUrl`: The destination URL at scan time
+
+### Resolver Flow
+
+```mermaid
+flowchart TD
+    A[QR Scan] --> B{Token exists?}
+    B -->|No| C[404 Page]
+    B -->|Yes| D{Token status?}
+    D -->|REVOKED| E[Revoked Info Page]
+    D -->|EXPIRED| F[Expired Info Page]
+    D -->|ACTIVE| G{Token.redirectUrl?}
+    G -->|Yes| H[Redirect to token URL]
+    G -->|No| I{Find active rule?}
+    I -->|Yes| J[Redirect to rule URL]
+    I -->|No| K[Default entity routing]
+    
+    H --> L[Log scan + redirect source]
+    J --> L
+    K --> M[Standard logging]
+```
+
+### Phase 2 UI Components
+
+#### Admin UI - Redirect Management (`/qr-redirects`)
+
+```
+app/(ops)/qr-redirects/
+├── page.tsx                 # Redirect rules table
+└── new/
+    └── page.tsx             # Create new rule form
+```
+
+Features:
+- Table showing all rules with scope, target, URL, status, time window
+- Stats strip: active rules, total rules, affected tokens
+- Deactivate action for active rules
+- Create rule with scope selector and entity dropdown
+
+#### QR Token Detail Page (`/qr-tokens/[id]`)
+
+```
+app/(ops)/qr-tokens/
+└── [id]/
+    └── page.tsx             # Token detail with history
+```
+
+Features:
+- Token metadata: entity, version, status, timestamps
+- Current redirect resolution (TOKEN/GROUP/DEFAULT)
+- Scan history table with resolution type and destination
+- Admin annotation form (append-only notes)
+
+#### Entity-Level QR Behavior Panels
+
+Added to product, batch, and inventory detail pages via reusable component:
+
+```
+components/qr/
+└── QRBehaviorPanel.tsx      # Shared panel component
+```
+
+Shows:
+- Active redirect rule (if any) with destination
+- Affected token count
+- Create/deactivate actions (admin only)
+
+### Phase 3: QR Visibility & Control
+
+Phase 3 adds operator-facing visibility and control for the QR system.
+
+#### Sidebar Navigation Refactor
+
+```
+components/layout/
+├── SidebarNav.tsx           # Main sidebar navigation
+└── SidebarSection.tsx       # Collapsible section with localStorage persistence
+```
+
+Navigation Structure:
+- **OPERATIONS** (expanded): Dashboard, Products, Materials, Inventory, Production, Orders, Purchase Orders
+- **SYSTEM** (collapsed by default): Labels, QR Redirects, Strains, Vendors
+- **INTELLIGENCE** (expanded): AI Ingest, Activity
+- **SUPPORT** (expanded): Help
+
+#### QR Token Inspector
+
+```
+components/qr/
+├── QRTokenInspector.tsx     # Main inspector component
+└── QRTokenRow.tsx           # Individual token row with actions
+```
+
+Features:
+- Token list with status, resolution type, destination
+- Stats strip: total, active, revoked, expired, total scans
+- Status filter (ACTIVE/REVOKED/EXPIRED/All)
+- Expandable rows with scan history
+- Admin actions: override redirect, clear override, revoke
+
+Integration Points:
+- Product detail page (`/products/[id]`)
+- Batch detail page (`/batches/[id]`)
+- Inventory detail page (`/inventory/[id]`)
+
+#### Enhanced QR Redirect Management
+
+New features added to `/qr-redirects`:
+- Filters toolbar: scope type, active toggle, domain filter
+- Overlap warnings for multiple rules on same scope
+- Improved status display: Active, Scheduled, Expired Window, Inactive
+- Entity links to detail pages
+
+#### New API Endpoints
+
+| Route | Method | Auth | Description |
+|-------|--------|------|-------------|
+| `/api/qr-tokens/for-entity` | GET | ADMIN/PRODUCTION/WAREHOUSE | Get tokens for entity with resolved destinations |
+| `/api/qr-tokens/[id]/override` | POST | ADMIN | Set token redirect override |
+| `/api/qr-tokens/[id]/override` | DELETE | ADMIN | Clear token redirect override |
+
+### Implemented Non-Goals
+
+The following remain explicitly NOT implemented:
+
+- ❌ Analytics dashboards for redirect performance
+- ❌ AI commands for redirects
+- ❌ Consumer-facing QR pages (beyond basic redirect)
+- ❌ Campaign scheduling UI polish
+- ❌ QR reprinting logic
+- ❌ Charts, heatmaps, geographic analytics
+
+### Future Phases
+
+Phase 4+ may include:
+- Campaign analytics dashboards
+- A/B testing for redirects
+- Geographic targeting
+- Redirect tracking metrics
+- Mobile-optimized navigation
+
+---
+
 **END OF IMPLEMENTATION SUMMARY**
 

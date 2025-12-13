@@ -7,6 +7,8 @@ import { formatDate, formatDateTime } from '@/lib/utils/formatters';
 import { completeBatch, updateBatchStatus, setBatchQCStatus, addLaborEntry } from '@/lib/services/productionService';
 import { BatchStatus, QCStatus } from '@prisma/client';
 import PrintLabelButton from '@/components/labels/PrintLabelButton';
+import { QRBehaviorPanelServer } from '@/components/qr/QRBehaviorPanelServer';
+import { QRTokenInspector } from '@/components/qr/QRTokenInspector';
 
 const STATUS_COLORS: Record<string, string> = {
   PLANNED: 'bg-gray-100 text-gray-800',
@@ -531,6 +533,22 @@ export default async function BatchDetailPage({
           </table>
         </div>
       )}
+
+      {/* QR Behavior Panel */}
+      <QRBehaviorPanelServer
+        entityType="BATCH"
+        entityId={id}
+        entityName={batch.batchCode}
+        isAdmin={session.user.role === 'ADMIN'}
+      />
+
+      {/* QR Token Inspector */}
+      <QRTokenInspector
+        entityType="BATCH"
+        entityId={id}
+        isAdmin={session.user.role === 'ADMIN'}
+        canView={['ADMIN', 'PRODUCTION', 'WAREHOUSE'].includes(session.user.role)}
+      />
 
       {/* Complete Batch Form */}
       {canComplete && (

@@ -16,6 +16,217 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - QR codes are rendered as vector SVG and optimized for small labels (URL-only, error correction level `L`, high contrast)
 - Labels automatically rotate 90° when it increases sheet capacity (no scaling)
 
+## [0.12.0] - 2024-12-13
+
+### Summary
+
+**Phase 3: QR Visibility & Control** - Added operator-facing visibility and control for the QR system including a comprehensive Token Inspector, enhanced redirect management UI with filters, and sidebar navigation reorganization.
+
+### Added
+
+#### Sidebar Navigation
+- **Restructured navigation** with collapsible sections
+- **localStorage persistence** for section collapsed/expanded state
+- **SYSTEM section** (collapsed by default) containing: Labels, QR Redirects, Strains, Vendors
+- Removed cluttered top navigation bar
+
+#### QR Token Inspector Component
+- **`components/qr/QRTokenInspector.tsx`** - Reusable inspector showing:
+  - Token list with masked token values
+  - Status badges (ACTIVE/REVOKED/EXPIRED)
+  - Resolution type (TOKEN/GROUP/DEFAULT) with rule name
+  - Destination URL with external link
+  - Scan count and last scan time
+  - Expandable row details with full token, printed date, label version
+  - Recent scan history (last 5 entries)
+- **Stats strip**: Total, Active, Revoked, Expired counts + Total Scans
+- **Status filter**: Filter by ACTIVE, REVOKED, EXPIRED, or All
+- **Actions** (Admin only):
+  - Set redirect override (token-level)
+  - Clear override
+  - Revoke token
+
+#### Token Inspector Integration
+- Embedded in **Product detail page** (`/products/[id]`)
+- Embedded in **Batch detail page** (`/batches/[id]`)
+- Embedded in **Inventory detail page** (`/inventory/[id]`) for product inventory
+
+#### Enhanced QR Redirect Management
+- **Filters toolbar**: Scope type (All/Product/Batch/Inventory/Version), Active toggle, Domain filter
+- **Overlap warnings**: Alerts when multiple active rules exist for the same scope
+- **Improved status display**: Active, Scheduled, Expired Window, Inactive states
+- **Entity links**: Target names now link to entity detail pages
+- **Visual improvements**: Better spacing, icons, responsive design
+
+#### New API Endpoints
+- **`GET /api/qr-tokens/for-entity`** - Fetch tokens for an entity with resolved destinations and scan histories
+- **`POST /api/qr-tokens/[id]/override`** - Set token-level redirect override
+- **`DELETE /api/qr-tokens/[id]/override`** - Clear token-level override
+
+#### Activity Logging
+- `qr_token_override_set` - When admin sets a token redirect override
+- `qr_token_override_cleared` - When admin clears a token override
+
+### Changed
+- Moved Labels, QR Redirects to SYSTEM section in sidebar (collapsed by default)
+- QR Redirect page now shows all filter options in a toolbar
+- Sidebar sections now persist collapsed state in localStorage
+
+### Technical Notes
+- No schema changes - all new features use existing QRToken and QRRedirectRule models
+- No changes to QR resolution logic - precedence order preserved
+- All new endpoints follow existing auth/RBAC patterns
+
+## [0.11.0] - 2024-12-13
+
+### Summary
+
+**QR Redirect System Phase 2** - Full admin UI for managing redirect rules, token detail pages with scan history and annotations, and entity-level QR behavior panels on product/batch/inventory pages.
+
+### Phase 1 Corrections Applied
+- **Enforced single active rule per scope**: Creating a duplicate rule now fails with a clear error requiring explicit deactivation
+- **Deterministic rule resolution**: All lookups use `orderBy: { createdAt: 'desc' }` for consistent ordering
+- **Enriched scan logging**: All scans now log `resolutionType` (TOKEN/GROUP/DEFAULT) and `redirectUrl` at scan time
+- **Documentation updated**: Clarified that QR codes are never reprinted and all changes are audited/reversible
+
+### Added
+
+#### Admin UI - QR Redirect Management
+- **`/qr-redirects`** - Full redirect rules management page
+  - Table with scope, target, URL, status, time window, affected token count, creator
+  - Deactivate action for active rules
+  - Stats showing active rules, total rules, affected tokens
+
+#### Redirect Rule Creation UX
+- **`/qr-redirects/new`** - Create new redirect rules
+  - Scope selector (Product/Batch/Inventory/Template Version)
+  - Entity selection with dropdowns showing existing active rules
+  - URL input, optional reason, optional time window
+  - Validation preventing duplicate active rules
+
+#### QR Token Detail Page
+- **`/qr-tokens/[id]`** - Token detail with history and annotation
+  - Token metadata: entity, version, status, scan count, timestamps
+  - Current redirect resolution (TOKEN/GROUP/DEFAULT) with destination
+  - Scan history table with timestamps, resolution type, destination
+  - Admin-only annotation form (append-only notes stored as activity logs)
+
+#### Entity-Level QR Behavior Panels
+- Added to **Product**, **Batch**, and **Inventory** detail pages
+- Shows active redirect rule (if any) with destination and time window
+- Displays affected token count
+- Actions: Create redirect / Deactivate redirect (admin only)
+- Does not list individual tokens
+
+#### Activity Logging
+- `qr_token_note_added` - When admin adds annotation to a token
+- Enhanced `qr_token_scanned` with `resolutionType` and `redirectUrl` fields
+
+### Changed
+- Scan logging moved from `resolveToken()` to QR resolver page for enriched metadata
+- All scans now logged (not just redirected ones) with resolution details
+
+## [0.10.0] - 2024-12-13
+
+### Summary
+
+**Group-Based QR Redirect Rules (Phase 1)** - Added the ability to redirect QR scans for entire groups (by entity or label version) without modifying individual tokens. Supports campaigns, recalls, and analytics use cases with zero reprints required.
+
+### Core Principles
+
+- **Group-based redirects**: Apply redirects to entire products, batches, or label versions
+- **Zero reprints**: Redirects apply retroactively to already-printed labels
+- **Precedence chain**: Token → Rule → Default routing
+- **Admin-only**: Rules managed via API (no UI in Phase 1)
+- **Audit trail**: All rule changes and redirect scans are logged
+
+### Added
+
+#### Prisma Schema Updates
+
+**Updated Model:**
+- `QRToken` - Added `redirectUrl: String?` for token-level redirect override
+
+**New Model:**
+- `QRRedirectRule` - Group-based redirect rules
+  - Fields: `id`, `entityType`, `entityId`, `versionId`, `redirectUrl`, `active`, `reason`, `startsAt`, `endsAt`, `createdById`, `createdAt`
+  - Scope selectors: Either `entityType + entityId` OR `versionId` (exactly one required)
+  - Indexes on `[entityType, entityId]`, `versionId`, `active`
+
+**Updated Models:**
+- `User` - Added relation to `QRRedirectRule[]`
+
+#### New Files Created
+
+```
+lib/services/
+└── qrRedirectService.ts         # Redirect rule management (NEW)
+
+app/api/qr-redirects/
+├── route.ts                     # Create/list redirect rules (NEW)
+└── [id]/
+    └── deactivate/
+        └── route.ts             # Deactivate redirect rule (NEW)
+```
+
+#### Service Layer (`lib/services/qrRedirectService.ts`)
+
+**Rule Lookup:**
+- `findActiveRedirectRule({ entityType, entityId, versionId })` - Find matching active rule respecting time windows
+
+**Rule Management:**
+- `createRedirectRule(params, userId)` - Create rule with scope validation
+- `deactivateRedirectRule(id, userId)` - Soft-deactivate rule
+
+**Query Functions:**
+- `getRedirectRule(id)` - Get rule by ID
+- `listRedirectRules(options)` - List with filters
+- `getRulesForEntity(entityType, entityId)` - Get rules for entity
+- `getRulesForVersion(versionId)` - Get rules for version
+
+#### API Endpoints
+
+| Route | Method | Auth | Description |
+|-------|--------|------|-------------|
+| `/api/qr-redirects` | POST | ADMIN | Create redirect rule |
+| `/api/qr-redirects` | GET | ADMIN | List redirect rules |
+| `/api/qr-redirects/[id]/deactivate` | POST | ADMIN | Deactivate rule |
+
+#### QR Token Resolver Updates (`/app/qr/[token]/page.tsx`)
+
+Enhanced resolver with three-level precedence:
+1. Check `QRToken.redirectUrl` (token-level)
+2. Check active `QRRedirectRule` (group-level)
+3. Fallback to default entity routing
+
+#### Activity Logging
+
+New logged events:
+- `qr_redirect_rule_created` - Rule created
+- `qr_redirect_rule_deactivated` - Rule deactivated
+- `qr_token_scanned` - Token scanned with redirect (includes destination)
+
+Tags: `['qr', 'redirect', 'rule', 'created' | 'deactivated']`, `['qr', 'label', 'scan', 'redirect', source]`
+
+### Explicit Non-Goals (Phase 1)
+
+The following are NOT included in this phase:
+
+- ❌ UI for creating/editing rules
+- ❌ Scheduling UI for time windows
+- ❌ Analytics dashboards for redirect performance
+- ❌ Cron jobs for rule expiration
+- ❌ Consumer-facing redirect pages
+
+### Migration Notes
+
+- Run `npx prisma db push` to apply schema changes
+- No breaking changes to existing functionality
+- Existing QR tokens continue to work with default routing
+- Rules can be created via API immediately after migration
+
+---
+
 ## [0.9.0] - 2024-12-12
 
 ### Summary

@@ -164,6 +164,7 @@ model User {
   aiCommandLogs             AICommandLog[]
   aiDocumentImports         AIDocumentImport[]
   qrTokens                  QRToken[]
+  qrRedirectRules           QRRedirectRule[]
   
   @@index([email])
   @@index([role])
@@ -827,6 +828,9 @@ model QRToken {
   versionId       String?                    // Which label version was printed
   version         LabelTemplateVersion?      @relation(fields: [versionId], references: [id])
   
+  // Token-level redirect (highest precedence)
+  redirectUrl     String?                    // Override destination URL for this specific token
+  
   // Timestamps
   printedAt       DateTime        @default(now())  // When the label was generated
   expiresAt       DateTime?                        // Optional expiration
@@ -846,5 +850,37 @@ model QRToken {
   @@index([status])
   @@index([versionId])
   @@index([printedAt])
+}
+
+// ========================================
+// QR REDIRECT RULES (Group-based Redirects)
+// ========================================
+
+model QRRedirectRule {
+  id          String   @id @default(cuid())
+
+  // Scope selectors (exactly one set of selectors must be provided)
+  entityType  LabelEntityType?   // Target entity type (PRODUCT, BATCH, etc.)
+  entityId    String?            // Target entity ID
+  versionId   String?            // Target label template version
+
+  redirectUrl String             // Where to redirect matching scans
+
+  active      Boolean  @default(true)  // Only active rules are applied
+
+  // Optional metadata
+  reason      String?            // Why this redirect exists (recall, campaign, etc.)
+  startsAt    DateTime?          // Optional scheduled start time
+  endsAt      DateTime?          // Optional scheduled end time
+
+  // Audit
+  createdById String?
+  createdBy   User?    @relation(fields: [createdById], references: [id])
+
+  createdAt   DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([versionId])
+  @@index([active])
 }
 
