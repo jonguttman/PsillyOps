@@ -10,7 +10,7 @@ import { hasPermission } from '@/lib/auth/rbac';
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // 1. Validate
@@ -29,15 +29,16 @@ export async function POST(
       );
     }
 
+    const { id } = await params;
     const body = await req.json();
     const validated = completeBatchSchema.parse(body);
 
     // 2. Call Service
     await completeBatch({
-      batchId: params.id,
+      batchId: id,
       actualQuantity: validated.actualQuantity,
       locationId: validated.locationId,
-      productionDate: validated.productionDate,
+      productionDate: validated.productionDate ? new Date(validated.productionDate) : undefined,
       userId: session.user.id
     });
 

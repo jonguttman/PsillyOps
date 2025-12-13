@@ -12,6 +12,7 @@
 3. [Project Structure](#project-structure)
 4. [Database Schema](#database-schema)
 5. [Service Layer](#service-layer)
+   - [Label Sheet Composition & QR Strategy](#label-sheet-composition--qr-strategy)
 6. [API Routes](#api-routes)
 7. [Authentication & Authorization](#authentication--authorization)
 8. [Intelligent Logging System](#intelligent-logging-system)
@@ -411,6 +412,60 @@ const result = await applyDocumentImport(importId, userId);
 // Reject if commands are incorrect
 await rejectDocumentImport(importId, 'Incorrect data', userId);
 ```
+
+---
+
+## Label Sheet Composition & QR Strategy
+
+PsillyOps label printing is intentionally **sheet-based** and **token-QR-based** for laser cutting and scan reliability. This section documents the parts that are easy to accidentally break.
+
+### Core Design Rules (Do Not Break)
+
+- **Printing always uses token URLs**: one token per physical label, QR encodes only `${baseUrl}/qr/${token}`
+- **Preview never creates/stores tokens**: preview uses a fixed dummy token `qr_PREVIEW_TOKEN_DO_NOT_USE`
+- **QR must be vector SVG** (not PNG/data URLs) and uses **errorCorrectionLevel `L`**
+- **No scaling**: labels are never scaled to “fit more”
+- **Letter sheets**: 8.5 × 11 in with 0.25 in margins on all sides
+- **Rotation**: labels rotate 90° only when it increases capacity
+
+### Shared Letter-Sheet Composer (Service Layer)
+
+Implementation lives in `lib/services/labelService.ts` and is shared by preview and printing.
+
+Responsibilities:
+- **Physical size parsing**: reads the label SVG root `width`/`height` and converts to inches  
+  - Supported units: `in`, `mm`, `cm`, `px` (assumes `px = 96dpi`)
+  - Throws a clear validation error if size cannot be determined
+- **Auto-tiling math** for letter sheets  
+  - Sheet: `8.5in × 11in`, margin: `0.25in` → usable: `8.0in × 10.5in`
+  - Computes capacity for both orientations (0° and 90°) and picks the higher
+- **ID collision prevention (critical)**  
+  - Every embedded label instance has its SVG IDs prefixed (gradients, clipPaths, masks, etc.)
+  - References are rewritten as well: `id=...`, `url(#...)`, `href="#..."`, `xlink:href="#..."`
+
+### Why Vector QR Is Mandatory
+
+Small physical labels are scan-limited by print resolution and module density. Vector QR:
+- stays sharp at any print DPI
+- avoids blur from raster scaling
+- improves scan success on small labels
+
+### Endpoint Differences (Do Not Confuse These)
+
+- `POST /api/labels/render-with-tokens`
+  - Returns **individual label SVGs** plus token metadata
+  - Creates tokens at render time
+  - Useful for integrations that want per-label SVGs
+
+- `POST /api/labels/render-letter-sheets`
+  - Returns **letter-size sheet SVGs** (`sheets[]`) composed from token-rendered labels
+  - Always creates one token per label instance
+  - Intended for printing workflows
+
+- `POST /api/labels/preview-sheet`
+  - Returns **the first letter-size sheet SVG only**
+  - Uses dummy token (`qr_PREVIEW_TOKEN_DO_NOT_USE`) and does **not** create tokens
+  - Includes layout metadata via headers: cols/rows/perSheet/rotation/totalSheets
 
 ---
 

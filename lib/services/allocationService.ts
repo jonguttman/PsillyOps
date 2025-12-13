@@ -212,7 +212,7 @@ export async function releaseAllocations(
       data: {
         quantityAllocated: 0,
         shortageQuantity: 0,
-        allocationDetails: null
+        allocationDetails: undefined
       }
     });
   }

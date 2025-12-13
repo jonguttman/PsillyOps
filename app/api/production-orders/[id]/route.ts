@@ -9,7 +9,7 @@ import { hasPermission } from '@/lib/auth/rbac';
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // 1. Validate
@@ -28,8 +28,10 @@ export async function GET(
       );
     }
 
+    const { id } = await params;
+
     // 2. Call Service
-    const order = await getProductionOrderDetail(params.id);
+    const order = await getProductionOrderDetail(id);
 
     // 3. Return JSON
     return Response.json(order);

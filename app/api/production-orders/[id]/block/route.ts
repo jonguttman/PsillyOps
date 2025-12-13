@@ -10,7 +10,7 @@ import { hasPermission } from '@/lib/auth/rbac';
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // 1. Validate
@@ -29,11 +29,12 @@ export async function POST(
       );
     }
 
+    const { id } = await params;
     const body = await req.json();
-    const validated = blockProductionOrderSchema.parse({ ...body, orderId: params.id });
+    const validated = blockProductionOrderSchema.parse({ ...body, orderId: id });
 
     // 2. Call Service
-    await blockProductionOrder(params.id, validated.reason, session.user.id);
+    await blockProductionOrder(id, validated.reason, session.user.id);
 
     // 3. Return JSON
     return Response.json({ success: true });

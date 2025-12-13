@@ -7,6 +7,191 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Labels & QR Codes
+- Added auto-tiled letter-size label sheets for printing (8.5×11in with 0.25in margins)
+- Printing now generates token-based QR codes (one token per physical label)
+- Label preview now matches print layout using a fixed dummy token (no token creation/storage)
+- QR codes are rendered as vector SVG and optimized for small labels (URL-only, error correction level `L`, high contrast)
+- Labels automatically rotate 90° when it increases sheet capacity (no scaling)
+
+## [0.9.0] - 2024-12-12
+
+### Summary
+
+**Explicit Strain Support** - Added strain lookup table for categorizing products by their active ingredient source. Enables strain-specific products (e.g., "Mighty Caps - Penis Envy"), AI command resolution (e.g., "PE" → "Penis Envy"), and safe CSV product import.
+
+### Core Principles
+
+- **SKU = Product remains the core rule**: No ProductVariant model introduced
+- **Strain is optional**: Existing products continue working unchanged
+- **AI-friendly resolution**: Short codes and aliases resolve to strain IDs
+- **Import-safe**: CSV import validates strains before insertion
+- **Backward compatible**: No breaking changes to existing functionality
+
+### Added
+
+#### Prisma Schema Updates
+
+**New Model:**
+- `Strain` - Strain lookup table
+  - Fields: `id`, `name` (unique), `shortCode` (unique), `aliases` (JSON), `active`, `createdAt`
+  - Relation to `Product[]`
+  - Index on `shortCode` for fast AI resolution
+
+**Updated Models:**
+- `Product` - Added `strainId: String?` with relation to `Strain`
+  - Index on `strainId` for filtering
+
+#### New Files Created
+
+```
+lib/services/
+└── strainService.ts              # Strain CRUD and resolution (NEW)
+
+app/api/strains/
+├── route.ts                      # List/create strains (NEW)
+└── [id]/
+    └── route.ts                  # Get/update/archive strain (NEW)
+
+app/api/products/import/
+└── route.ts                      # CSV bulk import endpoint (NEW)
+
+app/(ops)/strains/
+└── page.tsx                      # Strain management page (NEW)
+```
+
+#### Service Layer (`lib/services/strainService.ts`)
+
+**Strain Operations:**
+- `listStrains(filter?)` - List strains with optional inactive filter and search
+- `getStrain(id)` - Get strain with associated products
+- `getStrainByCode(shortCode)` - Get by short code (case-insensitive)
+- `getStrainByName(name)` - Get by name (case-insensitive)
+- `resolveStrainRef(ref)` - AI resolution: shortCode → name → partial → aliases
+- `createStrain(data, userId?)` - Create with logging
+- `updateStrain(id, data, userId?)` - Update with logging
+- `archiveStrain(id, userId?, force?)` - Soft delete with product check
+
+#### AI Integration (`lib/services/aiCommandService.ts`)
+
+**Enhanced Product Resolution:**
+- `resolveProductRef()` now detects strain references in product names
+- `parseProductWithStrain()` extracts product part and strain ID from input
+- Supports patterns:
+  - "Mighty Caps - Penis Envy" → product + strain
+  - "MC-PE" → product code + strain code
+  - "Mighty Caps PE" → product + strain code
+- Falls back to existing resolution if no strain detected
+
+#### API Routes
+
+**Strain Endpoints:**
+
+| Method | Route | Auth | Description |
+|--------|-------|------|-------------|
+| GET | `/api/strains` | All users | List strains |
+| POST | `/api/strains` | ADMIN only | Create strain |
+| GET | `/api/strains/[id]` | All users | Get strain detail |
+| PATCH | `/api/strains/[id]` | ADMIN only | Update strain |
+| DELETE | `/api/strains/[id]` | ADMIN only | Archive strain |
+
+**Product Import Endpoint:**
+
+| Method | Route | Auth | Description |
+|--------|-------|------|-------------|
+| POST | `/api/products/import` | ADMIN only | CSV bulk import |
+
+**CSV Format:**
+```csv
+name,sku,strain,unit,reorder_point,wholesale_price,default_batch_size
+Mighty Caps - Penis Envy,MC-PE,PE,jar,50,24.99,100
+Mighty Caps - Golden Teacher,MC-GT,GT,jar,50,24.99,100
+```
+
+- Strain column accepts name or shortCode (case-insensitive)
+- Validates all strains exist before insertion
+- Rejects duplicate SKUs (in database and within file)
+- Uses transaction for atomic insert
+- Returns row-level error summary
+
+#### UI Updates
+
+**Products List (`/products`):**
+- Added strain column with shortCode badge
+- Added strain filter dropdown
+- "Clear" link to reset filter
+
+**Product Detail (`/products/[id]`):**
+- Strain badge in header (shortCode: name)
+- Strain field in details grid
+- Strain dropdown in edit mode
+- Activity logging on strain change
+
+**New Product (`/products/new`):**
+- Strain dropdown with all active strains
+- Optional field - "No strain selected" default
+
+**Strains Management (`/strains`):**
+- ADMIN-only page
+- Create form with name, shortCode, aliases
+- Table with name, shortCode, aliases, product count, status
+- Archive/restore actions
+- Help text explaining strain usage
+
+#### Seed Data Updates
+
+**Pre-seeded Strains:**
+- Penis Envy (PE)
+- Golden Teacher (GT)
+- Albino Penis Envy (APE)
+- Full Moon Party (FMP)
+- Lions Mane (LM)
+- Reishi (RE)
+- Cordyceps (CORD)
+- Chaga (CHAG)
+
+**Example Products with Strains:**
+- Mighty Caps - Penis Envy (MC-PE) → strainId: PE
+- Mighty Caps - Golden Teacher (MC-GT) → strainId: GT
+- Mighty Caps - Full Moon Party (MC-FMP) → strainId: FMP
+- Lion's Mane Focus Capsules → strainId: LM
+- Reishi Calm Capsules → strainId: RE
+- Cordyceps Energy Capsules → strainId: CORD
+
+### Activity Logging
+
+New logged events:
+- `strain_created` - New strain added (ActivityEntity.SYSTEM)
+- `strain_updated` - Strain details changed (ActivityEntity.SYSTEM)
+- `strain_archived` - Strain archived (ActivityEntity.SYSTEM)
+- `strain_updated` - Product strain changed (ActivityEntity.PRODUCT)
+- `products_imported` - CSV import completed (ActivityEntity.SYSTEM)
+
+Tags: `['strain', 'created' | 'updated' | 'archived']`, `['product', 'strain', 'updated']`, `['product', 'import', 'csv']`
+
+### Explicit Non-Goals
+
+The following are explicitly NOT included:
+- ProductVariant model (SKU = Product)
+- Genetic lineage tracking
+- Lab results / potency data
+- Compliance labeling
+- Terpene profiles
+- Cannabinoid percentages
+- Polymorphic strain systems
+
+### Migration Notes
+
+- Run `npx prisma db push` to apply schema changes
+- Run `npx prisma db seed` to add strain data
+- Existing products will have `strainId: null` (backward compatible)
+- No forced backfill required
+- AI commands continue to work without strain
+
+---
+
 ## [0.8.0] - 2024-12-12
 
 ### Summary

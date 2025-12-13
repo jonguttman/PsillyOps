@@ -35,11 +35,34 @@ export default function PrintLabelButton({
   const [templates, setTemplates] = useState<LabelTemplate[]>([]);
   const [selectedVersionId, setSelectedVersionId] = useState<string>('');
   const [quantity, setQuantity] = useState(1);
-  const [svgContent, setSvgContent] = useState<string | null>(null);
+  const [sheetSvgs, setSheetSvgs] = useState<string[]>([]);
+  const [sheetMeta, setSheetMeta] = useState<{
+    perSheet: number;
+    columns: number;
+    rows: number;
+    rotationUsed: boolean;
+    totalSheets: number;
+  } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isRendering, setIsRendering] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const printContainerRef = useRef<HTMLDivElement>(null);
+
+  const getPreviewSvg = (sheetSvg: string) => {
+    // Screen preview should be responsive; printing/download must keep exact physical sizing.
+    // We do this by adding CSS sizing + preserveAspectRatio on the outer <svg> only.
+    return sheetSvg.replace(/<svg\b([^>]*)>/i, (match, attrs) => {
+      const hasPreserve = /\bpreserveAspectRatio=/.test(attrs);
+      const styleMatch = attrs.match(/\bstyle="([^"]*)"/i);
+      if (styleMatch) {
+        const mergedStyle = `${styleMatch[1].replace(/;?\s*$/, ';')}width:100%;height:auto;`;
+        let nextAttrs = attrs.replace(/\bstyle="[^"]*"/i, `style="${mergedStyle}"`);
+        if (!hasPreserve) nextAttrs += ' preserveAspectRatio="xMidYMid meet"';
+        return `<svg${nextAttrs}>`;
+      }
+      return `<svg${attrs} style="width:100%;height:auto;"${hasPreserve ? '' : ' preserveAspectRatio="xMidYMid meet"'}>`;
+    });
+  };
 
   // Fetch available templates when modal opens
   useEffect(() => {
@@ -85,10 +108,11 @@ export default function PrintLabelButton({
 
     setIsRendering(true);
     setError(null);
-    setSvgContent(null);
+    setSheetSvgs([]);
+    setSheetMeta(null);
 
     try {
-      const response = await fetch('/api/labels/render', {
+      const response = await fetch('/api/labels/render-letter-sheets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -105,7 +129,14 @@ export default function PrintLabelButton({
         throw new Error(data.message || 'Failed to render label');
       }
 
-      setSvgContent(data.svg);
+      setSheetSvgs(Array.isArray(data.sheets) ? data.sheets : []);
+      setSheetMeta({
+        perSheet: data.perSheet ?? 0,
+        columns: data.columns ?? 0,
+        rows: data.rows ?? 0,
+        rotationUsed: !!data.rotationUsed,
+        totalSheets: data.totalSheets ?? 0
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to render label');
     } finally {
@@ -114,7 +145,7 @@ export default function PrintLabelButton({
   };
 
   const handlePrint = () => {
-    if (!svgContent || !printContainerRef.current) return;
+    if (!sheetSvgs.length || !printContainerRef.current) return;
 
     // Create a new window for printing
     const printWindow = window.open('', '_blank');
@@ -123,10 +154,11 @@ export default function PrintLabelButton({
       return;
     }
 
-    // Build HTML with repeated labels for quantity
-    const labelsHtml = Array(quantity)
-      .fill(svgContent)
-      .map((svg, i) => `<div class="label" style="page-break-after: ${i < quantity - 1 ? 'always' : 'avoid'}; margin-bottom: 20px;">${svg}</div>`)
+    const sheetsHtml = sheetSvgs
+      .map(
+        (svg, i) =>
+          `<div class="sheet" style="page-break-after: ${i < sheetSvgs.length - 1 ? 'always' : 'avoid'};">${svg}</div>`
+      )
       .join('');
 
     printWindow.document.write(`
@@ -135,20 +167,21 @@ export default function PrintLabelButton({
         <head>
           <title>Print Label - ${entityCode}</title>
           <style>
+            @page { size: letter; margin: 0; }
             @media print {
               body { margin: 0; padding: 0; }
-              .label { page-break-inside: avoid; }
-              svg { max-width: 100%; height: auto; }
+              .sheet { page-break-inside: avoid; }
+              svg { width: 8.5in; height: 11in; }
             }
             @media screen {
               body { font-family: sans-serif; padding: 20px; }
-              .label { border: 1px solid #ccc; padding: 10px; margin-bottom: 20px; }
-              svg { max-width: 100%; height: auto; }
+              .sheet { border: 1px solid #ccc; padding: 10px; margin-bottom: 20px; background: #fff; }
+              svg { width: 8.5in; height: 11in; }
             }
           </style>
         </head>
         <body>
-          ${labelsHtml}
+          ${sheetsHtml}
           <script>
             window.onload = function() {
               window.print();
@@ -164,13 +197,44 @@ export default function PrintLabelButton({
   };
 
   const handleDownload = () => {
-    if (!svgContent) return;
+    if (!sheetSvgs.length) return;
+    const safe = entityCode.replace(/[^a-z0-9]/gi, '_');
 
-    const blob = new Blob([svgContent], { type: 'image/svg+xml' });
+    if (sheetSvgs.length === 1) {
+      const blob = new Blob([sheetSvgs[0]], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `label-sheet-${safe}.svg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      return;
+    }
+
+    const html = `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Label Sheets - ${safe}</title>
+    <style>
+      @page { size: letter; margin: 0; }
+      body { margin: 0; padding: 0; }
+      .sheet { page-break-after: always; }
+      svg { width: 8.5in; height: 11in; }
+    </style>
+  </head>
+  <body>
+    ${sheetSvgs.map(svg => `<div class="sheet">${svg}</div>`).join('')}
+  </body>
+</html>`;
+
+    const blob = new Blob([html], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `label-${entityCode.replace(/[^a-z0-9]/gi, '_')}.svg`;
+    link.download = `label-sheets-${safe}.html`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -261,7 +325,8 @@ export default function PrintLabelButton({
                           value={selectedVersionId}
                           onChange={(e) => {
                             setSelectedVersionId(e.target.value);
-                            setSvgContent(null);
+                            setSheetSvgs([]);
+                            setSheetMeta(null);
                           }}
                           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                         >
@@ -312,14 +377,22 @@ export default function PrintLabelButton({
                           'Preview Label'
                         )}
                       </button>
+
+                      {sheetMeta && (
+                        <div className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded p-3">
+                          <div>Layout: {sheetMeta.columns}×{sheetMeta.rows} ({sheetMeta.perSheet}/sheet)</div>
+                          <div>Rotation: {sheetMeta.rotationUsed ? '90°' : 'none'}</div>
+                          <div>Sheets: {sheetSvgs.length}</div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Preview */}
                     <div className="border rounded-lg p-4 bg-gray-50 min-h-64 flex items-center justify-center" ref={printContainerRef}>
-                      {svgContent ? (
+                      {sheetSvgs.length ? (
                         <div 
                           className="w-full"
-                          dangerouslySetInnerHTML={{ __html: svgContent }}
+                          dangerouslySetInnerHTML={{ __html: getPreviewSvg(sheetSvgs[0]) }}
                         />
                       ) : (
                         <div className="text-center text-gray-400">
@@ -335,7 +408,7 @@ export default function PrintLabelButton({
               </div>
 
               <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-                {svgContent && (
+                {sheetSvgs.length > 0 && (
                   <>
                     <button
                       onClick={handlePrint}
@@ -353,7 +426,7 @@ export default function PrintLabelButton({
                       <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                       </svg>
-                      Download SVG
+                      Download {sheetSvgs.length === 1 ? 'SVG' : 'HTML'}
                     </button>
                   </>
                 )}

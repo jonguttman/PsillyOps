@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
     const orderId = await createOrder({
       retailerId: validated.retailerId,
       createdByUserId: session.user.id,
-      requestedShipDate: validated.requestedShipDate,
+      requestedShipDate: validated.requestedShipDate ? new Date(validated.requestedShipDate) : undefined,
       lineItems: validated.lineItems
     });
 

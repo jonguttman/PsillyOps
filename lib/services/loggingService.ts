@@ -84,8 +84,8 @@ export async function logAction({
       action,
       userId: validUserId,
       summary,
-      diff: Object.keys(diff).length > 0 ? diff : null,
-      details: details ? JSON.parse(JSON.stringify(details)) : null,
+      diff: Object.keys(diff).length > 0 ? diff : undefined,
+      details: details ? JSON.parse(JSON.stringify(details)) : undefined,
       tags: allTags
     }
   });

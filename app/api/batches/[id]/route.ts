@@ -10,7 +10,7 @@ import { hasPermission } from '@/lib/auth/rbac';
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // 1. Validate
@@ -29,8 +29,10 @@ export async function GET(
       );
     }
 
+    const { id } = await params;
+
     // 2. Call Service
-    const result = await getBatchDetail(params.id);
+    const result = await getBatchDetail(id);
 
     // 3. Return JSON
     return Response.json(result);
@@ -41,7 +43,7 @@ export async function GET(
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // 1. Validate
@@ -60,6 +62,7 @@ export async function PATCH(
       );
     }
 
+    const { id } = await params;
     const body = await req.json();
     const validated = updateBatchSchema.parse(body);
 
@@ -72,7 +75,7 @@ export async function PATCH(
     };
 
     // 2. Call Service
-    await updateBatch(params.id, updates, session.user.id);
+    await updateBatch(id, updates, session.user.id);
 
     // 3. Return JSON
     return Response.json({ success: true });

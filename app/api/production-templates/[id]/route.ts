@@ -10,7 +10,7 @@ import { hasPermission } from '@/lib/auth/rbac';
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // 1. Validate
@@ -29,8 +29,10 @@ export async function GET(
       );
     }
 
+    const { id } = await params;
+
     // 2. Call Service
-    const template = await getProductionTemplate(params.id);
+    const template = await getProductionTemplate(id);
 
     // 3. Return JSON
     return Response.json(template);
@@ -41,7 +43,7 @@ export async function GET(
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // 1. Validate
@@ -60,11 +62,12 @@ export async function PATCH(
       );
     }
 
+    const { id } = await params;
     const body = await req.json();
     const validated = updateProductionTemplateSchema.parse(body);
 
     // 2. Call Service
-    await updateProductionTemplate(params.id, validated, session.user.id);
+    await updateProductionTemplate(id, validated, session.user.id);
 
     // 3. Return JSON
     return Response.json({ success: true });
@@ -75,7 +78,7 @@ export async function PATCH(
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // 1. Validate
@@ -94,8 +97,10 @@ export async function DELETE(
       );
     }
 
+    const { id } = await params;
+
     // 2. Call Service (soft delete/archive)
-    await archiveProductionTemplate(params.id, session.user.id);
+    await archiveProductionTemplate(id, session.user.id);
 
     // 3. Return JSON
     return Response.json({ success: true });

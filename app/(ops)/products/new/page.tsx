@@ -26,6 +26,10 @@ async function createProduct(formData: FormData) {
   const leadTimeDays = parseInt(formData.get("leadTimeDays") as string, 10) || 0;
   const defaultBatchSizeStr = formData.get("defaultBatchSize") as string;
   const defaultBatchSize = defaultBatchSizeStr ? parseInt(defaultBatchSizeStr, 10) : null;
+  const wholesalePriceStr = formData.get("wholesalePrice") as string;
+  const wholesalePrice = wholesalePriceStr ? parseFloat(wholesalePriceStr) : null;
+  const strainIdValue = formData.get("strainId") as string;
+  const strainId = strainIdValue && strainIdValue !== '' ? strainIdValue : null;
 
   await prisma.product.create({
     data: {
@@ -35,6 +39,8 @@ async function createProduct(formData: FormData) {
       reorderPoint,
       leadTimeDays,
       defaultBatchSize,
+      wholesalePrice,
+      strainId,
       active: true,
     },
   });
@@ -53,6 +59,13 @@ export default async function NewProductPage() {
   if (session.user.role === "REP") {
     redirect("/");
   }
+
+  // Fetch all active strains for the dropdown
+  const strains = await prisma.strain.findMany({
+    where: { active: true },
+    orderBy: { name: 'asc' },
+    select: { id: true, name: true, shortCode: true }
+  });
 
   return (
     <div className="space-y-6">
@@ -172,6 +185,51 @@ export default async function NewProductPage() {
               />
               <p className="mt-1 text-xs text-gray-500">
                 Standard production quantity per batch
+              </p>
+            </div>
+
+            <div>
+              <label htmlFor="wholesalePrice" className="block text-sm font-medium text-gray-700">
+                Wholesale Price ($)
+              </label>
+              <div className="mt-1 relative rounded-md shadow-sm">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <span className="text-gray-500 sm:text-sm">$</span>
+                </div>
+                <input
+                  type="number"
+                  name="wholesalePrice"
+                  id="wholesalePrice"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                  className="block w-full pl-7 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                />
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                Default price per unit for wholesale orders
+              </p>
+            </div>
+
+            <div>
+              <label htmlFor="strainId" className="block text-sm font-medium text-gray-700">
+                Strain
+              </label>
+              <select
+                name="strainId"
+                id="strainId"
+                defaultValue=""
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+              >
+                <option value="">No strain selected</option>
+                {strains.map((strain) => (
+                  <option key={strain.id} value={strain.id}>
+                    {strain.name} ({strain.shortCode})
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-gray-500">
+                Optional: Associate this product with a specific strain
               </p>
             </div>
           </div>

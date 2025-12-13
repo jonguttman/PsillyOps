@@ -11,7 +11,7 @@ import { QCStatus } from '@prisma/client';
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // 1. Validate
@@ -30,12 +30,13 @@ export async function POST(
       );
     }
 
+    const { id } = await params;
     const body = await req.json();
     const validated = setBatchQCStatusSchema.parse(body);
 
     // 2. Call Service
     await setBatchQCStatus(
-      params.id,
+      id,
       validated.qcStatus as QCStatus,
       session.user.id,
       validated.notes

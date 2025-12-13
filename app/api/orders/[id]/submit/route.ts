@@ -8,7 +8,7 @@ import { handleApiError } from '@/lib/utils/errors';
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // 1. Validate
@@ -20,8 +20,10 @@ export async function POST(
       );
     }
 
+    const { id } = await params;
+
     // 2. Call Service
-    const result = await submitOrder(params.id, session.user.id);
+    const result = await submitOrder(id, session.user.id);
 
     // 3. Return JSON
     return Response.json(result);

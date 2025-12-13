@@ -167,6 +167,134 @@ After logging in for the first time:
    - Confirm the removal
 6. Click **"Back to Product"** when done
 
+### Managing Strains
+
+Strains are a lookup table used to categorize products by their active ingredient source (e.g., "Penis Envy", "Golden Teacher", "Lions Mane"). Products can optionally be associated with a strain, enabling better organization, AI command resolution, and filtering.
+
+#### Strain Management Page (ADMIN Only)
+
+1. Navigate to **Strains** in the sidebar
+2. View all active strains with short code, aliases, and product count
+3. Click **"Show Archived"** to view archived strains
+
+#### Creating a New Strain
+
+1. Fill in the form at the top of the Strains page:
+   - **Name**: Full strain name (e.g., "Penis Envy")
+   - **Short Code**: Abbreviation for AI commands (e.g., "PE")
+   - **Aliases**: Optional comma-separated alternative names (e.g., "P. Envy, PenisEnvy")
+2. Click **"Add Strain"**
+3. The strain will appear in the list below
+
+#### Pre-seeded Strains
+
+The following strains are pre-seeded:
+
+| Short Code | Name | Example Aliases |
+|------------|------|-----------------|
+| **PE** | Penis Envy | P. Envy, PenisEnvy |
+| **GT** | Golden Teacher | GoldenTeacher |
+| **APE** | Albino Penis Envy | Albino PE |
+| **FMP** | Full Moon Party | FullMoonParty |
+| **LM** | Lions Mane | Lion's Mane, LionsMane |
+| **RE** | Reishi | Ganoderma |
+| **CORD** | Cordyceps | Cordyceps Militaris |
+| **CHAG** | Chaga | Inonotus obliquus |
+
+#### Assigning Strains to Products
+
+1. When creating or editing a product, select a strain from the **Strain** dropdown
+2. The strain badge will appear in:
+   - Product header (e.g., "PE: Penis Envy")
+   - Product details grid
+   - Products list strain column
+
+#### AI Command Resolution
+
+The AI command system understands strain abbreviations:
+
+```
+"Mighty Caps PE" → Product with name containing "Mighty Caps" AND strainId = Penis Envy
+"MC-PE" → Product with SKU "MC-PE" (exact match)
+"Received 100 GT" → Resolves GT to Golden Teacher strain
+```
+
+#### Archiving Strains
+
+1. Click **"Archive"** next to a strain
+2. Strains with active products cannot be archived (button is disabled)
+3. To archive a strain with products, first remove the strain from all products
+4. Archived strains can be restored by clicking **"Restore"** when viewing archived strains
+
+### CSV Product Import (ADMIN Only)
+
+Bulk import products using CSV format. Supports strain assignment via name or short code.
+
+#### CSV Format
+
+```csv
+name,sku,strain,unit,reorder_point,wholesale_price,default_batch_size
+Mighty Caps - Penis Envy,MC-PE,PE,jar,50,24.99,100
+Mighty Caps - Golden Teacher,MC-GT,Golden Teacher,jar,50,24.99,100
+Basic Caps,BASIC-001,,jar,25,19.99,50
+```
+
+| Column | Required | Description |
+|--------|----------|-------------|
+| name | Yes | Product display name |
+| sku | Yes | Unique product SKU |
+| strain | No | Strain name or short code (e.g., "PE" or "Penis Envy") |
+| unit | Yes | Unit of measure (jar, bottle, etc.) |
+| reorder_point | No | Default: 0 |
+| wholesale_price | No | Default wholesale price |
+| default_batch_size | No | Standard batch size |
+
+#### Import Validation
+
+The import process validates:
+- All required columns are present
+- SKUs are unique (not in database and not duplicated in file)
+- Strains exist (if provided)
+- Numeric fields are valid
+
+#### How to Import
+
+1. Prepare your CSV file following the format above
+2. Send a POST request to `/api/products/import` with the CSV data:
+```json
+{
+  "csvData": "name,sku,strain,unit,reorder_point,wholesale_price,default_batch_size\nMighty Caps - PE,MC-PE,PE,jar,50,24.99,100"
+}
+```
+3. The response includes success count and any row-level errors:
+```json
+{
+  "success": true,
+  "totalRows": 10,
+  "successCount": 10,
+  "errorCount": 0,
+  "errors": [],
+  "createdProducts": [{ "sku": "MC-PE", "name": "Mighty Caps - PE", "strainName": "Penis Envy" }]
+}
+```
+
+#### Error Handling
+
+If validation fails, no products are created. The response includes detailed errors:
+```json
+{
+  "success": false,
+  "totalRows": 10,
+  "successCount": 0,
+  "errorCount": 2,
+  "errors": [
+    { "row": 3, "sku": "MC-PE", "errors": ["SKU \"MC-PE\" already exists"] },
+    { "row": 5, "sku": "NEW-001", "errors": ["Unknown strain: \"INVALID\""] }
+  ],
+  "createdProducts": []
+}
+```
+
 ### Managing Materials
 
 Materials are the raw ingredients, packaging components, and other inputs needed to produce finished products. PsillyOps tracks materials with full vendor relationships, cost history, and attachments.
@@ -1987,28 +2115,52 @@ Labels can be printed from any detail page (Batch, Product, or Inventory):
 1. Navigate to the item detail page
 2. Click **Print Labels** button
 3. Select a label version (active version is pre-selected)
-4. Set the quantity (1-100)
-5. Click **Preview Label** to see the rendered label with QR code
-6. Click **Print** to open the browser print dialog
-7. Or click **Download SVG** to save the rendered label
+4. Set the quantity (1-1000)
+5. Click **Preview** to see the first rendered sheet
+6. Click **Print** to open the browser print dialog (one page per sheet)
+7. Or click **Download** to save the rendered output (single `.svg` for 1 sheet, or a single `.html` containing all sheets)
 
-### QR Code Behavior
+#### Label Printing (New Behavior: Auto-Tiled Letter Sheets)
 
-QR codes encode a structured JSON payload:
+Labels now print as **auto-tiled letter-size sheets**, not one label per page:
 
-```json
-{
-  "type": "BATCH",
-  "id": "batch_123",
-  "code": "PE-2024-09",
-  "url": "https://psillyops.app/qr/batch/batch_123"
-}
-```
+- **Paper size**: 8.5 × 11 inches (Letter)
+- **Margins**: 0.25 inch on all sides
+- **Auto-tiling**: labels are tiled left-to-right, top-to-bottom automatically
+- **Auto-rotation**: labels rotate 90° **only if** it increases how many fit per sheet
+- **No scaling**: labels are never scaled—PsillyOps uses the physical `width`/`height` declared in the SVG
 
-- **type**: Entity type (PRODUCT, BATCH, INVENTORY)
-- **id**: Unique identifier
-- **code**: Human-readable code (SKU, batch code, lot number)
-- **url**: Full URL to the entity in PsillyOps
+#### Printing Always Uses Token-Based QR Codes
+
+Every printed label gets its own unique token:
+
+- **One QR per physical label**
+- **QR content**: URL-only, in the form `${baseUrl}/qr/${token}`
+- **Scan route**: `/qr/{token}` resolves server-side to the correct Product/Batch/Inventory entity
+
+#### Label Preview (Sheet Preview)
+
+The label preview is designed to match print layout exactly while remaining safe:
+
+- **Sheet Preview reflects actual print tiling** (Letter size + margins + rotation rule)
+- **Preview uses a fixed dummy token**: `qr_PREVIEW_TOKEN_DO_NOT_USE`
+- **Preview never creates or stores tokens**
+- **Why preview QR codes won’t scan**: the dummy token is not a real token in the database
+
+#### QR Code Notes (Small-Label Optimized)
+
+QR codes are optimized for small physical labels:
+
+- **Vector SVG** (not raster PNG)
+- **Error correction**: Level `L` (lowest density for better scan reliability at small sizes)
+- **High contrast**: black on white only
+- **URL-only encoding**: avoids dense payloads that become unscannable when printed small
+
+#### Why This Matters
+
+- **Laser cutting**: predictable sheet geometry (letter size + margins) makes sheet-by-sheet cutting reliable
+- **Scan reliability**: vector QR + URL-only + ECC `L` improves scanning on small labels
+- **Traceability**: token QRs give each physical label a unique identity for revocation and recall workflows
 
 ### Version Immutability
 

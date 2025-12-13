@@ -35,9 +35,9 @@ export default async function InventoryPage({
   if (params.status) where.status = params.status;
   if (params.search) {
     where.OR = [
-      { product: { name: { contains: params.search, mode: 'insensitive' } } },
-      { material: { name: { contains: params.search, mode: 'insensitive' } } },
-      { lotNumber: { contains: params.search, mode: 'insensitive' } }
+      { product: { name: { contains: params.search } } },
+      { material: { name: { contains: params.search } } },
+      { lotNumber: { contains: params.search } }
     ];
   }
 

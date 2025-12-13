@@ -240,6 +240,9 @@ export default async function LabelsPage() {
                               <LabelPreviewButton 
                                 versionId={version.id} 
                                 entityType={template.entityType}
+                                initialQrScale={version.qrScale}
+                                initialQrOffsetX={version.qrOffsetX}
+                                initialQrOffsetY={version.qrOffsetY}
                               />
                               {canManage && (
                                 version.isActive ? (

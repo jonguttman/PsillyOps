@@ -122,6 +122,7 @@ enum LabelEntityType {
 
 enum MaterialCategory {
   RAW_BOTANICAL
+  RAW_MUSHROOM
   ACTIVE_INGREDIENT
   EXCIPIENT
   FLAVORING
@@ -168,6 +169,20 @@ model User {
   @@index([role])
 }
 
+model Strain {
+  id        String   @id @default(cuid())
+  name      String   @unique           // "Penis Envy"
+  shortCode String   @unique           // "PE"
+  aliases   Json     @default("[]")    // ["P. Envy", "PenisEnvy"] - stored as JSON for SQLite compatibility
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  
+  products  Product[]
+  materials RawMaterial[]
+  
+  @@index([shortCode])
+}
+
 model Product {
   id                String   @id @default(cuid())
   name              String
@@ -177,11 +192,13 @@ model Product {
   leadTimeDays      Int      @default(0)
   reorderPoint      Int      @default(0)
   wholesalePrice    Float?   // Default wholesale price per unit
+  strainId          String?  // Optional reference to strain
   active            Boolean  @default(true)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   
   // Relations
+  strain            Strain?  @relation(fields: [strainId], references: [id])
   bom               BOMItem[]
   inventory         InventoryItem[]
   orderLines        OrderLineItem[]
@@ -191,6 +208,7 @@ model Product {
   
   @@index([sku])
   @@index([active])
+  @@index([strainId])
 }
 
 model RawMaterial {
@@ -209,10 +227,12 @@ model RawMaterial {
   expiryWarningDays Int?
   active            Boolean          @default(true)
   preferredVendorId String?
+  strainId          String?          // Optional reference to strain
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
   
   // Relations
+  strain                    Strain?                   @relation(fields: [strainId], references: [id])
   preferredVendor           Vendor?                   @relation("PreferredVendor", fields: [preferredVendorId], references: [id])
   vendors                   MaterialVendor[]
   bomUsage                  BOMItem[]
@@ -226,6 +246,7 @@ model RawMaterial {
   @@index([active])
   @@index([preferredVendorId])
   @@index([category])
+  @@index([strainId])
 }
 
 model Vendor {
@@ -772,9 +793,13 @@ model LabelTemplateVersion {
   version     String        // e.g., "1.0", "1.1", "2.0"
   fileUrl     String        // Relative path to SVG file
   qrTemplate  String?       // e.g., https://psillyops.app/qr/batch/{{id}}
+  qrScale     Float         @default(1.0)  // Scale factor for QR code (0.1 - 1.5)
+  qrOffsetX   Float         @default(0)    // Horizontal offset in SVG units (positive = right)
+  qrOffsetY   Float         @default(0)    // Vertical offset in SVG units (positive = down)
   isActive    Boolean       @default(false)
   notes       String?
   createdAt   DateTime      @default(now())
+  updatedAt   DateTime?     // When QR scale or settings were last updated
   
   template    LabelTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
   tokens      QRToken[]

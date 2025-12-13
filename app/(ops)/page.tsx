@@ -128,7 +128,7 @@ export default async function OpsHomePage() {
                             <div>
                               <p className="text-sm text-gray-900">{log.summary}</p>
                               <p className="mt-0.5 text-xs text-gray-500">
-                                {log.tags.join(', ')}
+                                {Array.isArray(log.tags) ? log.tags.join(', ') : ''}
                               </p>
                             </div>
                             <div className="whitespace-nowrap text-right text-xs text-gray-500">

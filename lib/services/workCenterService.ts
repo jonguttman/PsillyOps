@@ -66,7 +66,7 @@ export async function createWorkCenter(params: {
 
   // Check for duplicate name
   const existing = await prisma.workCenter.findFirst({
-    where: { name: { equals: name, mode: 'insensitive' } }
+    where: { name: { equals: name } }
   });
 
   if (existing) {
@@ -120,7 +120,7 @@ export async function updateWorkCenter(
   if (updates.name && updates.name !== workCenter.name) {
     const existing = await prisma.workCenter.findFirst({
       where: {
-        name: { equals: updates.name, mode: 'insensitive' },
+        name: { equals: updates.name },
         id: { not: id }
       }
     });

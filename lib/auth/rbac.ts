@@ -150,34 +150,34 @@ export function isAdmin(userRole: UserRole): boolean {
  * Check if user can manage orders (create/update)
  */
 export function canManageOrders(userRole: UserRole): boolean {
-  return [UserRole.ADMIN, UserRole.REP].includes(userRole);
+  return ([UserRole.ADMIN, UserRole.REP] as UserRole[]).includes(userRole);
 }
 
 /**
  * Check if user can manage production
  */
 export function canManageProduction(userRole: UserRole): boolean {
-  return [UserRole.ADMIN, UserRole.PRODUCTION].includes(userRole);
+  return ([UserRole.ADMIN, UserRole.PRODUCTION] as UserRole[]).includes(userRole);
 }
 
 /**
  * Check if user can manage warehouse operations
  */
 export function canManageWarehouse(userRole: UserRole): boolean {
-  return [UserRole.ADMIN, UserRole.WAREHOUSE].includes(userRole);
+  return ([UserRole.ADMIN, UserRole.WAREHOUSE] as UserRole[]).includes(userRole);
 }
 
 /**
  * Check if user can use AI command features
  */
 export function canUseAICommand(userRole: UserRole): boolean {
-  return [UserRole.ADMIN, UserRole.PRODUCTION, UserRole.WAREHOUSE].includes(userRole);
+  return ([UserRole.ADMIN, UserRole.PRODUCTION, UserRole.WAREHOUSE] as UserRole[]).includes(userRole);
 }
 
 /**
  * Check if user can use AI ingest features
  */
 export function canUseAIIngest(userRole: UserRole): boolean {
-  return [UserRole.ADMIN, UserRole.PRODUCTION, UserRole.WAREHOUSE].includes(userRole);
+  return ([UserRole.ADMIN, UserRole.PRODUCTION, UserRole.WAREHOUSE] as UserRole[]).includes(userRole);
 }
 

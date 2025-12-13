@@ -81,9 +81,6 @@ export async function interpretNaturalLanguageCommand(
   // 3. Adjust inventory (add/remove/adjust)
   if (lowerText.includes('adjust') || lowerText.match(/\b(add|remove|subtract|lost|damaged|spilled)\b/)) {
     const result = parseAdjustCommand(text);
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aiClient.ts:86',message:'parseAdjustCommand result',data:{resultExists:!!result,command:result?.command},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,C'})}).catch(()=>{});
-    // #endregion
     if (result) return result;
   }
   
@@ -111,9 +108,6 @@ export async function interpretNaturalLanguageCommand(
   const genericResult = parseGenericQuantityCommand(text);
   if (genericResult) return genericResult;
   
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aiClient.ts:115',message:'No pattern matched - throwing AIClientError',data:{text},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,C'})}).catch(()=>{});
-  // #endregion
   // If no pattern matched, throw error
   throw new AIClientError(
     'Could not understand command. Try formats like:\n' +
@@ -371,9 +365,6 @@ function parseMoveCommand(text: string): RawAICommandResult | null {
 }
 
 function parseAdjustCommand(text: string): RawAICommandResult | null {
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aiClient.ts:367',message:'parseAdjustCommand entered',data:{text},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
-  // #endregion
   const normalized = text.trim();
   const lowerText = normalized.toLowerCase();
   
@@ -387,9 +378,6 @@ function parseAdjustCommand(text: string): RawAICommandResult | null {
   
   // Pattern 1: "Adjust ITEM down/up by QTY REASON"
   let match = normalized.match(/adjust\s+(.+?)\s+(?:down|up)\s+(?:by\s+)?(\d+(?:\.\d+)?)\s*(.*)/i);
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aiClient.ts:383',message:'Pattern 1 result',data:{matched:!!match,pattern:'down/up'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
-  // #endregion
   if (match) {
     const delta = parseFloat(match[2]) * (direction || -1);
     return {
@@ -405,9 +393,6 @@ function parseAdjustCommand(text: string): RawAICommandResult | null {
   
   // Pattern 2a: "Adjust ITEM to QTY" - set to specific quantity (needs current qty lookup)
   match = normalized.match(/adjust\s+(.+?)\s+to\s+(\d+(?:\.\d+)?)\s*(.*)/i);
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aiClient.ts:405',message:'Pattern 2a (to qty) result',data:{matched:!!match,groups:match?[match[1],match[2],match[3]]:null},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
-  // #endregion
   if (match) {
     // For "adjust X to Y" we need to set a target quantity
     // We'll use a special marker to indicate this is a "set to" operation
@@ -425,9 +410,6 @@ function parseAdjustCommand(text: string): RawAICommandResult | null {
 
   // Pattern 2b: "Adjust ITEM by QTY" or "Adjust ITEM QTY"
   match = normalized.match(/adjust\s+(.+?)\s+(?:by\s+)?(-?\d+(?:\.\d+)?)\s*(.*)/i);
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aiClient.ts:425',message:'Pattern 2b (by qty) result',data:{matched:!!match,groups:match?[match[1],match[2],match[3]]:null},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
-  // #endregion
   if (match) {
     let delta = parseFloat(match[2]);
     if (direction) delta = Math.abs(delta) * direction;
@@ -475,9 +457,6 @@ function parseAdjustCommand(text: string): RawAICommandResult | null {
     };
   }
   
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aiClient.ts:460',message:'parseAdjustCommand returning null - no pattern matched',data:{text},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,C'})}).catch(()=>{});
-  // #endregion
   return null;
 }
 

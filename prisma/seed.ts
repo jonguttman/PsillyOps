@@ -24,6 +24,7 @@ async function main() {
   await prisma.materialVendor.deleteMany();
   await prisma.retailer.deleteMany();
   await prisma.product.deleteMany();
+  await prisma.strain.deleteMany();
   await prisma.rawMaterial.deleteMany();
   await prisma.vendor.deleteMany();
   await prisma.location.deleteMany();
@@ -390,6 +391,81 @@ async function main() {
 
   console.log('✅ Created locations');
 
+  // 4.5 CREATE STRAINS
+  const strainPE = await prisma.strain.create({
+    data: {
+      name: 'Penis Envy',
+      shortCode: 'PE',
+      aliases: JSON.stringify(['P. Envy', 'PenisEnvy']),
+      active: true
+    }
+  });
+
+  const strainGT = await prisma.strain.create({
+    data: {
+      name: 'Golden Teacher',
+      shortCode: 'GT',
+      aliases: JSON.stringify(['GoldenTeacher']),
+      active: true
+    }
+  });
+
+  const strainAPE = await prisma.strain.create({
+    data: {
+      name: 'Albino Penis Envy',
+      shortCode: 'APE',
+      aliases: JSON.stringify(['Albino PE', 'AlbinoPenisEnvy']),
+      active: true
+    }
+  });
+
+  const strainFMP = await prisma.strain.create({
+    data: {
+      name: 'Full Moon Party',
+      shortCode: 'FMP',
+      aliases: JSON.stringify(['FullMoonParty']),
+      active: true
+    }
+  });
+
+  const strainLM = await prisma.strain.create({
+    data: {
+      name: 'Lions Mane',
+      shortCode: 'LM',
+      aliases: JSON.stringify(["Lion's Mane", 'LionsMane']),
+      active: true
+    }
+  });
+
+  const strainRE = await prisma.strain.create({
+    data: {
+      name: 'Reishi',
+      shortCode: 'RE',
+      aliases: JSON.stringify(['Ganoderma']),
+      active: true
+    }
+  });
+
+  const strainCORD = await prisma.strain.create({
+    data: {
+      name: 'Cordyceps',
+      shortCode: 'CORD',
+      aliases: JSON.stringify(['Cordyceps Militaris']),
+      active: true
+    }
+  });
+
+  const strainCHAG = await prisma.strain.create({
+    data: {
+      name: 'Chaga',
+      shortCode: 'CHAG',
+      aliases: JSON.stringify(['Inonotus obliquus']),
+      active: true
+    }
+  });
+
+  console.log('✅ Created strains');
+
   // 5. CREATE PRODUCTS
   const hercules = await prisma.product.create({
     data: {
@@ -411,6 +487,7 @@ async function main() {
       defaultBatchSize: 100,
       leadTimeDays: 3,
       reorderPoint: 40,
+      strainId: strainLM.id,
       active: true
     }
   });
@@ -423,6 +500,7 @@ async function main() {
       defaultBatchSize: 80,
       leadTimeDays: 3,
       reorderPoint: 30,
+      strainId: strainRE.id,
       active: true
     }
   });
@@ -435,6 +513,7 @@ async function main() {
       defaultBatchSize: 80,
       leadTimeDays: 3,
       reorderPoint: 30,
+      strainId: strainCORD.id,
       active: true
     }
   });
@@ -447,6 +526,49 @@ async function main() {
       defaultBatchSize: 50,
       leadTimeDays: 3,
       reorderPoint: 20,
+      active: true
+    }
+  });
+
+  // Mighty Caps product line with strain variants
+  const mightyCapsPE = await prisma.product.create({
+    data: {
+      name: 'Mighty Caps - Penis Envy',
+      sku: 'MC-PE',
+      unitOfMeasure: 'jar',
+      defaultBatchSize: 100,
+      leadTimeDays: 3,
+      reorderPoint: 25,
+      wholesalePrice: 24.99,
+      strainId: strainPE.id,
+      active: true
+    }
+  });
+
+  const mightyCapsGT = await prisma.product.create({
+    data: {
+      name: 'Mighty Caps - Golden Teacher',
+      sku: 'MC-GT',
+      unitOfMeasure: 'jar',
+      defaultBatchSize: 100,
+      leadTimeDays: 3,
+      reorderPoint: 25,
+      wholesalePrice: 24.99,
+      strainId: strainGT.id,
+      active: true
+    }
+  });
+
+  const mightyCapsFMP = await prisma.product.create({
+    data: {
+      name: 'Mighty Caps - Full Moon Party',
+      sku: 'MC-FMP',
+      unitOfMeasure: 'jar',
+      defaultBatchSize: 100,
+      leadTimeDays: 3,
+      reorderPoint: 25,
+      wholesalePrice: 24.99,
+      strainId: strainFMP.id,
       active: true
     }
   });

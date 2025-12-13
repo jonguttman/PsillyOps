@@ -117,7 +117,7 @@ export async function createProductionOrdersForShortages(
         status: 'PLANNED',
         createdByUserId: userId,
         linkedRetailerOrderIds: shortage.linkedOrderIds || [],
-        materialRequirements: materialRequirements
+        materialRequirements: materialRequirements as any
       }
     });
 

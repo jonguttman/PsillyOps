@@ -39,9 +39,9 @@ export async function getInventoryList(filter: InventoryFilter = {}) {
 
   if (filter.search) {
     where.OR = [
-      { product: { name: { contains: filter.search, mode: 'insensitive' } } },
-      { material: { name: { contains: filter.search, mode: 'insensitive' } } },
-      { lotNumber: { contains: filter.search, mode: 'insensitive' } }
+      { product: { name: { contains: filter.search } } },
+      { material: { name: { contains: filter.search } } },
+      { lotNumber: { contains: filter.search } }
     ];
   }
 

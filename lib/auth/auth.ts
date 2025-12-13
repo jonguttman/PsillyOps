@@ -8,7 +8,7 @@ import { compare } from 'bcryptjs';
 import { UserRole } from '@prisma/client';
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
-  adapter: PrismaAdapter(prisma),
+  adapter: PrismaAdapter(prisma) as any,
   session: {
     strategy: 'jwt'
   },
@@ -86,7 +86,7 @@ declare module 'next-auth' {
   }
 }
 
-declare module 'next-auth/jwt' {
+declare module '@auth/core/jwt' {
   interface JWT {
     id: string;
     role: UserRole;

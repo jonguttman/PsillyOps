@@ -116,13 +116,13 @@ export default function MarkdownRenderer({ content }: MarkdownRendererProps) {
     },
     
     // Pre element wrapper for code blocks
-    pre: ({ children, ...props }) => {
+    pre: ({ children }) => {
       // Check if the child is a mermaid code block (already wrapped)
-      const child = children as React.ReactElement;
+      const child = children as React.ReactElement<{ className?: string }>;
       if (child?.props?.className?.includes('language-mermaid')) {
         return <>{children}</>;
       }
-      return <div {...props}>{children}</div>;
+      return <div>{children}</div>;
     },
     
     // Tables with enhanced styling

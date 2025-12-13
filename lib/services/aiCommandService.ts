@@ -29,6 +29,7 @@ import {
   applyLocationCorrection,
   recordCorrection 
 } from './aiCorrectionMemory';
+import { resolveStrainRef } from './strainService';
 
 // ========================================
 // COMMAND TYPE DEFINITIONS
@@ -256,6 +257,7 @@ export async function resolveMaterialRef(ref: string): Promise<{
 
 /**
  * Resolve a product reference to a product ID
+ * Supports strain-aware resolution: "Mighty Caps PE" or "Mighty Caps - Penis Envy"
  */
 export async function resolveProductRef(ref: string): Promise<{
   id: string;
@@ -265,12 +267,28 @@ export async function resolveProductRef(ref: string): Promise<{
   // Apply any learned corrections first
   const correctedRef = applyProductCorrection(ref);
   
-  // Try exact SKU match first
+  // Try exact SKU match first (highest priority)
   const bySku = await prisma.product.findFirst({
     where: { sku: correctedRef.toUpperCase(), active: true },
     select: { id: true, name: true, sku: true }
   });
   if (bySku) return bySku;
+
+  // Try to detect and resolve strain in the reference
+  const { productPart, strainId } = await parseProductWithStrain(correctedRef);
+
+  // If we have a strain, try to find product with matching strain
+  if (strainId && productPart) {
+    const withStrain = await prisma.product.findFirst({
+      where: { 
+        name: { contains: productPart },
+        strainId: strainId,
+        active: true 
+      },
+      select: { id: true, name: true, sku: true }
+    });
+    if (withStrain) return withStrain;
+  }
 
   // Try name contains match
   const byName = await prisma.product.findFirst({
@@ -292,7 +310,64 @@ export async function resolveProductRef(ref: string): Promise<{
     }
   }
 
+  // If we found a strain but couldn't match with product part, try strain-only match
+  if (strainId) {
+    const byStrainOnly = await prisma.product.findFirst({
+      where: { strainId: strainId, active: true },
+      select: { id: true, name: true, sku: true }
+    });
+    if (byStrainOnly) return byStrainOnly;
+  }
+
   return null;
+}
+
+/**
+ * Parse a product reference to extract the product name part and strain reference
+ * Examples:
+ *   "Mighty Caps PE" -> { productPart: "Mighty Caps", strainId: "<id>" }
+ *   "Mighty Caps - Penis Envy" -> { productPart: "Mighty Caps", strainId: "<id>" }
+ *   "MC-PE" -> { productPart: "MC", strainId: "<id>" }
+ */
+async function parseProductWithStrain(ref: string): Promise<{
+  productPart: string | null;
+  strainId: string | null;
+}> {
+  const normalizedRef = ref.trim();
+  
+  // Pattern 1: "Product - Strain" format (e.g., "Mighty Caps - Penis Envy")
+  const dashMatch = normalizedRef.match(/^(.+?)\s*[-–]\s*(.+)$/);
+  if (dashMatch) {
+    const [, productPart, strainPart] = dashMatch;
+    const strain = await resolveStrainRef(strainPart.trim());
+    if (strain) {
+      return { productPart: productPart.trim(), strainId: strain.id };
+    }
+  }
+
+  // Pattern 2: SKU format with strain suffix (e.g., "MC-PE", "MC-GT")
+  const skuMatch = normalizedRef.match(/^([A-Z]+)-([A-Z]+)$/i);
+  if (skuMatch) {
+    const [, productCode, strainCode] = skuMatch;
+    const strain = await resolveStrainRef(strainCode);
+    if (strain) {
+      return { productPart: productCode.trim(), strainId: strain.id };
+    }
+  }
+
+  // Pattern 3: "Product Strain" format - last word as strain (e.g., "Mighty Caps PE")
+  const words = normalizedRef.split(/\s+/);
+  if (words.length >= 2) {
+    const lastWord = words[words.length - 1];
+    const strain = await resolveStrainRef(lastWord);
+    if (strain) {
+      const productPart = words.slice(0, -1).join(' ');
+      return { productPart, strainId: strain.id };
+    }
+  }
+
+  // No strain detected
+  return { productPart: null, strainId: null };
 }
 
 /**
@@ -508,9 +583,9 @@ export async function interpretCommand(
         data: {
           userId: validUserId,
           inputText,
-          normalized: null,
+          normalized: undefined,
           status: AICommandStatus.FAILED,
-          aiResult: null,
+          aiResult: undefined,
           error: error.message,
         }
       });
@@ -557,7 +632,7 @@ export async function interpretCommand(
       normalized: command.command,
       status: AICommandStatus.PENDING,
       aiResult: rawResult as any,
-      executedPayload: null,
+      executedPayload: undefined,
     }
   });
 
@@ -1164,7 +1239,7 @@ async function executeCompleteBatch(
   const fgLocation = await prisma.location.findFirst({
     where: { 
       OR: [
-        { name: { contains: 'Finished', mode: 'insensitive' } },
+        { name: { contains: 'Finished' } },
         { isDefaultShipping: true }
       ],
       active: true 

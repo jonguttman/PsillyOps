@@ -101,7 +101,7 @@ export async function createProductionTemplate(params: {
   // Check for duplicate template name for this product
   const existing = await prisma.productionTemplate.findFirst({
     where: {
-      name: { equals: name, mode: 'insensitive' },
+      name: { equals: name },
       productId
     }
   });
@@ -170,7 +170,7 @@ export async function updateProductionTemplate(
   if (updates.name && updates.name !== template.name) {
     const existing = await prisma.productionTemplate.findFirst({
       where: {
-        name: { equals: updates.name, mode: 'insensitive' },
+        name: { equals: updates.name },
         productId: template.productId,
         id: { not: id }
       }

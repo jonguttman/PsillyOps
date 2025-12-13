@@ -689,32 +689,33 @@ diff: { status: ['DRAFT', 'SUBMITTED'], quantity: [100, 120] }
 - Filterable by entity, user, tags, date range
 - Per-entity history views
 
-### ✅ Database Schema (19 Models)
+### ✅ Database Schema (20 Models)
 1. User
-2. Product
-3. RawMaterial (with category, MOQ, description)
-4. Vendor (with contactName)
-5. MaterialVendor (with MOQ, notes, preferred flag)
-6. MaterialCostHistory (NEW - tracks price changes)
-7. MaterialAttachment (NEW - stores document links)
-8. BOMItem
-9. Location
-10. Batch
-11. BatchMaker
-12. InventoryItem
-13. Retailer
-14. RetailerOrder
-15. OrderLineItem
-16. ProductionOrder
-17. PurchaseOrder
-18. PurchaseOrderLineItem
-19. ActivityLog
+2. Product (with strainId)
+3. Strain (NEW - lookup table for product strains)
+4. RawMaterial (with category, MOQ, description)
+5. Vendor (with contactName)
+6. MaterialVendor (with MOQ, notes, preferred flag)
+7. MaterialCostHistory (tracks price changes)
+8. MaterialAttachment (stores document links)
+9. BOMItem
+10. Location
+11. Batch
+12. BatchMaker
+13. InventoryItem
+14. Retailer
+15. RetailerOrder
+16. OrderLineItem
+17. ProductionOrder
+18. PurchaseOrder
+19. PurchaseOrderLineItem
+20. ActivityLog
 
 **Enums:**
 - UserRole, OrderStatus, ProductionStatus, BatchStatus
 - InventoryType, InventoryStatus, PurchaseOrderStatus
 - ActivityEntity (with VENDOR)
-- MaterialCategory (NEW)
+- MaterialCategory
 
 **All relationships, indexes, and constraints implemented.**
 
@@ -1984,6 +1985,111 @@ Domain-level logging is preserved through existing services.
 
 ---
 
+## 🧬 Strain Support Module
+
+### Overview
+
+The Strain Support module provides a lookup table for categorizing products by their active ingredient source. It enables:
+
+- Strain-specific products (e.g., "Mighty Caps - Penis Envy")
+- AI command resolution (e.g., "PE" → "Penis Envy")
+- CSV product import with strain validation
+- Product filtering by strain
+
+### Module Architecture
+
+```
+lib/services/
+└── strainService.ts            # Strain CRUD and AI resolution
+
+app/api/strains/
+├── route.ts                    # List/create strains
+└── [id]/
+    └── route.ts                # Get/update/archive strain
+
+app/api/products/import/
+└── route.ts                    # CSV bulk import endpoint
+
+app/(ops)/strains/
+└── page.tsx                    # Strain management page (ADMIN only)
+```
+
+### Data Model
+
+```mermaid
+erDiagram
+    Strain ||--o{ Product : "has products"
+    
+    Strain {
+        string id PK
+        string name UK "Penis Envy"
+        string shortCode UK "PE"
+        json aliases "['P. Envy']"
+        boolean active
+        datetime createdAt
+    }
+    
+    Product {
+        string id PK
+        string name
+        string sku UK
+        string strainId FK "optional"
+    }
+```
+
+### Service Layer Functions
+
+**strainService.ts:**
+
+| Function | Description |
+|----------|-------------|
+| `listStrains(filter?)` | List strains with search and inactive filter |
+| `getStrain(id)` | Get strain with associated products |
+| `getStrainByCode(shortCode)` | Get by short code (case-insensitive) |
+| `getStrainByName(name)` | Get by name (case-insensitive) |
+| `resolveStrainRef(ref)` | AI resolution: shortCode → name → partial → aliases |
+| `createStrain(data, userId?)` | Create with activity logging |
+| `updateStrain(id, data, userId?)` | Update with activity logging |
+| `archiveStrain(id, userId?, force?)` | Soft delete with product check |
+
+### AI Integration
+
+**aiCommandService.ts enhancements:**
+
+- `resolveProductRef()` now detects strain references
+- `parseProductWithStrain()` extracts product part and strain ID
+- Supports patterns:
+  - `"Mighty Caps - Penis Envy"` → product + strain
+  - `"MC-PE"` → SKU match or product code + strain code
+  - `"Mighty Caps PE"` → product + strain code (last word)
+
+### Pre-seeded Strains
+
+| Short Code | Name | Aliases |
+|------------|------|---------|
+| PE | Penis Envy | P. Envy, PenisEnvy |
+| GT | Golden Teacher | GoldenTeacher |
+| APE | Albino Penis Envy | Albino PE |
+| FMP | Full Moon Party | FullMoonParty |
+| LM | Lions Mane | Lion's Mane, LionsMane |
+| RE | Reishi | Ganoderma |
+| CORD | Cordyceps | Cordyceps Militaris |
+| CHAG | Chaga | Inonotus obliquus |
+
+### CSV Import Format
+
+```csv
+name,sku,strain,unit,reorder_point,wholesale_price,default_batch_size
+Mighty Caps - PE,MC-PE,PE,jar,50,24.99,100
+```
+
+- Strain column accepts name or shortCode (case-insensitive)
+- Validates all strains exist before insertion
+- Uses transaction for atomic insert
+- Returns row-level error summary
+
+---
+
 ## 🏷️ Label Templates Module
 
 ### Overview
@@ -2017,8 +2123,16 @@ app/api/labels/
 │   └── [id]/
 │       └── activate/
 │           └── route.ts      # Activate/deactivate version
-└── render/
-    └── route.ts              # Render SVG with QR injection
+├── preview/
+│   └── route.ts              # Single-label template preview (dummy token)
+├── preview-sheet/
+│   └── route.ts              # Letter sheet preview (auto-tiling, dummy token)
+├── render/
+│   └── route.ts              # Render a single label SVG with QR injection
+├── render-with-tokens/
+│   └── route.ts              # Render N individual label SVGs (token-based)
+└── render-letter-sheets/
+    └── route.ts              # Render letter-size sheets (auto-tiling, token-based)
 
 components/labels/
 ├── LabelUploadForm.tsx       # Version upload modal
@@ -2066,18 +2180,45 @@ interface LabelStorage {
 
 **LocalLabelStorage** implements this for filesystem storage. Future cloud storage (S3/R2/Vercel Blob) can be added without schema changes.
 
-### QR Payload Format
+### QR Strategy (Token URLs + Small-Label Optimization)
 
-QR codes encode structured JSON payloads:
+Printing uses token-based QR URLs for per-label traceability:
 
-```typescript
-interface QRPayload {
-  type: 'PRODUCT' | 'BATCH' | 'INVENTORY';
-  id: string;       // Entity ID
-  code: string;     // SKU, batch code, lot number
-  url: string;      // Full PsillyOps URL
-}
-```
+- **One token per physical label**
+- **QR content**: URL-only, `${baseUrl}/qr/${token}`
+- **Resolution**: tokens are resolved server-side at scan time (revocation/recall supported)
+
+Preview is intentionally safe:
+
+- **No token creation**
+- **Uses a fixed dummy token**: `qr_PREVIEW_TOKEN_DO_NOT_USE`
+
+QR rendering is optimized for small physical labels:
+
+- **Vector SVG** (not PNG/data URLs)
+- **errorCorrectionLevel: `L`**
+- **High-contrast black on white**
+- **URL-only encoding** (avoids dense payloads that fail on small prints)
+
+> Note: Legacy/embedded QR payloads may still exist for backward compatibility in older routes, but the standard printing workflow is token-based.
+
+### Auto-Tiled Letter-Size Label Sheets (Architectural Decision)
+
+**Problem:** One-label-per-page printing is slow, wasteful, and fragile for laser cutting; small QRs become unreliable if rasterized or over-dense.
+
+**Decision:** Print and preview labels as **auto-tiled letter-size sheets** (8.5×11in) composed as SVG, using token-based vector QR codes.
+
+**Key constraints (non-negotiable):**
+- **No label scaling** (use physical size declared in SVG `width`/`height`)
+- **0.25in sheet margins** on all sides
+- **Rotate 90° only if it increases capacity**
+- **ID collision prevention** by prefixing all embedded label IDs and their references per instance
+- **Preview must match print layout** while using the dummy token (no persistence)
+
+**What this solves:**
+- Sheet-by-sheet predictability for **laser cutting**
+- High scan reliability on small labels via **vector QR + ECC L + URL-only**
+- Strong traceability via **one token per physical label**
 
 ### Key Features
 
@@ -2111,7 +2252,6 @@ Print Labels button added to:
 ### Phase 2 (Deferred)
 
 - PDF rendering (currently uses browser SVG + native print)
-- Batch label sheets (multiple labels per page)
 - Printer calibration helpers
 - GS1/UPC barcode support
 

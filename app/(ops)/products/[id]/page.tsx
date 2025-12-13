@@ -5,6 +5,8 @@ import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { ArchiveButton } from "./ArchiveButton";
 import PrintLabelButton from "@/components/labels/PrintLabelButton";
+import { logAction } from "@/lib/services/loggingService";
+import { ActivityEntity } from "@prisma/client";
 
 const UNIT_OPTIONS = [
   "jar",
@@ -31,6 +33,16 @@ async function updateProduct(formData: FormData) {
   const defaultBatchSize = defaultBatchSizeStr ? parseInt(defaultBatchSizeStr, 10) : null;
   const wholesalePriceStr = formData.get("wholesalePrice") as string;
   const wholesalePrice = wholesalePriceStr ? parseFloat(wholesalePriceStr) : null;
+  const strainIdValue = formData.get("strainId") as string;
+  const strainId = strainIdValue && strainIdValue !== '' ? strainIdValue : null;
+
+  // Get the current product to check for strain changes
+  const existingProduct = await prisma.product.findUnique({
+    where: { id },
+    include: { strain: true }
+  });
+
+  const strainChanged = existingProduct && existingProduct.strainId !== strainId;
 
   await prisma.product.update({
     where: { id },
@@ -42,8 +54,27 @@ async function updateProduct(formData: FormData) {
       leadTimeDays,
       defaultBatchSize,
       wholesalePrice,
+      strainId,
     },
   });
+
+  // Log strain change if applicable
+  if (strainChanged) {
+    const session = await auth();
+    const newStrain = strainId ? await prisma.strain.findUnique({ where: { id: strainId } }) : null;
+    await logAction({
+      entityType: ActivityEntity.PRODUCT,
+      entityId: id,
+      action: 'strain_updated',
+      userId: session?.user?.id,
+      summary: strainId 
+        ? `Updated product "${name}" strain to "${newStrain?.name}"`
+        : `Removed strain from product "${name}"`,
+      before: { strainId: existingProduct?.strainId, strainName: existingProduct?.strain?.name ?? null },
+      after: { strainId, strainName: newStrain?.name ?? null },
+      tags: ['product', 'strain', 'updated']
+    });
+  }
 
   revalidatePath(`/products/${id}`);
   redirect(`/products/${id}`);
@@ -87,6 +118,9 @@ export default async function ProductDetailPage({
   const product = await prisma.product.findUnique({
     where: { id },
     include: {
+      strain: {
+        select: { id: true, name: true, shortCode: true }
+      },
       bom: {
         where: { active: true },
         include: { material: true },
@@ -104,6 +138,13 @@ export default async function ProductDetailPage({
   if (!product) {
     notFound();
   }
+
+  // Fetch all active strains for the dropdown
+  const strains = await prisma.strain.findMany({
+    where: { active: true },
+    orderBy: { name: 'asc' },
+    select: { id: true, name: true, shortCode: true }
+  });
 
   // Calculate inventory totals
   const totalOnHand = product.inventory.reduce(
@@ -129,6 +170,11 @@ export default async function ProductDetailPage({
             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
               {product.sku}
             </span>
+            {product.strain && (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                {product.strain.shortCode}: {product.strain.name}
+              </span>
+            )}
             {!product.active && (
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
                 Archived
@@ -283,6 +329,24 @@ export default async function ProductDetailPage({
                   />
                 </div>
               </div>
+              <div>
+                <label htmlFor="strainId" className="block text-sm font-medium text-gray-700">
+                  Strain
+                </label>
+                <select
+                  name="strainId"
+                  id="strainId"
+                  defaultValue={product.strainId ?? ""}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                >
+                  <option value="">No strain selected</option>
+                  {strains.map((strain) => (
+                    <option key={strain.id} value={strain.id}>
+                      {strain.name} ({strain.shortCode})
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
             <div className="pt-4">
               <button
@@ -294,7 +358,19 @@ export default async function ProductDetailPage({
             </div>
           </form>
         ) : (
-          <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+            <div>
+              <dt className="text-sm font-medium text-gray-500">Strain</dt>
+              <dd className="mt-1 text-sm text-gray-900">
+                {product.strain ? (
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                    {product.strain.shortCode}: {product.strain.name}
+                  </span>
+                ) : (
+                  <span className="text-gray-400">No strain</span>
+                )}
+              </dd>
+            </div>
             <div>
               <dt className="text-sm font-medium text-gray-500">Unit of Measure</dt>
               <dd className="mt-1 text-sm text-gray-900">{product.unitOfMeasure}</dd>

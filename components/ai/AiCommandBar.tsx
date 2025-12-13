@@ -251,7 +251,7 @@ export default function AiCommandBar({ isOpen, onClose }: AiCommandBarProps) {
                   placeholder='e.g., "Purchased PE for 500" or "Leaf ordered 10 Herc"'
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg"
                   autoFocus
-                  disabled={isLoading || (result && !result.executed)}
+                  disabled={isLoading || (result !== null && !result.executed)}
                 />
               </div>
 

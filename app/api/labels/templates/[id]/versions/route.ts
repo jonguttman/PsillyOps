@@ -22,7 +22,7 @@ export async function POST(
       );
     }
 
-    if (!hasPermission(session.user.role, 'inventory', 'manage')) {
+    if (!hasPermission(session.user.role, 'templates', 'create')) {
       return Response.json(
         { code: 'FORBIDDEN', message: 'Insufficient permissions' },
         { status: 403 }

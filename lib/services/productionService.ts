@@ -35,8 +35,8 @@ export async function getProductionOrderList(filter: ProductionOrderFilter = {})
 
   if (filter.search) {
     where.OR = [
-      { orderNumber: { contains: filter.search, mode: 'insensitive' } },
-      { product: { name: { contains: filter.search, mode: 'insensitive' } } }
+      { orderNumber: { contains: filter.search } },
+      { product: { name: { contains: filter.search } } }
     ];
   }
 
@@ -174,13 +174,38 @@ export async function createProductionOrder(params: {
     throw new AppError(ErrorCodes.NOT_FOUND, 'Product not found');
   }
 
-  // If template provided, get default batch size
+  // Validate userId exists
+  const user = await prisma.user.findUnique({
+    where: { id: userId }
+  });
+
+  if (!user) {
+    throw new AppError(ErrorCodes.NOT_FOUND, 'User not found');
+  }
+
+  // Validate workCenterId if provided
+  if (workCenterId) {
+    const workCenter = await prisma.workCenter.findUnique({
+      where: { id: workCenterId }
+    });
+
+    if (!workCenter) {
+      throw new AppError(ErrorCodes.NOT_FOUND, 'Work center not found');
+    }
+  }
+
+  // If template provided, validate it and get default batch size
   let effectiveBatchSize = batchSize;
-  if (templateId && !batchSize) {
+  if (templateId) {
     const template = await prisma.productionTemplate.findUnique({
       where: { id: templateId }
     });
-    if (template) {
+    
+    if (!template) {
+      throw new AppError(ErrorCodes.NOT_FOUND, 'Production template not found');
+    }
+    
+    if (!batchSize) {
       effectiveBatchSize = template.defaultBatchSize;
     }
   }
@@ -259,8 +284,6 @@ export async function createProductionOrder(params: {
       }))
     });
   }
-
-  const user = await prisma.user.findUnique({ where: { id: userId } });
 
   await logAction({
     entityType: ActivityEntity.PRODUCTION_ORDER,
@@ -1101,7 +1124,7 @@ export async function updateBatchStatus(
       }
     }),
     before,
-    after: { status, notes },
+    after: { status, notes: notes ?? null },
     details: {
       previousStatus: batch.status,
       newStatus: status
@@ -1232,7 +1255,10 @@ export async function completeBatch(params: {
     status: batch.status,
     actualQuantity: batch.actualQuantity,
     productionDate: batch.productionDate,
-    qcStatus: batch.qcStatus
+    qcStatus: batch.qcStatus,
+    actualYield: batch.actualYield ?? null,
+    expectedYield: batch.expectedYield ?? null,
+    lossQty: batch.lossQty ?? null
   };
 
   await prisma.batch.update({
