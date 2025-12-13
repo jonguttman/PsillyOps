@@ -413,6 +413,7 @@ export default async function OrderDetailPage({
             hasInvoice={hasInvoice} 
             invoice={invoice}
             orderStatus={order.status}
+            userRole={session.user.role}
           />
 
           {/* Order Details */}

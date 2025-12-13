@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { ArchiveButton } from "./ArchiveButton";
 import { SetPreferredButton } from "./SetPreferredButton";
 import { AddAttachmentForm } from "./AddAttachmentForm";
+import TooltipWrapper from "@/components/ui/TooltipWrapper";
 
 const UNIT_OPTIONS = ["kg", "g", "mg", "L", "mL", "oz", "lb", "pcs", "units", "sheets", "rolls", "boxes", "each"];
 const CATEGORY_OPTIONS = [
@@ -229,16 +230,18 @@ export default async function MaterialDetailPage({
               Cancel
             </Link>
           )}
-          <Link
-            href={`/qr/material/${id}`}
-            target="_blank"
-            className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-            title="View QR Code"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h2M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-            </svg>
-          </Link>
+          <TooltipWrapper tooltipId="view-qr-code" userRole={session.user.role} position="bottom">
+            <Link
+              href={`/qr/material/${id}`}
+              target="_blank"
+              className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+            >
+              <svg className="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h2M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+              </svg>
+              View QR Code
+            </Link>
+          </TooltipWrapper>
           <Link
             href="/materials"
             className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900"

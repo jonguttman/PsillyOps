@@ -7,6 +7,321 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.8.0] - 2024-12-12
+
+### Summary
+
+**QR Token System** - Implemented a tokenized QR code system where each physical label has a unique opaque token. All resolution happens server-side, enabling revocation, recall messaging, per-label traceability, and future extensibility.
+
+### Core Principles
+
+- **Unique token per physical label**: Each printed label gets its own traceable identity
+- **Opaque tokens**: QR codes contain only a token URL, not embedded data
+- **Server-side resolution**: All meaning and behavior resolved at scan time
+- **Revocation support**: Tokens can be invalidated without changing physical labels
+- **Recall capability**: Bulk revocation by entity enables product recalls
+- **Print-time only**: QR tokens are created strictly at label print time and represent physical label instances
+
+### Added
+
+#### Prisma Schema Updates
+
+**New Enum:**
+- `QRTokenStatus` - Token states (ACTIVE, REVOKED, EXPIRED)
+
+**New Model:**
+- `QRToken` - Unique token per printed label
+  - Fields: `id`, `token` (unique opaque string), `status`, `entityType`, `entityId`
+  - `versionId` - Links to LabelTemplateVersion for traceability
+  - `printedAt`, `expiresAt`, `revokedAt`, `revokedReason`
+  - `scanCount`, `lastScannedAt` - Lightweight analytics
+  - `createdByUserId` - Audit trail
+  - Indexes on `token`, `entityType+entityId`, `status`, `versionId`, `printedAt`
+
+**Updated Models:**
+- `User` - Added relation to `QRToken[]`
+- `LabelTemplateVersion` - Added relation to `QRToken[]`
+
+#### New Files Created
+
+```
+lib/services/
+└── qrTokenService.ts           # Token generation, resolution, revocation (NEW)
+
+lib/types/
+└── enums.ts                    # Added QRTokenStatus enum (UPDATED)
+
+app/qr/
+└── [token]/
+    └── page.tsx                # Public token resolver page (NEW)
+
+app/api/qr-tokens/
+├── batch/
+│   └── route.ts                # Bulk token creation (NEW)
+├── [id]/
+│   └── revoke/
+│       └── route.ts            # Single token revocation (NEW)
+└── revoke-by-entity/
+    └── route.ts                # Bulk revocation by entity (NEW)
+
+app/api/labels/
+└── render-with-tokens/
+    └── route.ts                # Render labels with tokens (NEW)
+```
+
+#### Token Generation
+
+- Format: `qr_<22-char-base62-string>` (e.g., `qr_2x7kP9mN4vBcRtYz8LqW5j`)
+- Cryptographically random using Node.js `crypto.randomBytes()`
+- ~131 bits of entropy, URL-safe, no embedded meaning
+- `qr_` prefix for easy validation
+
+#### Service Layer (`lib/services/qrTokenService.ts`)
+
+**Token Generation:**
+- `generateToken()` - Create cryptographically random token
+- `isValidTokenFormat(token)` - Validate token format
+
+**Token Lifecycle:**
+- `createToken(params)` - Create single token
+- `createTokenBatch(params)` - Create N tokens for batch printing
+- `resolveToken(tokenValue)` - Resolve token to entity (scan endpoint)
+- `revokeToken(id, reason, userId)` - Revoke single token
+- `revokeTokensByEntity(params)` - Bulk revoke for recalls
+
+**Query Functions:**
+- `getToken(id)` - Get token by internal ID
+- `getTokenByValue(token)` - Get token by public value
+- `getTokensForEntity(entityType, entityId)` - List tokens for entity
+- `getTokensForVersion(versionId)` - List tokens by label version
+- `getTokenStats(entityType, entityId)` - Token statistics
+
+**URL Helpers:**
+- `buildTokenUrl(token, baseUrl)` - Build scannable URL
+- `getBaseUrl()` - Get configured base URL
+
+#### Label Service Integration (`lib/services/labelService.ts`)
+
+**New Functions:**
+- `renderLabelWithToken(params)` - Render single label with token-based QR
+- `renderLabelsWithTokens(params)` - Render multiple labels with unique tokens
+- `generateQRCodeFromUrl(url)` - Generate QR from simple URL
+
+#### API Endpoints
+
+| Route | Method | Auth | Description |
+|-------|--------|------|-------------|
+| `/api/qr-tokens/batch` | POST | ADMIN/PRODUCTION/WAREHOUSE | Create tokens in batch |
+| `/api/qr-tokens/[id]/revoke` | POST | ADMIN only | Revoke single token |
+| `/api/qr-tokens/revoke-by-entity` | POST | ADMIN only | Bulk revoke by entity |
+| `/api/labels/render-with-tokens` | POST | ADMIN/PRODUCTION/WAREHOUSE | Render labels with tokens |
+
+#### Public Resolver Page (`/qr/[token]`)
+
+**Behavior:**
+1. Validate token format
+2. Look up token in database
+3. If not found → 404 page
+4. If REVOKED → Info page with reason and contact info
+5. If EXPIRED → Info page with expiration notice
+6. If ACTIVE → Increment scan count, redirect to entity page
+
+**Entity Redirects:**
+- PRODUCT → `/qr/product/[entityId]`
+- BATCH → `/qr/batch/[entityId]`
+- INVENTORY → `/qr/inventory/[entityId]`
+
+### Activity Logging
+
+New logged events:
+- `qr_tokens_created` - Batch token creation
+- `qr_token_scanned` - Token resolved and scan counted
+- `qr_token_revoked` - Single token revocation
+- `qr_tokens_bulk_revoked` - Entity-wide revocation
+
+Tags: `['qr', 'label', 'print' | 'scan' | 'revoke' | 'bulk']`
+
+### Explicit Non-Goals (Phase 1)
+
+The following are deferred to future phases:
+- Consumer-facing scan dashboards
+- Fraud/clone detection
+- Geographic scan analytics
+- Automated expiration background jobs
+- Token reassignment
+- Custom payload per token
+
+### Design Decisions
+
+**Token creation timing:**
+- QR tokens are created ONLY at label render time via `/api/labels/render-with-tokens`
+- The standalone `/api/qr-tokens/batch` route is restricted to ADMIN only and marked deprecated
+- This ensures tokens always represent physical printed labels
+
+**Scan logging:**
+- Activity logs are created only on the first scan of each token
+- Subsequent scans still increment `scanCount` but don't create log entries
+- This prevents activity log bloat while preserving audit trail for first use
+
+**Shared rendering helper:**
+- Both `/api/labels/render` and `/api/labels/render-with-tokens` use `renderLabelsShared()`
+- This enables future consolidation into a single endpoint
+
+### Migration Notes
+
+- Run `npx prisma db push` to apply schema changes
+- Existing label prints (before this update) continue to work with legacy QR URLs
+- New label prints will use token-based QR system
+- No breaking changes to existing functionality
+
+---
+
+## [0.7.0] - 2024-12-12
+
+### Summary
+
+**Label Templates + Versioning + Dynamic QR System** - Added a comprehensive label management system for uploading SVG templates, managing versions, and printing labels with dynamically injected QR codes.
+
+### Core Principles
+
+- **Labels uploaded, not designed**: PsillyOps is a label archive and renderer, not a design tool
+- **Version immutability**: Every version is preserved, never overwritten
+- **Dynamic QR codes**: Generated at print time, always pointing to live data
+- **Storage abstraction**: Prepared for future cloud storage migration
+- **SVG source of truth**: PDF rendering deferred to Phase 2
+
+### Added
+
+#### New Files Created
+
+```
+lib/services/
+├── labelStorage.ts             # Storage abstraction with LocalLabelStorage (NEW)
+└── labelService.ts             # Label business logic and QR injection (NEW)
+
+app/(ops)/labels/
+└── page.tsx                    # Label management page (NEW)
+
+app/api/labels/
+├── templates/
+│   ├── route.ts                # List/create templates (NEW)
+│   └── [id]/
+│       ├── route.ts            # Get/update template (NEW)
+│       └── versions/
+│           └── route.ts        # Create version with upload (NEW)
+├── versions/
+│   └── [id]/
+│       └── activate/
+│           └── route.ts        # Activate/deactivate version (NEW)
+└── render/
+    └── route.ts                # Render SVG with QR injection (NEW)
+
+components/labels/
+├── LabelUploadForm.tsx         # Version upload modal (NEW)
+├── LabelPreviewButton.tsx      # Preview modal (NEW)
+└── PrintLabelButton.tsx        # Print modal with version selector (NEW)
+```
+
+#### Prisma Schema Updates (`prisma/schema.prisma`)
+
+**New Enums:**
+- `LabelEntityType` - PRODUCT, BATCH, INVENTORY, CUSTOM
+
+**Updated Enums:**
+- `ActivityEntity` - Added LABEL for activity logging
+
+**New Models:**
+- `LabelTemplate` - Stores label template metadata
+  - Fields: `id`, `name`, `entityType`, `createdAt`, `updatedAt`
+  - Relation to `LabelTemplateVersion[]`
+  - Index on `entityType`
+
+- `LabelTemplateVersion` - Stores immutable version records
+  - Fields: `id`, `templateId`, `version`, `fileUrl`, `qrTemplate`, `isActive`, `notes`, `createdAt`
+  - Unique constraint on `[templateId, version]`
+  - Indexes on `templateId`, `isActive`
+
+#### Label Storage Abstraction
+
+```typescript
+interface LabelStorage {
+  save(templateId, version, file, ext): Promise<string>
+  load(fileUrl): Promise<Buffer>
+  delete(fileUrl): Promise<void>
+  exists(fileUrl): Promise<boolean>
+}
+```
+
+- `LocalLabelStorage` implementation for filesystem
+- Configurable via `LABEL_STORAGE_PATH` environment variable
+- Default path: `./storage/labels/`
+
+#### QR Payload Format
+
+Structured JSON payloads for QR codes:
+
+```typescript
+interface QRPayload {
+  type: 'PRODUCT' | 'BATCH' | 'INVENTORY';
+  id: string;
+  code: string;
+  url: string;
+}
+```
+
+#### API Endpoints
+
+| Route | Method | Purpose |
+|-------|--------|---------|
+| `/api/labels/templates` | GET | List all templates |
+| `/api/labels/templates` | POST | Create template |
+| `/api/labels/templates/[id]` | GET | Get template with versions |
+| `/api/labels/templates/[id]` | PATCH | Update template name |
+| `/api/labels/templates/[id]/versions` | POST | Upload new version |
+| `/api/labels/versions/[id]/activate` | PATCH | Activate/deactivate version |
+| `/api/labels/render` | POST | Render SVG with QR injection |
+
+#### UI Enhancements
+
+- **Labels Management Page** (`/labels`):
+  - Create templates by entity type
+  - Upload SVG versions with notes
+  - Activate/deactivate versions
+  - Preview rendered labels
+
+- **Print Labels Button** added to:
+  - Batch detail page
+  - Inventory detail page
+  - Product detail page
+
+- **Navigation**: Added "Labels" link to main navigation
+
+#### Validation Schemas (`lib/utils/validators.ts`)
+
+- `createLabelTemplateSchema`
+- `updateLabelTemplateSchema`
+- `createLabelVersionSchema`
+- `renderLabelSchema`
+- `qrPayloadSchema`
+
+### Activity Logging
+
+New logged events:
+- `label_template_created`
+- `label_version_uploaded`
+- `label_version_activated`
+- `label_version_deactivated`
+- `labels_printed`
+
+### Phase 2 (Deferred)
+
+- PDF rendering (currently uses browser SVG + native print)
+- Batch label sheets (multiple labels per page)
+- Printer calibration helpers
+- GS1/UPC barcode support
+
+---
+
 ## [0.6.0] - 2024-12-12
 
 ### Summary

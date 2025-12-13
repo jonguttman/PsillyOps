@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { formatDate, formatDateTime } from '@/lib/utils/formatters';
 import { completeBatch, updateBatchStatus, setBatchQCStatus, addLaborEntry } from '@/lib/services/productionService';
 import { BatchStatus, QCStatus } from '@prisma/client';
+import PrintLabelButton from '@/components/labels/PrintLabelButton';
 
 const STATUS_COLORS: Record<string, string> = {
   PLANNED: 'bg-gray-100 text-gray-800',
@@ -189,6 +190,11 @@ export default async function BatchDetailPage({
           </p>
         </div>
         <div className="flex gap-2">
+          <PrintLabelButton
+            entityType="BATCH"
+            entityId={batch.id}
+            entityCode={batch.batchCode}
+          />
           <Link
             href={`/qr/batch/${batch.id}`}
             target="_blank"

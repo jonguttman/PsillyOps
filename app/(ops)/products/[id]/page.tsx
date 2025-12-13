@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { ArchiveButton } from "./ArchiveButton";
+import PrintLabelButton from "@/components/labels/PrintLabelButton";
 
 const UNIT_OPTIONS = [
   "jar",
@@ -139,6 +140,11 @@ export default async function ProductDetailPage({
           </p>
         </div>
         <div className="flex gap-2">
+          <PrintLabelButton
+            entityType="PRODUCT"
+            entityId={id}
+            entityCode={product.sku}
+          />
           {!isEditing ? (
             <>
               <Link

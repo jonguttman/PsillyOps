@@ -256,3 +256,41 @@ export const addLaborEntrySchema = z.object({
   notes: z.string().optional()
 });
 
+// ========================================
+// LABEL TEMPLATE SCHEMAS
+// ========================================
+
+export const labelEntityTypeValues = ['PRODUCT', 'BATCH', 'INVENTORY', 'CUSTOM'] as const;
+
+export const createLabelTemplateSchema = z.object({
+  name: z.string().min(1, 'Name is required'),
+  entityType: z.enum(labelEntityTypeValues)
+});
+
+export const updateLabelTemplateSchema = z.object({
+  name: z.string().min(1, 'Name is required')
+});
+
+export const createLabelVersionSchema = z.object({
+  version: z.string().min(1, 'Version is required').regex(
+    /^[0-9]+\.[0-9]+(\.[0-9]+)?$/,
+    'Version must be in format X.Y or X.Y.Z (e.g., 1.0, 2.1.3)'
+  ),
+  qrTemplate: z.string().optional(),
+  notes: z.string().optional()
+});
+
+export const renderLabelSchema = z.object({
+  versionId: idSchema.optional(),
+  entityType: z.enum(labelEntityTypeValues).optional(),
+  entityId: idSchema,
+  quantity: z.number().positive().max(100, 'Maximum 100 labels at once').default(1)
+});
+
+export const qrPayloadSchema = z.object({
+  type: z.enum(['PRODUCT', 'BATCH', 'INVENTORY']),
+  id: z.string().min(1),
+  code: z.string().min(1),
+  url: z.string().url()
+});
+

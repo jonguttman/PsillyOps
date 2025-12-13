@@ -1,6 +1,6 @@
 # PsillyOps User Manual
 
-**Version 0.6.0**  
+**Version 0.8.0**  
 **Last Updated: December 12, 2024**
 
 ---
@@ -18,9 +18,11 @@
 9. [Product Management](#product-management)
 10. [Feature Tutorials](#feature-tutorials)
 11. [QR Workflows](#qr-workflows)
-12. [AI Tools](#ai-tools)
-13. [Troubleshooting](#troubleshooting)
-14. [Glossary](#glossary)
+12. [Label Templates](#label-templates)
+13. [AI Tools](#ai-tools)
+14. [Tooltips & Quick Help](#tooltips--quick-help)
+15. [Troubleshooting](#troubleshooting)
+16. [Glossary](#glossary)
 
 ---
 
@@ -1771,6 +1773,47 @@ QR scanning works best on mobile devices:
 
 ---
 
+## Tooltips & Quick Help
+
+PsillyOps includes contextual tooltips throughout the application to help users understand features without leaving the page.
+
+### How Tooltips Work
+
+- **Hover** over elements with a small question mark icon (?) to see tips
+- **Click/Tap** on touch devices to toggle tooltips
+- **Press Escape** to dismiss any open tooltip
+- **Click "Learn more"** to jump to detailed documentation
+
+### Where to Find Tooltips
+
+Tooltips appear on high-friction UI elements:
+
+| Area | Elements with Tooltips |
+|------|----------------------|
+| Dashboard | AI Command Input - explains how to phrase commands |
+| Orders | Invoice & Packing Slip sections - explains document generation |
+| Materials | View QR Code button - explains QR code workflow |
+| QR Pages | Download & Print buttons - explains usage |
+| Inventory | Status badges, movement types, expiry warnings |
+
+### Tooltip Content by Role
+
+Tooltips are filtered based on your user role:
+
+- **ADMIN**: All tooltips visible
+- **PRODUCTION**: Production, inventory, and QC tooltips
+- **WAREHOUSE**: Inventory, movement, and QR code tooltips
+- **REP**: Order status and basic navigation tooltips
+
+### Keyboard Accessibility
+
+- **Tab**: Navigate to tooltip triggers
+- **Focus**: Shows tooltip when element receives focus
+- **Escape**: Closes open tooltip
+- **Screen readers**: Tooltips use `role="tooltip"` and `aria-describedby` for accessibility
+
+---
+
 ## Troubleshooting
 
 ### Common Issues
@@ -1812,6 +1855,176 @@ QR scanning works best on mobile devices:
 **"Permission denied"**
 - User role lacks required permission
 - Contact admin for access
+
+---
+
+## QR Token Traceability
+
+### Overview
+
+PsillyOps uses a tokenized QR code system where each printed label has a unique, traceable identity. When you print labels, each physical label receives its own unique token that enables:
+
+- **Individual label tracking**: Every label can be identified and traced
+- **Revocation support**: Invalidate specific labels without reprinting
+- **Recall capability**: Revoke all labels for a product or batch instantly
+- **Scan analytics**: Track how many times each label has been scanned
+
+### How It Works
+
+1. **Printing**: When you print labels, the system generates unique tokens (e.g., `qr_2x7kP9mN4vBcRtYz8LqW5j`)
+2. **QR Content**: Each QR code contains only a short URL like `https://psillyops.app/qr/qr_xxx`
+3. **Scanning**: When scanned, the system looks up the token and redirects to the appropriate page
+4. **Tracking**: Each scan is counted and timestamped
+
+### Token States
+
+| Status | Description |
+|--------|-------------|
+| **ACTIVE** | Token is valid - scans redirect to entity page |
+| **REVOKED** | Token has been invalidated - shows revocation reason |
+| **EXPIRED** | Token has passed its validity period |
+
+### Scanning a QR Code
+
+When someone scans a QR code:
+
+**If Active:**
+- Redirected to the product, batch, or inventory detail page
+- Scan is recorded in the system
+
+**If Revoked:**
+- Friendly info page is displayed
+- Shows the revocation reason
+- Provides contact information
+- Does NOT redirect to the entity
+
+**If Invalid:**
+- 404 page is displayed
+- Token may have been entered incorrectly or doesn't exist
+
+### Revoking Tokens (Admin Only)
+
+**Single Token Revocation:**
+- Used when a specific label needs to be invalidated
+- Requires a reason for audit purposes
+- Example: Label was misprinted, label was duplicated
+
+**Bulk Revocation by Entity:**
+- Used for product recalls or batch invalidation
+- Revokes ALL active tokens for a specific product/batch
+- Critical for safety situations
+- Example: "Batch HERC-44 recalled due to quality issue"
+
+### Best Practices
+
+1. **Print what you need**: Each label is unique, so print only the quantity required
+2. **Track printed quantities**: The system logs how many labels were printed
+3. **Use revocation for recalls**: Don't try to physically collect labels - revoke them
+4. **Document revocation reasons**: Always provide clear reasons for audit trail
+5. **Test scans**: Verify labels scan correctly before distribution
+
+### Technical Notes
+
+- Tokens are cryptographically random (not guessable)
+- Token format: `qr_` prefix + 22-character base62 string
+- ~131 bits of entropy (more than UUIDs)
+- URL-safe - no special characters
+
+---
+
+## Label Templates
+
+PsillyOps includes a comprehensive label management system for printing product, batch, and inventory labels with dynamically generated QR codes.
+
+### Overview
+
+The label system allows you to:
+- **Upload SVG label templates** designed externally
+- **Manage versions** with full history preservation
+- **Inject QR codes dynamically** at print time
+- **Print labels** directly from detail pages
+
+**Key Principle:** Labels are uploaded, not designed in PsillyOps. The system is a label archive and renderer, not a design tool.
+
+### Label Templates Page
+
+Navigate to **Labels** in the main menu to manage templates.
+
+#### Creating a Template
+
+1. Enter a **Template Name** (e.g., "Product Label 2x3")
+2. Select **Entity Type** (Product, Batch, Inventory, or Custom)
+3. Click **Create Template**
+
+#### Uploading a Version
+
+1. Click **Upload Version** on any template
+2. Enter a **Version Number** (format: X.Y or X.Y.Z, e.g., "1.0", "2.1.3")
+3. Select an **SVG file** containing the label design
+4. Optionally add **Notes** describing changes
+5. Click **Upload**
+
+**SVG Requirements:**
+
+Your SVG file must contain a placeholder element for QR code injection:
+
+```svg
+<g id="qr-placeholder"></g>
+```
+
+The QR code will be injected into this placeholder at render time.
+
+#### Activating a Version
+
+- Only one version per template can be active at a time
+- Click **Activate** next to any version to make it the default
+- Click **Deactivate** to remove the default (no version will be active)
+
+### Printing Labels
+
+Labels can be printed from any detail page (Batch, Product, or Inventory):
+
+1. Navigate to the item detail page
+2. Click **Print Labels** button
+3. Select a label version (active version is pre-selected)
+4. Set the quantity (1-100)
+5. Click **Preview Label** to see the rendered label with QR code
+6. Click **Print** to open the browser print dialog
+7. Or click **Download SVG** to save the rendered label
+
+### QR Code Behavior
+
+QR codes encode a structured JSON payload:
+
+```json
+{
+  "type": "BATCH",
+  "id": "batch_123",
+  "code": "PE-2024-09",
+  "url": "https://psillyops.app/qr/batch/batch_123"
+}
+```
+
+- **type**: Entity type (PRODUCT, BATCH, INVENTORY)
+- **id**: Unique identifier
+- **code**: Human-readable code (SKU, batch code, lot number)
+- **url**: Full URL to the entity in PsillyOps
+
+### Version Immutability
+
+**Important:** Once a version is uploaded, it cannot be modified. This ensures:
+- Labels printed months ago can be reprinted identically
+- Audit trail is preserved
+- Regulatory compliance is maintained
+
+To make changes, upload a new version with an incremented version number.
+
+### Best Practices
+
+1. **Version naming**: Use semantic versioning (1.0, 1.1, 2.0) to track changes
+2. **Notes**: Document what changed in each version
+3. **Testing**: Preview labels before activating a new version
+4. **Archiving**: Keep old versions for historical reprints
 
 ---
 

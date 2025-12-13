@@ -109,7 +109,15 @@ enum ActivityEntity {
   INVENTORY
   WORK_CENTER
   INVOICE
+  LABEL
   SYSTEM
+}
+
+enum LabelEntityType {
+  PRODUCT
+  BATCH
+  INVENTORY
+  CUSTOM
 }
 
 enum MaterialCategory {
@@ -121,6 +129,12 @@ enum MaterialCategory {
   LABEL
   SHIPPING
   OTHER
+}
+
+enum QRTokenStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
 }
 
 // ========================================
@@ -148,6 +162,7 @@ model User {
   laborEntries              LaborEntry[]
   aiCommandLogs             AICommandLog[]
   aiDocumentImports         AIDocumentImport[]
+  qrTokens                  QRToken[]
   
   @@index([email])
   @@index([role])
@@ -733,5 +748,78 @@ model Invoice {
   @@index([retailerId])
   @@index([invoiceNo])
   @@index([issuedAt])
+}
+
+// ========================================
+// LABEL TEMPLATES & VERSIONING
+// ========================================
+
+model LabelTemplate {
+  id          String          @id @default(cuid())
+  name        String
+  entityType  LabelEntityType
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  
+  versions    LabelTemplateVersion[]
+  
+  @@index([entityType])
+}
+
+model LabelTemplateVersion {
+  id          String        @id @default(cuid())
+  templateId  String
+  version     String        // e.g., "1.0", "1.1", "2.0"
+  fileUrl     String        // Relative path to SVG file
+  qrTemplate  String?       // e.g., https://psillyops.app/qr/batch/{{id}}
+  isActive    Boolean       @default(false)
+  notes       String?
+  createdAt   DateTime      @default(now())
+  
+  template    LabelTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  tokens      QRToken[]
+  
+  @@unique([templateId, version])
+  @@index([templateId])
+  @@index([isActive])
+}
+
+// ========================================
+// QR TOKEN SYSTEM
+// ========================================
+
+model QRToken {
+  id              String          @id @default(cuid())
+  token           String          @unique    // Opaque token (e.g., "qr_2x7kP9mN4...")
+  
+  status          QRTokenStatus   @default(ACTIVE)
+  
+  // Entity reference (polymorphic via type + id pattern)
+  entityType      LabelEntityType            // PRODUCT, BATCH, INVENTORY, CUSTOM
+  entityId        String                     // ID of the referenced entity
+  
+  // Label context
+  versionId       String?                    // Which label version was printed
+  version         LabelTemplateVersion?      @relation(fields: [versionId], references: [id])
+  
+  // Timestamps
+  printedAt       DateTime        @default(now())  // When the label was generated
+  expiresAt       DateTime?                        // Optional expiration
+  revokedAt       DateTime?                        // When revoked (if applicable)
+  revokedReason   String?                          // Why revoked (recall, error, etc.)
+  
+  // Analytics (lightweight)
+  scanCount       Int             @default(0)      // Total scans
+  lastScannedAt   DateTime?                        // Most recent scan
+  
+  // Audit
+  createdByUserId String?
+  createdBy       User?           @relation(fields: [createdByUserId], references: [id])
+  
+  @@index([token])
+  @@index([entityType, entityId])
+  @@index([status])
+  @@index([versionId])
+  @@index([printedAt])
 }
 

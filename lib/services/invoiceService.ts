@@ -6,7 +6,7 @@ import { AppError, ErrorCodes } from '@/lib/utils/errors';
 import { logAction, generateSummary } from './loggingService';
 import { ActivityEntity } from '@prisma/client';
 import { generateOrderNumber, formatCurrency, formatDate } from '@/lib/utils/formatters';
-import PDFDocument from 'pdfkit';
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 
 // ========================================
 // INVOICE NUMBER GENERATION
@@ -190,110 +190,92 @@ export async function generateInvoicePdf(invoiceId: string): Promise<Buffer> {
 /**
  * Create the actual PDF buffer for an invoice
  */
-function createInvoicePdfBuffer(data: InvoicePdfData): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    const doc = new PDFDocument({ margin: 50, size: 'LETTER' });
-
-    doc.on('data', (chunk: Buffer) => chunks.push(chunk));
-    doc.on('end', () => resolve(Buffer.concat(chunks)));
-    doc.on('error', reject);
-
-    // Header
-    doc.fontSize(24).font('Helvetica-Bold').text('INVOICE', { align: 'center' });
-    doc.moveDown(0.5);
-
-    // Invoice details
-    doc.fontSize(10).font('Helvetica');
-    doc.text(`Invoice #: ${data.invoiceNo}`, { align: 'right' });
-    doc.text(`Date: ${formatDate(data.issuedAt)}`, { align: 'right' });
-    doc.text(`Order #: ${data.orderNumber}`, { align: 'right' });
-    doc.moveDown();
-
-    // Company header (placeholder - could be configurable)
-    doc.fontSize(14).font('Helvetica-Bold').text('PsillyOps', 50, 100);
-    doc.fontSize(10).font('Helvetica')
-      .text('123 Business Street', 50, 118)
-      .text('City, State 12345', 50, 130)
-      .text('contact@psillyops.com', 50, 142);
-
-    // Bill To
-    doc.moveDown(2);
-    const billToY = doc.y;
-    doc.fontSize(12).font('Helvetica-Bold').text('Bill To:', 50, billToY);
-    doc.fontSize(10).font('Helvetica');
-    doc.text(data.retailerName, 50, billToY + 16);
-    if (data.retailerAddress) {
-      doc.text(data.retailerAddress, 50, doc.y);
-    }
-    if (data.retailerEmail) {
-      doc.text(data.retailerEmail, 50, doc.y);
-    }
-    doc.moveDown(2);
-
-    // Line items table header
-    const tableTop = doc.y + 20;
-    const col1 = 50;
-    const col2 = 250;
-    const col3 = 340;
-    const col4 = 410;
-    const col5 = 480;
-
-    doc.fontSize(10).font('Helvetica-Bold');
-    doc.rect(col1 - 5, tableTop - 5, 520, 20).fill('#f3f4f6');
-    doc.fillColor('#000000');
-    doc.text('Product', col1, tableTop);
-    doc.text('SKU', col2, tableTop);
-    doc.text('Qty', col3, tableTop, { width: 60, align: 'right' });
-    doc.text('Unit Price', col4, tableTop, { width: 60, align: 'right' });
-    doc.text('Total', col5, tableTop, { width: 70, align: 'right' });
-
-    // Line items
-    doc.font('Helvetica');
-    let y = tableTop + 25;
-    
-    for (const item of data.lineItems) {
-      // Check if we need a new page
-      if (y > 700) {
-        doc.addPage();
-        y = 50;
-      }
-
-      doc.text(item.productName, col1, y, { width: 190 });
-      doc.text(item.sku, col2, y);
-      doc.text(item.quantity.toString(), col3, y, { width: 60, align: 'right' });
-      doc.text(formatCurrency(item.unitPrice), col4, y, { width: 60, align: 'right' });
-      doc.text(formatCurrency(item.lineTotal), col5, y, { width: 70, align: 'right' });
-      
-      y += 20;
-    }
-
-    // Subtotal
-    y += 10;
-    doc.moveTo(col4, y).lineTo(col5 + 70, y).stroke();
-    y += 10;
-    doc.font('Helvetica-Bold');
-    doc.text('Subtotal:', col4, y, { width: 60, align: 'right' });
-    doc.text(formatCurrency(data.subtotal), col5, y, { width: 70, align: 'right' });
-
-    // Notes
-    if (data.notes) {
-      y += 40;
-      doc.font('Helvetica-Bold').text('Notes:', col1, y);
-      y += 15;
-      doc.font('Helvetica').text(data.notes, col1, y, { width: 500 });
-    }
-
-    // Footer
-    doc.fontSize(8).font('Helvetica').text(
-      'Thank you for your business!',
-      50,
-      doc.page.height - 50,
-      { align: 'center' }
-    );
-
-    doc.end();
+async function createInvoicePdfBuffer(data: InvoicePdfData): Promise<Buffer> {
+  const pdfDoc = await PDFDocument.create();
+  const page = pdfDoc.addPage([612, 792]); // Letter size
+  const { height } = page.getSize();
+  
+  // Embed fonts
+  const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  
+  // Header
+  page.drawText('INVOICE', {
+    x: 250,
+    y: height - 50,
+    size: 24,
+    font: helveticaBold,
   });
+  
+  // Invoice details (right aligned)
+  let rightY = height - 80;
+  page.drawText(`Invoice #: ${data.invoiceNo}`, { x: 400, y: rightY, size: 10, font: helvetica });
+  rightY -= 14;
+  page.drawText(`Date: ${formatDate(data.issuedAt)}`, { x: 400, y: rightY, size: 10, font: helvetica });
+  rightY -= 14;
+  page.drawText(`Order #: ${data.orderNumber}`, { x: 400, y: rightY, size: 10, font: helvetica });
+  
+  // Company header
+  page.drawText('PsillyOps', { x: 50, y: height - 100, size: 14, font: helveticaBold });
+  page.drawText('123 Business Street', { x: 50, y: height - 118, size: 10, font: helvetica });
+  page.drawText('City, State 12345', { x: 50, y: height - 130, size: 10, font: helvetica });
+  page.drawText('contact@psillyops.com', { x: 50, y: height - 142, size: 10, font: helvetica });
+  
+  // Bill To
+  let billToY = height - 180;
+  page.drawText('Bill To:', { x: 50, y: billToY, size: 12, font: helveticaBold });
+  billToY -= 16;
+  page.drawText(data.retailerName, { x: 50, y: billToY, size: 10, font: helvetica });
+  if (data.retailerAddress) {
+    billToY -= 14;
+    page.drawText(data.retailerAddress, { x: 50, y: billToY, size: 10, font: helvetica });
+  }
+  if (data.retailerEmail) {
+    billToY -= 14;
+    page.drawText(data.retailerEmail, { x: 50, y: billToY, size: 10, font: helvetica });
+  }
+  
+  // Table header
+  const tableTop = height - 260;
+  page.drawRectangle({ x: 45, y: tableTop - 5, width: 520, height: 20, color: rgb(0.95, 0.96, 0.97) });
+  page.drawText('Product', { x: 50, y: tableTop, size: 10, font: helveticaBold });
+  page.drawText('SKU', { x: 250, y: tableTop, size: 10, font: helveticaBold });
+  page.drawText('Qty', { x: 340, y: tableTop, size: 10, font: helveticaBold });
+  page.drawText('Unit Price', { x: 400, y: tableTop, size: 10, font: helveticaBold });
+  page.drawText('Total', { x: 480, y: tableTop, size: 10, font: helveticaBold });
+  
+  // Line items
+  let y = tableTop - 25;
+  for (const item of data.lineItems) {
+    const productName = item.productName.length > 30 ? item.productName.substring(0, 27) + '...' : item.productName;
+    page.drawText(productName, { x: 50, y, size: 10, font: helvetica });
+    page.drawText(item.sku, { x: 250, y, size: 10, font: helvetica });
+    page.drawText(item.quantity.toString(), { x: 360, y, size: 10, font: helvetica });
+    page.drawText(formatCurrency(item.unitPrice), { x: 400, y, size: 10, font: helvetica });
+    page.drawText(formatCurrency(item.lineTotal), { x: 480, y, size: 10, font: helvetica });
+    y -= 20;
+  }
+  
+  // Subtotal line
+  y -= 10;
+  page.drawLine({ start: { x: 400, y: y + 5 }, end: { x: 560, y: y + 5 }, thickness: 1 });
+  y -= 15;
+  page.drawText('Subtotal:', { x: 400, y, size: 10, font: helveticaBold });
+  page.drawText(formatCurrency(data.subtotal), { x: 480, y, size: 10, font: helveticaBold });
+  
+  // Notes
+  if (data.notes) {
+    y -= 40;
+    page.drawText('Notes:', { x: 50, y, size: 10, font: helveticaBold });
+    y -= 15;
+    page.drawText(data.notes, { x: 50, y, size: 10, font: helvetica });
+  }
+  
+  // Footer
+  page.drawText('Thank you for your business!', { x: 230, y: 30, size: 8, font: helvetica });
+  
+  const pdfBytes = await pdfDoc.save();
+  return Buffer.from(pdfBytes);
 }
 
 // ========================================
@@ -358,106 +340,89 @@ export async function generateManifestPdf(orderId: string): Promise<Buffer> {
 /**
  * Create the actual PDF buffer for a manifest/packing slip
  */
-function createManifestPdfBuffer(data: ManifestPdfData): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    const doc = new PDFDocument({ margin: 50, size: 'LETTER' });
-
-    doc.on('data', (chunk: Buffer) => chunks.push(chunk));
-    doc.on('end', () => resolve(Buffer.concat(chunks)));
-    doc.on('error', reject);
-
-    // Header
-    doc.fontSize(24).font('Helvetica-Bold').text('PACKING SLIP', { align: 'center' });
-    doc.moveDown(0.5);
-
-    // Order details
-    doc.fontSize(10).font('Helvetica');
-    doc.text(`Order #: ${data.orderNumber}`, { align: 'right' });
-    doc.text(`Order Date: ${formatDate(data.createdAt)}`, { align: 'right' });
-    if (data.shippedAt) {
-      doc.text(`Ship Date: ${formatDate(data.shippedAt)}`, { align: 'right' });
-    }
-    if (data.trackingNumber) {
-      doc.text(`Tracking #: ${data.trackingNumber}`, { align: 'right' });
-    }
-    doc.moveDown();
-
-    // From (Company)
-    doc.fontSize(14).font('Helvetica-Bold').text('PsillyOps', 50, 100);
-    doc.fontSize(10).font('Helvetica')
-      .text('123 Business Street', 50, 118)
-      .text('City, State 12345', 50, 130);
-
-    // Ship To
-    doc.moveDown(2);
-    const shipToY = doc.y;
-    doc.fontSize(12).font('Helvetica-Bold').text('Ship To:', 50, shipToY);
-    doc.fontSize(10).font('Helvetica');
-    doc.text(data.retailerName, 50, shipToY + 16);
-    if (data.shippingAddress) {
-      doc.text(data.shippingAddress, 50, doc.y);
-    }
-    doc.moveDown(2);
-
-    // Items table header
-    const tableTop = doc.y + 20;
-    const col1 = 50;
-    const col2 = 280;
-    const col3 = 380;
-    const col4 = 450;
-
-    doc.fontSize(10).font('Helvetica-Bold');
-    doc.rect(col1 - 5, tableTop - 5, 520, 20).fill('#f3f4f6');
-    doc.fillColor('#000000');
-    doc.text('Product', col1, tableTop);
-    doc.text('SKU', col2, tableTop);
-    doc.text('Ordered', col3, tableTop, { width: 60, align: 'right' });
-    doc.text('Ship Qty', col4, tableTop, { width: 80, align: 'right' });
-
-    // Line items
-    doc.font('Helvetica');
-    let y = tableTop + 25;
-    
-    for (const item of data.lineItems) {
-      // Check if we need a new page
-      if (y > 700) {
-        doc.addPage();
-        y = 50;
-      }
-
-      doc.text(item.productName, col1, y, { width: 220 });
-      doc.text(item.sku, col2, y);
-      doc.text(item.quantity.toString(), col3, y, { width: 60, align: 'right' });
-      doc.text(item.allocated.toString(), col4, y, { width: 80, align: 'right' });
-      
-      y += 20;
-    }
-
-    // Checkbox area for verification
-    y += 30;
-    doc.font('Helvetica-Bold').text('Verification:', col1, y);
-    y += 18;
-    doc.font('Helvetica');
-    doc.rect(col1, y, 12, 12).stroke();
-    doc.text('Items verified', col1 + 20, y);
-    y += 20;
-    doc.rect(col1, y, 12, 12).stroke();
-    doc.text('Packed by: _____________________', col1 + 20, y);
-    y += 20;
-    doc.rect(col1, y, 12, 12).stroke();
-    doc.text('Date: _____________________', col1 + 20, y);
-
-    // Footer
-    doc.fontSize(8).font('Helvetica').text(
-      `Generated on ${new Date().toLocaleDateString()}`,
-      50,
-      doc.page.height - 50,
-      { align: 'center' }
-    );
-
-    doc.end();
+async function createManifestPdfBuffer(data: ManifestPdfData): Promise<Buffer> {
+  const pdfDoc = await PDFDocument.create();
+  const page = pdfDoc.addPage([612, 792]); // Letter size
+  const { height } = page.getSize();
+  
+  // Embed fonts
+  const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  
+  // Header
+  page.drawText('PACKING SLIP', {
+    x: 220,
+    y: height - 50,
+    size: 24,
+    font: helveticaBold,
   });
+  
+  // Order details (right aligned)
+  let rightY = height - 80;
+  page.drawText(`Order #: ${data.orderNumber}`, { x: 400, y: rightY, size: 10, font: helvetica });
+  rightY -= 14;
+  page.drawText(`Order Date: ${formatDate(data.createdAt)}`, { x: 400, y: rightY, size: 10, font: helvetica });
+  if (data.shippedAt) {
+    rightY -= 14;
+    page.drawText(`Ship Date: ${formatDate(data.shippedAt)}`, { x: 400, y: rightY, size: 10, font: helvetica });
+  }
+  if (data.trackingNumber) {
+    rightY -= 14;
+    page.drawText(`Tracking #: ${data.trackingNumber}`, { x: 400, y: rightY, size: 10, font: helvetica });
+  }
+  
+  // Company header
+  page.drawText('PsillyOps', { x: 50, y: height - 100, size: 14, font: helveticaBold });
+  page.drawText('123 Business Street', { x: 50, y: height - 118, size: 10, font: helvetica });
+  page.drawText('City, State 12345', { x: 50, y: height - 130, size: 10, font: helvetica });
+  
+  // Ship To
+  let shipToY = height - 170;
+  page.drawText('Ship To:', { x: 50, y: shipToY, size: 12, font: helveticaBold });
+  shipToY -= 16;
+  page.drawText(data.retailerName, { x: 50, y: shipToY, size: 10, font: helvetica });
+  if (data.shippingAddress) {
+    shipToY -= 14;
+    page.drawText(data.shippingAddress, { x: 50, y: shipToY, size: 10, font: helvetica });
+  }
+  
+  // Table header
+  const tableTop = height - 240;
+  page.drawRectangle({ x: 45, y: tableTop - 5, width: 520, height: 20, color: rgb(0.95, 0.96, 0.97) });
+  page.drawText('Product', { x: 50, y: tableTop, size: 10, font: helveticaBold });
+  page.drawText('SKU', { x: 280, y: tableTop, size: 10, font: helveticaBold });
+  page.drawText('Ordered', { x: 380, y: tableTop, size: 10, font: helveticaBold });
+  page.drawText('Ship Qty', { x: 480, y: tableTop, size: 10, font: helveticaBold });
+  
+  // Line items
+  let y = tableTop - 25;
+  for (const item of data.lineItems) {
+    const productName = item.productName.length > 35 ? item.productName.substring(0, 32) + '...' : item.productName;
+    page.drawText(productName, { x: 50, y, size: 10, font: helvetica });
+    page.drawText(item.sku, { x: 280, y, size: 10, font: helvetica });
+    page.drawText(item.quantity.toString(), { x: 400, y, size: 10, font: helvetica });
+    page.drawText(item.allocated.toString(), { x: 500, y, size: 10, font: helvetica });
+    y -= 20;
+  }
+  
+  // Verification section
+  y -= 30;
+  page.drawText('Verification:', { x: 50, y, size: 10, font: helveticaBold });
+  y -= 18;
+  page.drawRectangle({ x: 50, y: y - 2, width: 12, height: 12, borderWidth: 1, borderColor: rgb(0, 0, 0) });
+  page.drawText('Items verified', { x: 70, y, size: 10, font: helvetica });
+  y -= 20;
+  page.drawRectangle({ x: 50, y: y - 2, width: 12, height: 12, borderWidth: 1, borderColor: rgb(0, 0, 0) });
+  page.drawText('Packed by: _____________________', { x: 70, y, size: 10, font: helvetica });
+  y -= 20;
+  page.drawRectangle({ x: 50, y: y - 2, width: 12, height: 12, borderWidth: 1, borderColor: rgb(0, 0, 0) });
+  page.drawText('Date: _____________________', { x: 70, y, size: 10, font: helvetica });
+  
+  // Footer
+  page.drawText(`Generated on ${new Date().toLocaleDateString()}`, { x: 230, y: 30, size: 8, font: helvetica });
+  
+  const pdfBytes = await pdfDoc.save();
+  return Buffer.from(pdfBytes);
 }
 
 // ========================================

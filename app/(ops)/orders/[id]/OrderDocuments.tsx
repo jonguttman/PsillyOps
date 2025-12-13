@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { formatDate, formatCurrency } from "@/lib/utils/formatters";
+import { formatCurrency } from "@/lib/utils/formatters";
+import TooltipWrapper, { TooltipIcon } from "@/components/ui/TooltipWrapper";
 
 interface Invoice {
   id: string;
@@ -16,6 +17,7 @@ interface OrderDocumentsProps {
   hasInvoice: boolean;
   invoice: Invoice | null;
   orderStatus: string;
+  userRole?: string;
 }
 
 export function OrderDocuments({
@@ -24,6 +26,7 @@ export function OrderDocuments({
   hasInvoice,
   invoice,
   orderStatus,
+  userRole,
 }: OrderDocumentsProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,7 +93,12 @@ export function OrderDocuments({
       <div className="space-y-3">
         {/* Invoice Section */}
         <div className="border-b pb-3">
-          <h3 className="text-sm font-medium text-gray-700 mb-2">Invoice</h3>
+          <h3 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
+            Invoice
+            <TooltipWrapper tooltipId="generate-invoice" userRole={userRole} position="bottom">
+              <TooltipIcon />
+            </TooltipWrapper>
+          </h3>
           {hasInvoice && invoice ? (
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
@@ -178,8 +186,11 @@ export function OrderDocuments({
 
         {/* Packing Slip Section */}
         <div>
-          <h3 className="text-sm font-medium text-gray-700 mb-2">
+          <h3 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
             Packing Slip
+            <TooltipWrapper tooltipId="download-manifest" userRole={userRole} position="bottom">
+              <TooltipIcon />
+            </TooltipWrapper>
           </h3>
           <button
             onClick={handleDownloadManifest}

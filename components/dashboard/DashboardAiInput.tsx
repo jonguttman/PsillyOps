@@ -1,6 +1,11 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import TooltipWrapper, { TooltipIcon } from '@/components/ui/TooltipWrapper';
+
+interface DashboardAiInputProps {
+  userRole?: string;
+}
 
 interface CommandArgs {
   materialRef?: string;
@@ -52,7 +57,7 @@ const EXAMPLES = [
   'Received 2kg lions mane powder',
 ];
 
-export default function DashboardAiInput() {
+export default function DashboardAiInput({ userRole }: DashboardAiInputProps) {
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<CommandResult | null>(null);
@@ -149,7 +154,8 @@ export default function DashboardAiInput() {
         {/* Input Row */}
         <div className="flex gap-3">
           <div className="flex-1 relative bg-white">
-            <input
+            <div className="flex items-center gap-2">
+              <input
               type="text"
               value={inputText}
               onChange={(e) => {
@@ -160,10 +166,14 @@ export default function DashboardAiInput() {
                 }
               }}
               placeholder="Type a command..."
-              className="w-full px-4 py-3 text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow"
+              className="flex-1 px-4 py-3 text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow"
               disabled={isLoading}
               autoFocus
             />
+              <TooltipWrapper tooltipId="ai-command-input" userRole={userRole} position="bottom">
+                <TooltipIcon className="cursor-help flex-shrink-0" />
+              </TooltipWrapper>
+            </div>
             {isLoading && (
               <div className="absolute right-3 top-1/2 -translate-y-1/2">
                 <svg className="animate-spin h-5 w-5 text-blue-500" fill="none" viewBox="0 0 24 24">

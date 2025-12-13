@@ -1984,5 +1984,325 @@ Domain-level logging is preserved through existing services.
 
 ---
 
+## 🏷️ Label Templates Module
+
+### Overview
+
+The Label Templates module provides versioned label management with dynamic QR code injection. It enables:
+
+- Upload and manage SVG label templates
+- Version control with full history preservation
+- Activate/deactivate label versions
+- Dynamic QR code injection at render time
+- Print labels directly from detail pages
+
+### Module Architecture
+
+```
+lib/services/
+├── labelStorage.ts          # Storage abstraction for file handling
+└── labelService.ts          # Label business logic and QR injection
+
+app/(ops)/labels/
+└── page.tsx                  # Label management page
+
+app/api/labels/
+├── templates/
+│   ├── route.ts              # List/create templates
+│   └── [id]/
+│       ├── route.ts          # Get/update template
+│       └── versions/
+│           └── route.ts      # Create version with upload
+├── versions/
+│   └── [id]/
+│       └── activate/
+│           └── route.ts      # Activate/deactivate version
+└── render/
+    └── route.ts              # Render SVG with QR injection
+
+components/labels/
+├── LabelUploadForm.tsx       # Version upload modal
+├── LabelPreviewButton.tsx    # Preview modal
+└── PrintLabelButton.tsx      # Print modal with version selector
+```
+
+### Data Model
+
+```mermaid
+erDiagram
+    LabelTemplate ||--o{ LabelTemplateVersion : "has versions"
+    
+    LabelTemplate {
+        string id PK
+        string name
+        LabelEntityType entityType
+        datetime createdAt
+    }
+    
+    LabelTemplateVersion {
+        string id PK
+        string templateId FK
+        string version UK
+        string fileUrl
+        string qrTemplate
+        boolean isActive
+        string notes
+        datetime createdAt
+    }
+```
+
+### Storage Abstraction
+
+The storage layer is abstracted via an interface:
+
+```typescript
+interface LabelStorage {
+  save(templateId: string, version: string, file: Buffer, ext: string): Promise<string>;
+  load(fileUrl: string): Promise<Buffer>;
+  delete(fileUrl: string): Promise<void>;
+  exists(fileUrl: string): Promise<boolean>;
+}
+```
+
+**LocalLabelStorage** implements this for filesystem storage. Future cloud storage (S3/R2/Vercel Blob) can be added without schema changes.
+
+### QR Payload Format
+
+QR codes encode structured JSON payloads:
+
+```typescript
+interface QRPayload {
+  type: 'PRODUCT' | 'BATCH' | 'INVENTORY';
+  id: string;       // Entity ID
+  code: string;     // SKU, batch code, lot number
+  url: string;      // Full PsillyOps URL
+}
+```
+
+### Key Features
+
+| Feature | Description |
+|---------|-------------|
+| **Version Control** | Every upload creates a new immutable version |
+| **SVG Validation** | Ensures QR placeholder exists in uploaded SVGs |
+| **Dynamic QR Injection** | QR codes generated at render time, not stored |
+| **Browser Printing** | Native browser print dialog, no PDF generation (Phase 2) |
+| **Activity Logging** | All template/version actions logged |
+
+### API Endpoints
+
+| Route | Method | Purpose |
+|-------|--------|---------|
+| `/api/labels/templates` | GET | List all templates |
+| `/api/labels/templates` | POST | Create template |
+| `/api/labels/templates/[id]` | GET | Get template with versions |
+| `/api/labels/templates/[id]` | PATCH | Update template name |
+| `/api/labels/templates/[id]/versions` | POST | Upload new version |
+| `/api/labels/versions/[id]/activate` | PATCH | Activate/deactivate version |
+| `/api/labels/render` | POST | Render SVG with QR injection |
+
+### Integration Points
+
+Print Labels button added to:
+- Batch detail page (`/batches/[id]`)
+- Inventory detail page (`/inventory/[id]`)
+- Product detail page (`/products/[id]`)
+
+### Phase 2 (Deferred)
+
+- PDF rendering (currently uses browser SVG + native print)
+- Batch label sheets (multiple labels per page)
+- Printer calibration helpers
+- GS1/UPC barcode support
+
+---
+
+## 🔐 QR Token System
+
+### Overview
+
+The QR Token System provides per-label traceability by generating unique opaque tokens for each printed label. Unlike embedded QR data, tokens are resolved server-side, enabling revocation, recall messaging, and scan analytics.
+
+**QR tokens are created strictly at label print time and represent physical label instances.** Tokens should never be pre-generated outside the label rendering workflow.
+
+### Architecture
+
+```mermaid
+flowchart TD
+    A[Print Labels] --> B[Generate N Tokens]
+    B --> C[Create QRToken Records]
+    C --> D[Render SVGs with Token URLs]
+    D --> E[User Prints Labels]
+    
+    F[Scan QR Code] --> G[GET /qr/qr_xxx]
+    G --> H{Token Exists?}
+    H -->|No| I[404 Page]
+    H -->|Yes| J{Token Status?}
+    J -->|REVOKED| K[Info Page + Reason]
+    J -->|EXPIRED| L[Info Page + Notice]
+    J -->|ACTIVE| M[Increment Scan Count]
+    M --> N[Redirect to Entity Page]
+```
+
+### Module Architecture
+
+```
+lib/services/
+└── qrTokenService.ts         # Token generation, resolution, revocation
+
+app/qr/
+└── [token]/
+    └── page.tsx              # Public token resolver page
+
+app/api/qr-tokens/
+├── batch/
+│   └── route.ts              # POST - Bulk token creation
+├── [id]/
+│   └── revoke/
+│       └── route.ts          # POST - Single token revocation
+└── revoke-by-entity/
+    └── route.ts              # POST - Bulk revocation for recalls
+
+app/api/labels/
+└── render-with-tokens/
+    └── route.ts              # POST - Render labels with tokens
+```
+
+### Data Model
+
+```mermaid
+erDiagram
+    QRToken ||--o| LabelTemplateVersion : "printed from"
+    QRToken ||--o| User : "created by"
+    
+    QRToken {
+        string id PK
+        string token UK
+        QRTokenStatus status
+        LabelEntityType entityType
+        string entityId
+        string versionId FK
+        datetime printedAt
+        datetime expiresAt
+        datetime revokedAt
+        string revokedReason
+        int scanCount
+        datetime lastScannedAt
+        string createdByUserId FK
+    }
+```
+
+### Token Generation
+
+**Format:** `qr_<22-char-base62-string>`
+
+**Example:** `qr_2x7kP9mN4vBcRtYz8LqW5j`
+
+**Implementation:**
+
+```typescript
+const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+const bytes = randomBytes(22);
+let token = 'qr_';
+for (const byte of bytes) {
+  token += BASE62[byte % 62];
+}
+```
+
+**Characteristics:**
+- Cryptographically random via Node.js `crypto`
+- ~131 bits of entropy
+- URL-safe (no encoding required)
+- `qr_` prefix for easy validation
+
+### Token Lifecycle
+
+```
+ACTIVE ─────────────────────────────────────────┐
+    │                                            │
+    │ revokeToken()                              │
+    │ - manual admin action                      │
+    │ - reason required                          │
+    │                                            │
+    ▼                                            │
+REVOKED                                          │
+    │                                            │
+    └── Shows info page with reason              │
+                                                 │
+                                                 │
+ACTIVE ─────────────────────────────────────────┤
+    │                                            │
+    │ Token expires (expiresAt reached)          │
+    │ - auto-detected on scan                    │
+    │                                            │
+    ▼                                            │
+EXPIRED                                          │
+    │                                            │
+    └── Shows info page with notice              │
+```
+
+### Service Layer Functions
+
+**Token Generation:**
+- `generateToken()` - Create random token string
+- `isValidTokenFormat(token)` - Validate format
+
+**Token Lifecycle:**
+- `createToken(params)` - Create single token
+- `createTokenBatch(params)` - Create N tokens for batch printing
+- `resolveToken(tokenValue)` - Look up and resolve token
+- `revokeToken(id, reason, userId)` - Revoke single token
+- `revokeTokensByEntity(params)` - Bulk revoke for recalls
+
+**Query Functions:**
+- `getToken(id)` - Get by internal ID
+- `getTokenByValue(token)` - Get by public token
+- `getTokensForEntity(entityType, entityId)` - List entity's tokens
+- `getTokensForVersion(versionId)` - List version's tokens
+- `getTokenStats(entityType, entityId)` - Token statistics
+
+### API Endpoints
+
+| Route | Method | Auth | Description |
+|-------|--------|------|-------------|
+| `/api/qr-tokens/batch` | POST | ADMIN/PRODUCTION/WAREHOUSE | Create tokens in batch |
+| `/api/qr-tokens/[id]/revoke` | POST | ADMIN | Revoke single token |
+| `/api/qr-tokens/revoke-by-entity` | POST | ADMIN | Bulk revoke by entity |
+| `/api/labels/render-with-tokens` | POST | ADMIN/PRODUCTION/WAREHOUSE | Render labels with tokens |
+
+### Integration with Label System
+
+When printing labels with tokens:
+
+1. **Client requests** `/api/labels/render-with-tokens` with entity info and quantity
+2. **API creates tokens** via `createTokenBatch()`
+3. **API renders SVGs** via `renderLabelsWithTokens()` 
+4. **QR codes contain** `${baseUrl}/qr/${token}`
+5. **Response includes** token IDs, tokens, URLs, and SVG strings
+
+### Activity Logging
+
+| Action | When | Tags |
+|--------|------|------|
+| `qr_tokens_created` | Batch token generation | `['qr', 'label', 'print']` |
+| `qr_token_scanned` | Token resolved successfully | `['qr', 'label', 'scan']` |
+| `qr_token_revoked` | Single token revocation | `['qr', 'label', 'revoke']` |
+| `qr_tokens_bulk_revoked` | Entity-wide revocation | `['qr', 'label', 'revoke', 'bulk']` |
+
+### Explicit Non-Goals (Phase 1)
+
+The following are deferred to future phases:
+
+| Feature | Reason |
+|---------|--------|
+| Consumer scan dashboards | Adds complexity, low immediate value |
+| Fraud/clone detection | Requires device fingerprinting |
+| Geographic analytics | Privacy concerns, scope creep |
+| Automated expiration jobs | Requires background job infrastructure |
+| Token reassignment | Complex edge cases |
+| Custom payload per token | Keep tokens as simple pointers |
+
+---
+
 **END OF IMPLEMENTATION SUMMARY**
 

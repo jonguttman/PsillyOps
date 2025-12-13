@@ -33,10 +33,13 @@ export const ErrorCodes = {
   FORBIDDEN: 'FORBIDDEN',
   NOT_FOUND: 'NOT_FOUND',
   VALIDATION_ERROR: 'VALIDATION_ERROR',
+  INVALID_INPUT: 'INVALID_INPUT',
+  INVALID_OPERATION: 'INVALID_OPERATION',
   INSUFFICIENT_INVENTORY: 'INSUFFICIENT_INVENTORY',
   MATERIAL_SHORTAGE: 'MATERIAL_SHORTAGE',
   INVALID_STATUS: 'INVALID_STATUS',
   DUPLICATE: 'DUPLICATE',
+  CONFLICT: 'CONFLICT',
   INTERNAL_ERROR: 'INTERNAL_ERROR'
 } as const;
 
@@ -80,7 +83,11 @@ function getStatusCode(code: string): number {
       return 403;
     case ErrorCodes.NOT_FOUND:
       return 404;
+    case ErrorCodes.CONFLICT:
+      return 409;
     case ErrorCodes.VALIDATION_ERROR:
+    case ErrorCodes.INVALID_INPUT:
+    case ErrorCodes.INVALID_OPERATION:
     case ErrorCodes.INSUFFICIENT_INVENTORY:
     case ErrorCodes.MATERIAL_SHORTAGE:
     case ErrorCodes.INVALID_STATUS:

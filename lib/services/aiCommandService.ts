@@ -2,6 +2,16 @@
 // Interprets natural language commands and executes them via domain services
 
 import { prisma } from '@/lib/db/prisma';
+
+/**
+ * Validate userId exists in database before using it
+ * Handles stale sessions after database re-seeding
+ */
+async function validateUserId(userId: string | null | undefined): Promise<string | null> {
+  if (!userId) return null;
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  return user ? userId : null;
+}
 import { AppError, ErrorCodes } from '@/lib/utils/errors';
 import { logAction } from './loggingService';
 import { receiveMaterials, moveInventory, adjustInventory } from './inventoryService';
@@ -66,10 +76,12 @@ export type AdjustInventoryCommand = {
   args: {
     itemRef: string;
     delta: number;
+    targetQuantity?: number; // For "adjust X to Y" commands
     reason: string;
   };
   resolved?: {
     inventoryId?: string;
+    currentQuantity?: number; // Current quantity for delta calculation
   };
 };
 
@@ -491,9 +503,10 @@ export async function interpretCommand(
   } catch (error) {
     if (error instanceof AIClientError) {
       // Log the failed attempt
+      const validUserId = await validateUserId(userId);
       const log = await prisma.aICommandLog.create({
         data: {
-          userId: userId || null,
+          userId: validUserId,
           inputText,
           normalized: null,
           status: AICommandStatus.FAILED,
@@ -514,9 +527,10 @@ export async function interpretCommand(
   try {
     command = await mapRawResultToCommand(rawResult);
   } catch (error: any) {
+    const validUserId = await validateUserId(userId);
     const log = await prisma.aICommandLog.create({
       data: {
-        userId: userId || null,
+        userId: validUserId,
         inputText,
         normalized: rawResult.command,
         status: AICommandStatus.FAILED,
@@ -535,9 +549,10 @@ export async function interpretCommand(
   command = await resolveCommandReferences(command);
 
   // Create log entry
+  const validUserId = await validateUserId(userId);
   const log = await prisma.aICommandLog.create({
     data: {
-      userId: userId || null,
+      userId: validUserId,
       inputText,
       normalized: command.command,
       status: AICommandStatus.PENDING,
@@ -722,6 +737,7 @@ export async function resolveCommandReferences(cmd: AICommandInterpretation): Pr
         ...cmd,
         resolved: {
           inventoryId: inventory?.id,
+          currentQuantity: inventory?.quantityOnHand,
         }
       };
     }
@@ -969,7 +985,8 @@ function validateCommand(cmd: AICommandInterpretation): void {
       if (!cmd.resolved?.inventoryId) {
         throw new Error(`Inventory item not found: "${cmd.args.itemRef}"`);
       }
-      if (cmd.args.delta === 0) {
+      // Delta can be 0 if targetQuantity is specified (will be calculated during execution)
+      if (cmd.args.delta === 0 && cmd.args.targetQuantity === undefined) {
         throw new Error('Delta cannot be 0');
       }
       break;
@@ -1076,18 +1093,36 @@ async function executeAdjustInventory(
   cmd: AdjustInventoryCommand,
   userId?: string | null
 ): Promise<AICommandExecutionResult> {
+  // Calculate delta if targetQuantity is specified
+  let delta = cmd.args.delta;
+  if (cmd.args.targetQuantity !== undefined && cmd.resolved?.currentQuantity !== undefined) {
+    delta = cmd.args.targetQuantity - cmd.resolved.currentQuantity;
+  }
+
+  // If delta is 0, no adjustment needed
+  if (delta === 0) {
+    return {
+      success: true,
+      message: `Inventory already at target quantity (${cmd.args.targetQuantity})`,
+      details: { noChangeNeeded: true }
+    };
+  }
+
   await adjustInventory({
     inventoryId: cmd.resolved!.inventoryId!,
-    deltaQuantity: cmd.args.delta,
+    deltaQuantity: delta,
     reason: cmd.args.reason,
     userId: userId || 'system',
   });
 
-  const direction = cmd.args.delta > 0 ? 'increased' : 'decreased';
+  const direction = delta > 0 ? 'increased' : 'decreased';
+  const targetInfo = cmd.args.targetQuantity !== undefined 
+    ? ` to ${cmd.args.targetQuantity}` 
+    : '';
   return {
     success: true,
-    message: `Inventory ${direction} by ${Math.abs(cmd.args.delta)}: ${cmd.args.reason}`,
-    details: {}
+    message: `Inventory ${direction} by ${Math.abs(delta)}${targetInfo}: ${cmd.args.reason}`,
+    details: { delta, targetQuantity: cmd.args.targetQuantity }
   };
 }
 

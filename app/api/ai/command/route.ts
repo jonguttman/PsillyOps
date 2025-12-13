@@ -14,6 +14,9 @@ import { hasPermission } from '@/lib/auth/rbac';
 
 export async function POST(req: NextRequest) {
   try {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'route.ts:16',message:'API route entered',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
     // 1. Validate authentication
     const session = await auth();
     if (!session) {
@@ -63,7 +66,13 @@ export async function POST(req: NextRequest) {
     }
 
     // 4. Interpret the command
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'route.ts:69',message:'Before interpretCommand',data:{inputText:text.trim()},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     const { log, command } = await interpretCommand(text.trim(), session.user.id);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'route.ts:73',message:'After interpretCommand',data:{command:command.command,args:command.args,resolved:command.resolved},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,B'})}).catch(()=>{});
+    // #endregion
 
     // 5. Resolve references to get readable names
     const resolvedCommand = await resolveCommandReferences(command);
@@ -91,6 +100,9 @@ export async function POST(req: NextRequest) {
     });
 
   } catch (error) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'route.ts:100',message:'Caught error in route',data:{error:error instanceof Error ? error.message : String(error),stack:error instanceof Error ? error.stack?.split('\n').slice(0,5) : null},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D,E'})}).catch(()=>{});
+    // #endregion
     return handleApiError(error);
   }
 }
@@ -107,6 +119,9 @@ function generateCommandSummary(cmd: any): string {
       return `Move ${cmd.args.quantity} ${cmd.args.itemRef} to ${cmd.resolved?.toLocationName || cmd.args.toLocationRef}`;
 
     case 'ADJUST_INVENTORY':
+      if (cmd.args.targetQuantity !== undefined) {
+        return `Set ${cmd.args.itemRef} quantity to ${cmd.args.targetQuantity}: ${cmd.args.reason}`;
+      }
       const direction = cmd.args.delta > 0 ? 'increase' : 'decrease';
       return `${direction} ${cmd.args.itemRef} by ${Math.abs(cmd.args.delta)}: ${cmd.args.reason}`;
 

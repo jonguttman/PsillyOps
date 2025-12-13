@@ -75,6 +75,7 @@ export enum ActivityEntity {
   INVENTORY = 'INVENTORY',
   WORK_CENTER = 'WORK_CENTER',
   INVOICE = 'INVOICE',
+  LABEL = 'LABEL',
   SYSTEM = 'SYSTEM'
 }
 
@@ -93,5 +94,12 @@ export enum AIDocumentStatus {
   APPLIED = 'APPLIED',
   REJECTED = 'REJECTED',
   FAILED = 'FAILED'
+}
+
+// QR Token Status values
+export enum QRTokenStatus {
+  ACTIVE = 'ACTIVE',
+  REVOKED = 'REVOKED',
+  EXPIRED = 'EXPIRED'
 }
 

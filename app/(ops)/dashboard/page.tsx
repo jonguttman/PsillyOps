@@ -98,7 +98,7 @@ export default async function AdminDashboardPage() {
   return (
     <div className="space-y-4">
       {/* AI Command Input - Primary */}
-      <DashboardAiInput />
+      <DashboardAiInput userRole={session.user.role} />
 
       {/* Actionable Alerts */}
       <AlertsPanel

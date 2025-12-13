@@ -17,7 +17,8 @@
 8. [Intelligent Logging System](#intelligent-logging-system)
 9. [Development Workflow](#development-workflow)
 10. [Deployment](#deployment)
-11. [Environment Variables](#environment-variables)
+11. [Tooltip System](#tooltip-system)
+12. [Environment Variables](#environment-variables)
 
 ---
 
@@ -772,6 +773,99 @@ This mode is recommended during early development for maximum speed, zero setup,
 - The codebase is already compatible with both SQLite (local) and PostgreSQL (production)
 
 You may continue working locally and revisit production configuration later.
+
+---
+
+## Tooltip System
+
+PsillyOps includes a lightweight contextual tooltip system to reduce cognitive load on complex UI elements.
+
+### Architecture
+
+The tooltip system is intentionally simple (V1 scope):
+
+- **Static content**: All tooltip text defined in a single registry file
+- **No service layer**: Role filtering happens at render time
+- **Local state**: Each tooltip manages its own visibility
+- **No global provider**: Components are self-contained
+
+### Core Files
+
+| File | Purpose |
+|------|---------|
+| `lib/data/tooltips.ts` | Static tooltip content registry |
+| `components/ui/Tooltip.tsx` | Base tooltip component |
+| `components/ui/TooltipWrapper.tsx` | Smart wrapper with role filtering |
+| `components/ui/StatusBadge.tsx` | Status badges with built-in tooltips |
+
+### Usage
+
+```tsx
+import TooltipWrapper, { TooltipIcon } from '@/components/ui/TooltipWrapper';
+
+// Basic usage
+<TooltipWrapper tooltipId="ai-command-input" userRole={session.user.role}>
+  <button>Action</button>
+</TooltipWrapper>
+
+// With help icon
+<label className="flex items-center gap-1">
+  Field Name
+  <TooltipWrapper tooltipId="field-help" userRole={userRole}>
+    <TooltipIcon />
+  </TooltipWrapper>
+</label>
+```
+
+### Adding New Tooltips
+
+1. Add entry to `lib/data/tooltips.ts`:
+
+```typescript
+'my-tooltip-id': {
+  id: 'my-tooltip-id',
+  title: 'Tooltip Title',
+  content: 'Explanation text...',
+  helpLink: '/help#section',  // optional
+  roles: [UserRole.ADMIN, UserRole.PRODUCTION],
+  examples: ['Example 1', 'Example 2']  // optional
+}
+```
+
+2. Wrap UI element with `TooltipWrapper`:
+
+```tsx
+<TooltipWrapper tooltipId="my-tooltip-id" userRole={userRole}>
+  <MyComponent />
+</TooltipWrapper>
+```
+
+### Positioning
+
+Only `top` (default) and `bottom` positioning supported:
+
+```tsx
+<TooltipWrapper tooltipId="..." position="bottom">
+```
+
+### Accessibility
+
+All tooltips include:
+- `role="tooltip"` attribute
+- `aria-describedby` linking
+- Keyboard support (Tab to focus, Escape to close)
+- `prefers-reduced-motion` respected
+- Touch device support (click to toggle)
+
+### Non-Goals (V1)
+
+These features are explicitly out of scope:
+- Tooltip analytics
+- Admin tooltip editor
+- Global tooltip state
+- Localization
+- Left/right positioning
+- Collision detection
 
 ---
 

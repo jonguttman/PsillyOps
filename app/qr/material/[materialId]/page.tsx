@@ -106,6 +106,7 @@ export default async function MaterialQRPage({
         <QRCodeDisplay 
           url={`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/qr/material/${materialId}`}
           materialName={material.name}
+          userRole={session?.user?.role}
         />
         
         {/* Basic Info */}
