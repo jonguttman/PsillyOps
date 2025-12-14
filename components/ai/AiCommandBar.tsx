@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 // QR Context from scanned/pasted QR code
 interface QRContext {
@@ -70,6 +71,12 @@ interface CommandResult {
     message: string;
     details?: any;
   };
+  type?: 'NAVIGATION' | 'PROPOSE_CREATE';
+  destination?: string;
+  prefill?: Record<string, unknown>;
+  message?: string;
+  entity?: 'strain' | 'material';
+  confirmationText?: string;
   correctionApplied?: boolean;
   error?: string;
 }
@@ -86,9 +93,12 @@ const COMMAND_TYPES = [
   { value: 'CREATE_RETAILER_ORDER', label: 'Create Order' },
   { value: 'COMPLETE_BATCH', label: 'Complete Batch' },
   { value: 'CREATE_MATERIAL', label: 'Create Material' },
+  { value: 'NAVIGATE_ADD_STRAIN', label: 'Navigate: Add Strain' },
+  { value: 'NAVIGATE_ADD_MATERIAL', label: 'Navigate: Add Material' },
 ];
 
 export default function AiCommandBar({ isOpen, onClose }: AiCommandBarProps) {
+  const router = useRouter();
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<CommandResult | null>(null);
@@ -182,6 +192,21 @@ export default function AiCommandBar({ isOpen, onClose }: AiCommandBarProps) {
         throw new Error(data.message || 'Failed to interpret command');
       }
 
+      // Phase 1: navigation response (route + optional prefill)
+      if (data?.type === 'NAVIGATION' && typeof data.destination === 'string') {
+        const params = new URLSearchParams();
+        if (data.prefill && typeof data.prefill === 'object') {
+          params.set('prefill', JSON.stringify(data.prefill));
+        }
+        params.set('aiToast', '1');
+
+        const needsQuestionMark = !data.destination.includes('?');
+        const withQuery = `${data.destination}${needsQuestionMark ? '?' : '&'}${params.toString()}`;
+        router.push(withQuery);
+        onClose();
+        return;
+      }
+
       setResult(data);
       // Initialize edited command with parsed command
       if (data.command) {
@@ -192,7 +217,49 @@ export default function AiCommandBar({ isOpen, onClose }: AiCommandBarProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [inputText, resolveQRContext]);
+  }, [inputText, resolveQRContext, router, onClose]);
+
+  const confirmProposedCreate = useCallback(async () => {
+    if (!result?.logId || result.type !== 'PROPOSE_CREATE') return;
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/ai/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          confirm: true,
+          logId: result.logId,
+          proposedAction: {
+            type: 'PROPOSE_CREATE',
+            entity: result.entity,
+            prefill: result.prefill || {},
+            confirmationText: result.confirmationText,
+          },
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to create');
+      }
+
+      if (data?.type === 'NAVIGATION' && typeof data.destination === 'string') {
+        router.push(data.destination);
+        onClose();
+        return;
+      }
+
+      // Fallback: show returned payload
+      setResult(data);
+    } catch (err: any) {
+      setError(err.message || 'An error occurred');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [result, router, onClose]);
 
   const executeCommand = useCallback(async (withCorrection: boolean = false) => {
     if (!result?.logId) return;
@@ -270,6 +337,10 @@ export default function AiCommandBar({ isOpen, onClose }: AiCommandBarProps) {
     e.preventDefault();
     // If QR context is shown, don't process further
     if (qrContext?.found) {
+      return;
+    }
+    // PROPOSE_CREATE uses explicit buttons (Create/Cancel), not form submit.
+    if (result?.type === 'PROPOSE_CREATE') {
       return;
     }
     if (result && !result.executed) {
@@ -380,58 +451,98 @@ export default function AiCommandBar({ isOpen, onClose }: AiCommandBarProps) {
                   ) : (
                     // Interpretation result with editable fields
                     <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center">
-                          <svg className="h-5 w-5 text-blue-500 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                          </svg>
-                          <span className="font-medium text-blue-700">Command Interpreted</span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setIsEditing(!isEditing)}
-                          className="text-sm text-blue-600 hover:text-blue-800 underline"
-                        >
-                          {isEditing ? 'Hide Editor' : 'Edit'}
-                        </button>
-                      </div>
-
-                      {!isEditing ? (
-                        // Summary view
+                      {result.type === 'PROPOSE_CREATE' ? (
                         <div>
-                          <p className="text-sm text-blue-600 mb-1">
-                            <strong>Action:</strong> {result.command?.command}
-                          </p>
-                          <p className="text-sm text-blue-600">
-                            <strong>Summary:</strong> {result.summary}
-                          </p>
-                        </div>
-                      ) : (
-                        // Editable fields
-                        <div className="space-y-3 mt-3">
-                          {/* Command Type */}
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">Command Type</label>
-                            <select
-                              value={editedCommand?.command || ''}
-                              onChange={(e) => handleCommandTypeChange(e.target.value)}
-                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
-                            >
-                              {COMMAND_TYPES.map(ct => (
-                                <option key={ct.value} value={ct.value}>{ct.label}</option>
-                              ))}
-                            </select>
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center">
+                              <svg className="h-5 w-5 text-blue-500 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                              </svg>
+                              <span className="font-medium text-blue-700">Review & Confirm</span>
+                            </div>
+                            <span className="text-xs text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
+                              No data written yet
+                            </span>
                           </div>
 
-                          {/* Dynamic fields based on command type */}
-                          {editedCommand && renderEditableFields(editedCommand, handleArgChange)}
+                          <p className="text-sm text-blue-700 whitespace-pre-wrap">
+                            {result.confirmationText ||
+                              `I’ve prepared a new ${result.entity || 'entity'}.\nPlease review and confirm before it’s created.`}
+                          </p>
 
-                          {hasChanges() && (
-                            <div className="flex items-center text-xs text-purple-600 mt-2">
-                              <svg className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          {result.prefill && (
+                            <div className="mt-3 bg-white/70 border border-blue-200 rounded p-3">
+                              <div className="text-xs font-medium text-blue-800 mb-2">Proposed values</div>
+                              <pre className="text-xs text-blue-900 whitespace-pre-wrap">
+                                {JSON.stringify(result.prefill, null, 2)}
+                              </pre>
+                            </div>
+                          )}
+                          {result.entity === 'strain' &&
+                            result.prefill &&
+                            typeof result.prefill === 'object' &&
+                            (result.prefill as Record<string, unknown>)['shortCodeNeedsManual'] === true && (
+                              <p className="mt-2 text-xs text-amber-700">
+                                AI couldn’t safely suggest a short code — please choose one.
+                              </p>
+                            )}
+                        </div>
+                      ) : (
+                        <div>
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center">
+                              <svg className="h-5 w-5 text-blue-500 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
                               </svg>
-                              Changes will be saved for future commands
+                              <span className="font-medium text-blue-700">Command Interpreted</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setIsEditing(!isEditing)}
+                              className="text-sm text-blue-600 hover:text-blue-800 underline"
+                            >
+                              {isEditing ? 'Hide Editor' : 'Edit'}
+                            </button>
+                          </div>
+
+                          {!isEditing ? (
+                            // Summary view
+                            <div>
+                              <p className="text-sm text-blue-600 mb-1">
+                                <strong>Action:</strong> {result.command?.command}
+                              </p>
+                              <p className="text-sm text-blue-600">
+                                <strong>Summary:</strong> {result.summary}
+                              </p>
+                            </div>
+                          ) : (
+                            // Editable fields
+                            <div className="space-y-3 mt-3">
+                              {/* Command Type */}
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">Command Type</label>
+                                <select
+                                  value={editedCommand?.command || ''}
+                                  onChange={(e) => handleCommandTypeChange(e.target.value)}
+                                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                                >
+                                  {COMMAND_TYPES.map(ct => (
+                                    <option key={ct.value} value={ct.value}>{ct.label}</option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              {/* Dynamic fields based on command type */}
+                              {editedCommand && renderEditableFields(editedCommand, handleArgChange)}
+
+                              {hasChanges() && (
+                                <div className="flex items-center text-xs text-purple-600 mt-2">
+                                  <svg className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                  Changes will be saved for future commands
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -524,6 +635,7 @@ export default function AiCommandBar({ isOpen, onClose }: AiCommandBarProps) {
                     if (qrContext?.found) {
                       setQrContext(null);
                       setInputText('');
+                      setResult(null);
                     } else if (result && !result.executed) {
                       setResult(null);
                       setIsEditing(false);
@@ -535,7 +647,7 @@ export default function AiCommandBar({ isOpen, onClose }: AiCommandBarProps) {
                   className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                   disabled={isLoading}
                 >
-                  {qrContext?.found ? 'Clear' : result && !result.executed ? 'Back' : 'Cancel'}
+                  {qrContext?.found ? 'Clear' : result && !result.executed ? 'Cancel' : 'Cancel'}
                 </button>
                 
                 {qrContext?.found && qrContext.qrContext ? (
@@ -546,6 +658,34 @@ export default function AiCommandBar({ isOpen, onClose }: AiCommandBarProps) {
                   >
                     Open QR Details
                   </Link>
+                ) : result?.type === 'PROPOSE_CREATE' ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Short-code safety: if AI could not safely suggest a shortCode, route to the form.
+                      const needsManualShortCode =
+                        result.entity === 'strain' &&
+                        !!result.prefill &&
+                        typeof result.prefill === 'object' &&
+                        (result.prefill as Record<string, unknown>)['shortCodeNeedsManual'] === true;
+
+                      if (needsManualShortCode) {
+                        const params = new URLSearchParams();
+                        const name = (result.prefill as Record<string, unknown>)['name'];
+                        if (typeof name === 'string') params.set('prefill', JSON.stringify({ name }));
+                        params.set('aiToast', '1');
+                        router.push(`/strains/new?${params.toString()}`);
+                        onClose();
+                        return;
+                      }
+
+                      confirmProposedCreate();
+                    }}
+                    className="px-4 py-2 text-sm font-medium text-white bg-green-600 border border-transparent rounded-lg hover:bg-green-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={isLoading}
+                  >
+                    {isLoading ? 'Creating...' : 'Create'}
+                  </button>
                 ) : result && !result.executed ? (
                   <button
                     type="submit"

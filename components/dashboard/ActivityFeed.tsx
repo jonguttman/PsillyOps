@@ -1,5 +1,6 @@
 interface ActivityItem {
   id: string;
+  action?: string;
   summary: string;
   createdAt: Date;
   user: { name: string } | null;
@@ -43,6 +44,10 @@ export default function ActivityFeed({ activities }: ActivityFeedProps) {
           const tags = Array.isArray(activity.tags) ? activity.tags : [];
           const isAiCommand = tags.includes('ai_command');
           const isSystem = !activity.user;
+          const isInventoryAdjusted = activity.action === 'inventory_adjusted' || tags.includes('adjustment') || tags.includes('manual_correction');
+          const isPOReceipt = activity.action === 'received' && tags.includes('inventory');
+          const isPOPartial = isPOReceipt && tags.includes('partial');
+          const isCorrection = tags.includes('manual_correction') || tags.includes('manual');
 
           return (
             <li key={activity.id} className="flex items-start gap-3">
@@ -69,6 +74,16 @@ export default function ActivityFeed({ activities }: ActivityFeedProps) {
                   {isAiCommand && (
                     <span className="text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">
                       AI
+                    </span>
+                  )}
+                  {isInventoryAdjusted && (
+                    <span className="text-xs bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded">
+                      {isCorrection ? 'Manual Adjustment' : 'Adjustment'}
+                    </span>
+                  )}
+                  {isPOReceipt && (
+                    <span className="text-xs bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded">
+                      {isPOPartial ? 'PO Receipt (Partial)' : 'PO Receipt'}
                     </span>
                   )}
                 </div>

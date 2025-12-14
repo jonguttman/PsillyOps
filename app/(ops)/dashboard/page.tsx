@@ -6,6 +6,9 @@ import AlertsPanel from "@/components/dashboard/AlertsPanel";
 import StatsStrip from "@/components/dashboard/StatsStrip";
 import ActivityFeed from "@/components/dashboard/ActivityFeed";
 import RecentQRScans from "@/components/dashboard/RecentQRScans";
+import SupplyWatchCard from "@/components/dashboard/SupplyWatchCard";
+import { getLowStockMaterials } from "@/lib/services/inventoryService";
+import { getRecentAdjustments } from "@/lib/services/inventoryAdjustmentService";
 
 export default async function AdminDashboardPage() {
   const session = await auth();
@@ -22,7 +25,8 @@ export default async function AdminDashboardPage() {
 
   // Fetch all dashboard data in parallel
   const [
-    allMaterials,
+    lowStock,
+    recentManualAdjustments,
     blockedOrders,
     qcHoldBatches,
     ordersWithShortages,
@@ -32,12 +36,13 @@ export default async function AdminDashboardPage() {
     pendingPurchaseOrders,
     awaitingInvoiceCount,
     recentActivity,
+    openPurchaseOrders,
+    lastReceivedPO,
   ] = await Promise.all([
-    // Materials for low-stock check
-    prisma.rawMaterial.findMany({
-      where: { active: true },
-      select: { id: true, name: true, currentStockQty: true, reorderPoint: true },
-    }),
+    // Supply watch: low stock materials
+    getLowStockMaterials(),
+    // Supply watch: manual adjustments (last 48h)
+    getRecentAdjustments({ hours: 48, adjustmentType: "MANUAL_CORRECTION" }),
     // Blocked production orders
     prisma.productionOrder.findMany({
       where: { status: "BLOCKED" },
@@ -89,17 +94,41 @@ export default async function AdminDashboardPage() {
       orderBy: { createdAt: "desc" },
       include: { user: { select: { name: true } } },
     }),
+    // Open purchase orders (DRAFT, SENT, or PARTIALLY_RECEIVED)
+    prisma.purchaseOrder.count({
+      where: { status: { in: ["DRAFT", "SENT", "PARTIALLY_RECEIVED"] } },
+    }),
+    // Last received PO
+    prisma.purchaseOrder.findFirst({
+      where: { status: "RECEIVED" },
+      orderBy: { receivedAt: "desc" },
+      select: { receivedAt: true },
+    }),
   ]);
 
-  // Filter low-stock materials
-  const lowStockMaterials = allMaterials.filter(
-    (m) => m.currentStockQty < m.reorderPoint
-  );
+  const lowStockMaterials = lowStock.materials;
+
+  // Calculate days since last PO receipt
+  const daysSinceLastReceipt = lastReceivedPO?.receivedAt
+    ? Math.floor(
+        (Date.now() - new Date(lastReceivedPO.receivedAt).getTime()) /
+          (1000 * 60 * 60 * 24)
+      )
+    : null;
 
   return (
     <div className="space-y-4">
       {/* AI Command Input - Primary */}
       <DashboardAiInput userRole={session.user.role} />
+
+      {/* Stats Strip - Context Only */}
+      <StatsStrip
+        lowStockCount={lowStockMaterials.length}
+        activeProductionOrders={activeProductionOrders}
+        openRetailerOrders={openRetailerOrders}
+        pendingPurchaseOrders={pendingPurchaseOrders}
+        awaitingInvoiceCount={awaitingInvoiceCount}
+      />
 
       {/* Actionable Alerts */}
       <AlertsPanel
@@ -110,13 +139,30 @@ export default async function AdminDashboardPage() {
         ordersAwaitingInvoice={ordersAwaitingInvoice}
       />
 
-      {/* Stats Strip - Context Only */}
-      <StatsStrip
-        lowStockCount={lowStockMaterials.length}
-        activeProductionOrders={activeProductionOrders}
-        openRetailerOrders={openRetailerOrders}
-        pendingPurchaseOrders={pendingPurchaseOrders}
-        awaitingInvoiceCount={awaitingInvoiceCount}
+      {/* Supply Watch */}
+      <SupplyWatchCard
+        lowStockMaterials={lowStockMaterials.map((m) => ({
+          id: m.id,
+          name: m.name,
+          currentStockQty: m.currentStockQty,
+          reorderPoint: m.reorderPoint,
+        }))}
+        recentManualAdjustments={(recentManualAdjustments.adjustments || [])
+          .filter((a: (typeof recentManualAdjustments.adjustments)[number]) => a.inventory.type === "MATERIAL")
+          .map((a: (typeof recentManualAdjustments.adjustments)[number]) => ({
+            id: a.id,
+            createdAt: a.createdAt,
+            deltaQty: a.deltaQty,
+            reason: a.reason,
+            inventory: {
+              id: a.inventory.id,
+              type: a.inventory.type,
+              product: a.inventory.product,
+              material: a.inventory.material,
+            },
+          }))}
+        openPOsCount={openPurchaseOrders}
+        daysSinceLastReceipt={daysSinceLastReceipt}
       />
 
       {/* Recent QR Scans */}

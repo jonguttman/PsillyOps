@@ -16,9 +16,6 @@ import {
   ScanLine,
   Dna,
   Building2,
-  Wrench,
-  ClipboardList,
-  Brain,
   Activity,
   HelpCircle,
   LucideIcon
@@ -67,8 +64,8 @@ export function SidebarNav({ userRole }: SidebarNavProps) {
     return pathname.startsWith(href);
   };
 
-  // OPERATIONS section
-  const operationsItems: NavItem[] = [
+  // OPS section - Physical operations
+  const opsItems: NavItem[] = [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/scan', label: 'Scan QR', icon: ScanLine },
     { href: '/products', label: 'Products', icon: Package },
@@ -76,33 +73,32 @@ export function SidebarNav({ userRole }: SidebarNavProps) {
     { href: '/inventory', label: 'Inventory', icon: Warehouse },
     { href: '/production', label: 'Production', icon: Factory },
     { href: '/orders', label: 'Orders', icon: ShoppingCart },
-    { href: '/purchase-orders', label: 'Purchase Orders', icon: FileText },
+    { href: '/purchase-orders', label: 'Purchasing', icon: FileText },
   ];
 
-  // SYSTEM section (collapsed by default) - includes Labels, QR Redirects, Strains, Vendors
+  // LABELS section - Label templates
+  const labelsItems: NavItem[] = [
+    { href: '/labels', label: 'Templates', icon: Tags },
+  ];
+
+  // QR section - Identity & traceability
+  const qrItems: NavItem[] = [
+    ...(userRole === 'ADMIN' ? [{ href: '/qr-redirects', label: 'Redirect Rules', icon: QrCode }] : []),
+  ];
+
+  // SYSTEM section - Governance
   const systemItems: NavItem[] = [
-    { href: '/labels', label: 'Labels', icon: Tags },
-    ...(userRole === 'ADMIN' ? [{ href: '/qr-redirects', label: 'QR Redirects', icon: QrCode }] : []),
+    { href: '/activity', label: 'Activity', icon: Activity },
     { href: '/strains', label: 'Strains', icon: Dna },
     { href: '/vendors', label: 'Vendors', icon: Building2 },
-  ];
-
-  // INTELLIGENCE section
-  const intelligenceItems: NavItem[] = [
-    { href: '/ai-ingest', label: 'AI Ingest', icon: Brain },
-    { href: '/activity', label: 'Activity', icon: Activity },
-  ];
-
-  // SUPPORT section
-  const supportItems: NavItem[] = [
     { href: '/help', label: 'Help', icon: HelpCircle },
   ];
 
   return (
     <nav className="w-56 bg-white border-r border-gray-200 h-full overflow-y-auto py-4 px-2">
-      {/* OPERATIONS */}
-      <SidebarSection title="Operations" defaultExpanded={true} persistKey="operations">
-        {operationsItems.map((item) => (
+      {/* OPS - Physical operations */}
+      <SidebarSection title="Ops" defaultExpanded={true} persistKey="ops">
+        {opsItems.map((item) => (
           <NavItem
             key={item.href}
             href={item.href}
@@ -113,35 +109,37 @@ export function SidebarNav({ userRole }: SidebarNavProps) {
         ))}
       </SidebarSection>
 
-      {/* SYSTEM - collapsed by default, includes Labels, QR Redirects, Strains, Vendors */}
+      {/* LABELS - Label templates */}
+      <SidebarSection title="Labels" defaultExpanded={false} persistKey="labels">
+        {labelsItems.map((item) => (
+          <NavItem
+            key={item.href}
+            href={item.href}
+            label={item.label}
+            icon={item.icon}
+            isActive={isActive(item.href)}
+          />
+        ))}
+      </SidebarSection>
+
+      {/* QR - Identity & traceability (only show if there are items) */}
+      {qrItems.length > 0 && (
+        <SidebarSection title="QR" defaultExpanded={false} persistKey="qr">
+          {qrItems.map((item) => (
+            <NavItem
+              key={item.href}
+              href={item.href}
+              label={item.label}
+              icon={item.icon}
+              isActive={isActive(item.href)}
+            />
+          ))}
+        </SidebarSection>
+      )}
+
+      {/* SYSTEM - Governance */}
       <SidebarSection title="System" defaultExpanded={false} persistKey="system">
         {systemItems.map((item) => (
-          <NavItem
-            key={item.href}
-            href={item.href}
-            label={item.label}
-            icon={item.icon}
-            isActive={isActive(item.href)}
-          />
-        ))}
-      </SidebarSection>
-
-      {/* INTELLIGENCE */}
-      <SidebarSection title="Intelligence" defaultExpanded={true} persistKey="intelligence">
-        {intelligenceItems.map((item) => (
-          <NavItem
-            key={item.href}
-            href={item.href}
-            label={item.label}
-            icon={item.icon}
-            isActive={isActive(item.href)}
-          />
-        ))}
-      </SidebarSection>
-
-      {/* SUPPORT */}
-      <SidebarSection title="Support" defaultExpanded={true} persistKey="support">
-        {supportItems.map((item) => (
           <NavItem
             key={item.href}
             href={item.href}
@@ -154,4 +152,3 @@ export function SidebarNav({ userRole }: SidebarNavProps) {
     </nav>
   );
 }
-

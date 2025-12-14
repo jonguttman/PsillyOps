@@ -138,6 +138,14 @@ enum QRTokenStatus {
   EXPIRED
 }
 
+enum InventoryAdjustmentType {
+  PRODUCTION_COMPLETE
+  PRODUCTION_SCRAP
+  MANUAL_CORRECTION
+  RECEIVING
+  CONSUMPTION
+}
+
 // ========================================
 // CORE MODELS
 // ========================================
@@ -159,6 +167,7 @@ model User {
   createdPurchaseOrders     PurchaseOrder[]    @relation("PurchaseOrderCreator")
   batches                   BatchMaker[]
   activityLogs              ActivityLog[]
+  inventoryAdjustments      InventoryAdjustment[] @relation("UserInventoryAdjustments")
   assignedRetailers         Retailer[]
   laborEntries              LaborEntry[]
   aiCommandLogs             AICommandLog[]
@@ -396,6 +405,7 @@ model InventoryItem {
   material          RawMaterial?  @relation(fields: [materialId], references: [id])
   batch             Batch?        @relation(fields: [batchId], references: [id])
   location          Location      @relation(fields: [locationId], references: [id])
+  adjustments       InventoryAdjustment[] @relation("InventoryItemAdjustments")
   
   @@index([type])
   @@index([productId])
@@ -567,6 +577,27 @@ model ActivityLog {
   @@index([createdAt])
   @@index([tags])
   @@index([action])
+}
+
+model InventoryAdjustment {
+  id                 String                  @id @default(cuid())
+  inventoryId        String
+  inventory          InventoryItem           @relation("InventoryItemAdjustments", fields: [inventoryId], references: [id])
+
+  deltaQty           Int
+  reason             String
+  adjustmentType     InventoryAdjustmentType
+
+  relatedEntityType  ActivityEntity?
+  relatedEntityId    String?
+
+  createdById        String?
+  createdBy          User?                   @relation("UserInventoryAdjustments", fields: [createdById], references: [id])
+
+  createdAt          DateTime                @default(now())
+
+  @@index([inventoryId])
+  @@index([createdAt])
 }
 
 // ========================================
@@ -797,6 +828,14 @@ model LabelTemplateVersion {
   qrScale     Float         @default(1.0)  // Scale factor for QR code (0.1 - 1.5)
   qrOffsetX   Float         @default(0)    // Horizontal offset in SVG units (positive = right)
   qrOffsetY   Float         @default(0)    // Vertical offset in SVG units (positive = down)
+  
+  // Canvas Adjustments (Persistent)
+  labelWidthIn   Float?     // Override for physical label width (inches)
+  labelHeightIn  Float?     // Override for physical label height (inches)
+  contentScale   Float?     // Scale factor for content (default 1.0)
+  contentOffsetX Float?     // Content horizontal offset (inches)
+  contentOffsetY Float?     // Content vertical offset (inches)
+
   isActive    Boolean       @default(false)
   notes       String?
   createdAt   DateTime      @default(now())

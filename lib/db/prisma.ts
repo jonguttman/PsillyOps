@@ -1,5 +1,6 @@
 // Prisma Client Singleton
 // This ensures we don't create multiple instances in development
+// Updated schema: v2
 
 import { PrismaClient } from '@prisma/client';
 
@@ -14,5 +15,4 @@ export const prisma = globalForPrisma.prisma ?? new PrismaClient({
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma;
 }
-
 

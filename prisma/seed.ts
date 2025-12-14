@@ -10,6 +10,7 @@ async function main() {
 
   // Clear existing data (in reverse order of dependencies)
   await prisma.activityLog.deleteMany();
+  await prisma.inventoryAdjustment.deleteMany();
   await prisma.materialCostHistory.deleteMany();
   await prisma.materialAttachment.deleteMany();
   await prisma.batchMaker.deleteMany();
@@ -749,6 +750,65 @@ async function main() {
   });
 
   console.log('✅ Created finished goods inventory');
+
+  // 9.5 CREATE A RECENT MANUAL INVENTORY ADJUSTMENT (for Supply Watch + Activity correlation)
+  // Pick the first material inventory item (lion's mane) and apply a small correction.
+  const lionsManeInventory = await prisma.inventoryItem.findFirst({
+    where: { materialId: lionsMane.id, type: 'MATERIAL' }
+  });
+
+  if (lionsManeInventory) {
+    const deltaQty = -5;
+    const beforeQty = lionsManeInventory.quantityOnHand;
+    const afterQty = beforeQty + deltaQty;
+
+    await prisma.$transaction([
+      prisma.inventoryAdjustment.create({
+        data: {
+          inventoryId: lionsManeInventory.id,
+          deltaQty,
+          reason: 'Cycle count correction (seed)',
+          adjustmentType: 'MANUAL_CORRECTION',
+          relatedEntityType: 'INVENTORY',
+          relatedEntityId: lionsManeInventory.id,
+          createdById: warehouseUser.id,
+          createdAt: new Date(),
+        }
+      }),
+      prisma.inventoryItem.update({
+        where: { id: lionsManeInventory.id },
+        data: { quantityOnHand: afterQty }
+      }),
+      prisma.rawMaterial.update({
+        where: { id: lionsMane.id },
+        data: { currentStockQty: { increment: deltaQty } }
+      }),
+      prisma.activityLog.create({
+        data: {
+          entityType: 'INVENTORY',
+          entityId: lionsManeInventory.id,
+          action: 'inventory_adjusted',
+          userId: warehouseUser.id,
+          summary: `Inventory adjusted -5 units (manual correction)`,
+          diff: {
+            quantityOnHand: [beforeQty, afterQty],
+            deltaQty: [0, deltaQty],
+          },
+          details: {
+            inventoryId: lionsManeInventory.id,
+            itemName: "Lion's Mane Mushroom Powder",
+            deltaQty,
+            beforeQty,
+            afterQty,
+            reason: 'Cycle count correction (seed)',
+            adjustmentType: 'MANUAL_CORRECTION',
+          },
+          tags: ['inventory', 'adjustment', 'quantity_change', 'manual_correction'],
+          createdAt: new Date(),
+        }
+      }),
+    ]);
+  }
 
   // 10. CREATE RETAILERS
   const retailer1 = await prisma.retailer.create({

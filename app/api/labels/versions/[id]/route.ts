@@ -61,48 +61,47 @@ export async function PATCH(
     const body = await req.json();
 
     // Build settings object from valid fields
-    const settings: { qrScale?: number; qrOffsetX?: number; qrOffsetY?: number } = {};
+    const settings: { 
+      qrScale?: number; 
+      qrOffsetX?: number; 
+      qrOffsetY?: number;
+      labelWidthIn?: number;
+      labelHeightIn?: number;
+      contentScale?: number;
+      contentOffsetX?: number;
+      contentOffsetY?: number;
+    } = {};
 
     // Validate qrScale if provided (10% to 150%)
     if (body.qrScale !== undefined) {
-      const qrScale = parseFloat(body.qrScale);
-      if (isNaN(qrScale) || qrScale < 0.1 || qrScale > 1.5) {
-        return NextResponse.json(
-          { error: 'qrScale must be a number between 0.1 (10%) and 1.5 (150%)' },
-          { status: 400 }
-        );
+      const val = parseFloat(body.qrScale);
+      if (isNaN(val) || val < 0.1 || val > 1.5) {
+        return NextResponse.json({ error: 'qrScale must be between 0.1 and 1.5' }, { status: 400 });
       }
-      settings.qrScale = qrScale;
+      settings.qrScale = val;
     }
 
-    // Validate qrOffsetX if provided
-    if (body.qrOffsetX !== undefined) {
-      const qrOffsetX = parseFloat(body.qrOffsetX);
-      if (isNaN(qrOffsetX)) {
-        return NextResponse.json(
-          { error: 'qrOffsetX must be a number' },
-          { status: 400 }
-        );
+    // Validate offsets and other numeric fields
+    const numericFields = ['qrOffsetX', 'qrOffsetY', 'labelWidthIn', 'labelHeightIn', 'contentScale', 'contentOffsetX', 'contentOffsetY'];
+    
+    for (const field of numericFields) {
+      if (body[field] !== undefined) {
+        const val = parseFloat(body[field]);
+        if (isNaN(val)) {
+          return NextResponse.json({ error: `${field} must be a number` }, { status: 400 });
+        }
+        // Additional checks
+        if ((field === 'labelWidthIn' || field === 'labelHeightIn' || field === 'contentScale') && val <= 0) {
+          return NextResponse.json({ error: `${field} must be positive` }, { status: 400 });
+        }
+        (settings as any)[field] = val;
       }
-      settings.qrOffsetX = qrOffsetX;
-    }
-
-    // Validate qrOffsetY if provided
-    if (body.qrOffsetY !== undefined) {
-      const qrOffsetY = parseFloat(body.qrOffsetY);
-      if (isNaN(qrOffsetY)) {
-        return NextResponse.json(
-          { error: 'qrOffsetY must be a number' },
-          { status: 400 }
-        );
-      }
-      settings.qrOffsetY = qrOffsetY;
     }
 
     // Check if any valid fields to update
     if (Object.keys(settings).length === 0) {
       return NextResponse.json(
-        { error: 'No valid fields to update. Supported: qrScale, qrOffsetX, qrOffsetY' },
+        { error: 'No valid fields to update' },
         { status: 400 }
       );
     }

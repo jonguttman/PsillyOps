@@ -1284,6 +1284,7 @@ export async function completeBatch(params: {
     quantity: actualQuantity,
     locationId,
     unitCost,
+    productionOrderId: batch.productionOrderId || undefined,
     userId
   });
 

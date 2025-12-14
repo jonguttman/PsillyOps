@@ -13,11 +13,11 @@ import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
 
 interface Props {
-  params: Promise<{ token: string }>;
+  params: Promise<{ tokenId: string }>;
 }
 
 export default async function QRTokenResolverPage({ params }: Props) {
-  const { token } = await params;
+  const { tokenId: token } = await params;
 
   // Validate token format first
   if (!isValidTokenFormat(token)) {

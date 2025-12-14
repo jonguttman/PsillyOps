@@ -1,6 +1,6 @@
 # PsillyOps User Manual
 
-**Version 0.13.0**  
+**Version 0.14.0**  
 **Last Updated: December 13, 2024**
 
 ---
@@ -23,9 +23,18 @@
     - [QR Behavior Panel](#qr-behavior-panel-entity-detail-pages)
 12. [Label Templates](#label-templates)
 13. [AI Tools](#ai-tools)
-14. [Tooltips & Quick Help](#tooltips--quick-help)
-15. [Troubleshooting](#troubleshooting)
-16. [Glossary](#glossary)
+14. [Activity Log](#activity-log)
+    - [Viewing Activity](#viewing-activity)
+    - [Filtering Activity](#filtering-activity)
+    - [Expandable Details](#expandable-details)
+15. [Purchase Orders](#purchase-orders)
+    - [Creating Purchase Orders](#creating-purchase-orders)
+    - [Managing Purchase Orders](#managing-purchase-orders)
+    - [Receiving Items](#receiving-items)
+    - [Purchase Order Status](#purchase-order-status)
+16. [Tooltips & Quick Help](#tooltips--quick-help)
+17. [Troubleshooting](#troubleshooting)
+18. [Glossary](#glossary)
 
 ---
 
@@ -932,21 +941,30 @@ The Inventory page provides a comprehensive view of all stock:
 4. Select preset location (Packaging, Shipping, etc.)
 5. Confirm
 
-### Adjusting Stock
+### Adjusting Inventory
 
-**Manual Adjustment:**
-1. Navigate to **Inventory** → Click **"View"** on item
-2. Click **"Adjust Stock"** button
-3. Enter **Quantity Change** (+/- amount)
-   - Positive: Adds stock (found inventory, correction up)
-   - Negative: Removes stock (damaged, count correction down)
-4. Enter **Reason** (required): "Damaged", "Cycle count", "Shrinkage"
-5. Click **"Apply Adjustment"**
+Manual inventory adjustments are the **only** supported way to correct stock counts. Every change is attributable and auditable.
 
-**Result:** 
-- Stock level updated with full audit trail
-- ADJUST movement record created
-- Material `currentStockQty` updated (if material)
+**Manual Adjustment (Inventory Adjustment record):**
+1. Navigate to **Inventory** → Click **"View"** on an inventory item
+2. Click **"Adjust Inventory"**
+3. Choose **Adjustment Type** (required)
+   - Manual Correction (cycle count, damaged, shrinkage)
+   - Production Complete / Scrap (as applicable)
+   - Receiving / Consumption (used by workflows)
+4. Enter **Quantity** (required, integer, cannot be 0)
+   - Positive: adds stock
+   - Negative: removes stock
+5. Enter **Reason** (required)
+6. (Optional) Link a related entity (Production Order / Batch / QR Token)
+7. Submit
+
+**Result:**
+- A new **InventoryAdjustment** record is created (append-only audit trail)
+- The inventory item’s **On Hand** count is updated
+- The change appears immediately in:
+  - **Activity Log** (with delta + reason)
+  - **Supply Watch** (recent manual adjustments within 48h)
 
 ### Inventory Reservations
 
@@ -2063,6 +2081,407 @@ Instead of interpreting as a command, the AI shows:
 
 ---
 
+## Activity Log
+
+**Location:** System → Activity (in navigation menu)
+
+**Who can access:** Admin, Production, and Warehouse users
+
+**Purpose:** Provides a complete, filterable timeline of all operations, changes, and system events across PsillyOps. The Activity Log answers "What happened?" with full context and traceability.
+
+### Viewing Activity
+
+The Activity Log page displays a unified timeline showing:
+
+- **Time**: When the action occurred (relative time like "2h ago" or absolute date)
+- **Actor**: Who performed the action (User name or "System")
+- **Action**: What happened (created, updated, status changed, quantity adjusted, etc.)
+- **Entity**: What was affected (Product, Material, Batch, Purchase Order, etc.)
+- **Quick Link**: Direct navigation to the entity
+
+**Default View:** Last 24 hours of activity (most recent at top)
+
+### Filtering Activity
+
+Use the filter toolbar to narrow down activity:
+
+#### Entity Type Filter
+Filter by what type of thing was affected:
+- **All Entities** (default)
+- Products
+- Materials
+- Batches
+- Inventory
+- Orders
+- Purchase Orders
+- Production Orders
+- Vendors
+- Labels
+- System
+
+#### Actor Filter
+Filter by who performed the action:
+- **All Users** (default)
+- System (automated actions)
+- Specific user names from dropdown
+
+#### Time Range Filter
+Choose how far back to look:
+- **Last 24 hours** (default)
+- Last 7 days
+- Last 30 days
+- All time
+
+#### Action Category Filter
+Filter by type of action:
+- **All Actions** (default)
+- Created (new entities)
+- Status Changes
+- Quantity Changes
+- Movements (inventory transfers)
+- QR Scans
+- AI Commands
+- Shortages
+
+### Expandable Details
+
+Click on any activity row to expand and see:
+
+- **Full Timestamp**: Exact date and time
+- **User Details**: Name and role
+- **Changes Table**: Shows before/after values for each field that changed
+- **Details Section**: Additional context and metadata
+- **AI Command Context**: If triggered by AI, shows the original command
+- **Tags**: System-generated tags for categorization
+
+**Example Expanded View:**
+
+```
+[Expanded]
+12/13/2024 2:34 PM • Mike Chen (WAREHOUSE)
+
+Changes:
+Field          Before              After
+status         DRAFT               SENT
+sentAt         —                   12/13/2024 2:34 PM
+
+Details:
+poNumber: PO-2412-003
+vendorName: Acme Mushroom Supplies
+lineItems: 3 items
+
+Tags: status_change, purchase_order
+```
+
+### Entity Deep Links
+
+Each activity row includes a link icon that navigates directly to the relevant entity:
+
+- **Products** → Product detail page
+- **Materials** → Material detail page
+- **Batches** → Batch detail page
+- **Inventory** → Inventory detail page
+- **Purchase Orders** → Purchase order detail page
+- **Orders** → Retailer order detail page
+- **QR Tokens** → QR token detail page
+- **Vendors** → Vendor detail page
+
+### Common Use Cases
+
+#### Track a Purchase Order
+1. Set Entity filter to "Purchase Orders"
+2. Set Time Range to "Last 30 days"
+3. Find the PO creation event
+4. Click to expand and see all related events
+
+#### Find Recent Inventory Adjustments
+1. Set Entity filter to "Inventory"
+2. Set Action filter to "Quantity Changes"
+3. Review adjustments with reasons
+
+#### Review System Actions
+1. Set Actor filter to "System"
+2. See automated allocation, shortage detection, MRP actions
+
+#### Find AI Command History
+1. Set Action filter to "AI Commands"
+2. See natural language commands and their results
+
+### Pagination
+
+The Activity Log loads 50 activities at a time. Use the "Load More" button at the bottom to fetch older activities.
+
+### Refresh
+
+Click the "Refresh" button (top right) to manually reload the activity list with current filters.
+
+---
+
+## Purchase Orders
+
+**Location:** Ops → Purchasing (in navigation menu)
+
+**Who can access:** Admin and Warehouse users
+
+**Purpose:** Manage material orders from vendors, track receiving status, and maintain supply chain visibility.
+
+### Creating Purchase Orders
+
+**Location:** Ops → Purchasing → "New PO" button
+
+**Steps to create a purchase order:**
+
+1. **Select Vendor** (required)
+   - Choose from dropdown of active vendors
+   - System auto-fills expected delivery date based on vendor lead time
+
+2. **Set Expected Delivery Date** (optional)
+   - Defaults to current date + vendor's default lead time
+   - Can be manually adjusted
+
+3. **Add Notes** (optional)
+   - Free-text field for order-specific instructions or context
+
+4. **Add Line Items**
+   - Click "Add Item" to add a new line
+   - For each line:
+     - **Material**: Select from dropdown (filtered by vendor relationship if available)
+     - **Quantity**: Enter quantity ordered (suggested from material's reorder quantity)
+     - **Unit Cost**: Enter cost per unit (optional, used for total calculation)
+   - Remove unwanted lines with trash icon
+
+5. **Review Total**
+   - Bottom of table shows estimated total value if unit costs provided
+
+6. **Click "Create Draft PO"**
+   - System generates a unique PO number (format: PO-YYMM-XXX)
+   - Status is set to DRAFT
+   - You're redirected to the PO detail page
+
+**Example PO Number:** `PO-2412-003` (December 2024, 3rd PO of the month)
+
+### Managing Purchase Orders
+
+**PO List Page** shows all purchase orders with:
+
+- **PO Number**: Unique identifier (clickable link)
+- **Vendor**: Supplier name
+- **Status**: Current state (see Status section below)
+- **Items**: Number of line items
+- **Value**: Total value if costs entered
+- **Expected**: Expected delivery date
+- **Created**: When PO was created
+
+**Filters:**
+- **Status**: Filter by DRAFT, SENT, PARTIALLY_RECEIVED, RECEIVED, CANCELLED
+- **Vendor**: Filter by specific vendor
+
+**Click any PO number** to view full details.
+
+### Purchase Order Detail Page
+
+The PO detail page has several sections:
+
+#### Header
+- **PO Number** and **Status Badge**
+- **Action Buttons**:
+  - **Submit to Vendor** (DRAFT only) - Changes status to SENT
+  - **Receive Items** (SENT or PARTIALLY_RECEIVED) - Opens receiving modal
+
+#### Summary Card
+- Vendor name and contact info
+- Expected delivery date
+- Notes (if any)
+
+#### Line Items Table
+Shows all materials ordered:
+
+- **Material**: Name and SKU (linked to material detail)
+- **Ordered**: Quantity ordered
+- **Received**: Quantity received so far
+- **Unit Cost**: Cost per unit
+- **Total**: Line total (quantity × unit cost)
+- **Status Indicator**: Checkmark when fully received
+
+#### Receiving Panel
+Appears when status is SENT or PARTIALLY_RECEIVED. Shows:
+- Materials not yet fully received
+- Input fields for quantities to receive
+- "Mark Received" button
+
+#### Activity Timeline
+Shows all events for this PO:
+- Creation
+- Submission
+- Each receipt (with quantities and user)
+- Status changes
+
+### Receiving Items
+
+**Who can receive:** Admin and Warehouse users
+
+**When to receive:**
+- Purchase order status must be SENT or PARTIALLY_RECEIVED
+- You have physically received materials from the vendor
+
+**Steps to receive items:**
+
+1. **Open PO Detail Page**
+   - Navigate to Ops → Purchasing
+   - Click on the PO you want to receive
+
+2. **Click "Receive Items" Button**
+   - Located in the header (only visible if PO can be received)
+
+3. **Select Location**
+   - Choose which location to receive materials into
+   - Defaults to the location marked "Default Receiving"
+
+4. **Enter Quantities**
+   - For each line item not fully received:
+     - **Material Name** shown in left column
+     - **Ordered** shows total quantity ordered
+     - **Already Received** shows quantity received in previous receipts
+     - **Receive Now** input field - enter quantity for this receipt
+   - System validates: received qty ≤ remaining qty
+
+5. **Review and Confirm**
+   - Click "Confirm Receipt"
+   - System creates inventory records
+   - Updates material stock quantities
+   - Logs receipt to activity log
+   - Updates PO status automatically
+
+**Validation Rules:**
+- Cannot receive more than ordered
+- Cannot receive on CANCELLED or DRAFT purchase orders
+- Must enter at least one item with quantity > 0
+
+**What Happens on Receipt:**
+1. System creates `InventoryItem` records for each material
+2. Updates `RawMaterial.currentStockQty`
+3. Increments `quantityReceived` on PO line items
+4. If all items fully received → status = RECEIVED
+5. Otherwise → status = PARTIALLY_RECEIVED
+6. Logs receipt event to Activity Log with full details
+
+### Purchase Order Status
+
+Purchase orders flow through these states:
+
+#### DRAFT (Gray Badge)
+- **Meaning**: PO created but not yet sent to vendor
+- **Allowed Actions**:
+  - Edit line items
+  - Edit delivery date
+  - Edit notes
+  - Submit to vendor
+  - Cancel
+- **Not Allowed**: Receiving
+
+#### SENT (Blue Badge)
+- **Meaning**: PO submitted to vendor, awaiting delivery
+- **Allowed Actions**:
+  - Receive items (full or partial)
+  - Cancel (Admin only)
+- **Not Allowed**: Editing
+
+#### PARTIALLY_RECEIVED (Amber Badge)
+- **Meaning**: Some items received, others still pending
+- **Allowed Actions**:
+  - Receive remaining items
+- **Not Allowed**: Editing, canceling
+- **Visual**: Progress bar shows % received
+
+#### RECEIVED (Green Badge)
+- **Meaning**: All items fully received
+- **Allowed Actions**: View only
+- **Not Allowed**: Further receiving, editing
+
+#### CANCELLED (Red Badge)
+- **Meaning**: PO cancelled by admin
+- **Allowed Actions**: View only
+- **Not Allowed**: Receiving, editing
+
+### Append-Only Receipt Tracking
+
+PsillyOps uses an append-only approach for receiving:
+
+- **Each receipt is logged as a separate event** in the Activity Log
+- Quantities are **summed** from all receipt events
+- Receipts **cannot be deleted** or edited (audit trail preserved)
+- Mistakes are corrected by **adjusting inventory** after receipt, not by modifying receipts
+
+**Why this matters:**
+- Complete audit trail for compliance
+- Mistakes are survivable (can be corrected via inventory adjustment)
+- Clear history of who received what and when
+
+### Role-Based Access
+
+| Action | Admin | Warehouse | Production | Rep |
+|--------|-------|-----------|------------|-----|
+| View Purchase Orders | ✅ | ✅ | ✅ | ❌ |
+| Create Purchase Order | ✅ | ✅ | ❌ | ❌ |
+| Update Purchase Order (DRAFT) | ✅ | ✅ | ❌ | ❌ |
+| Submit Purchase Order | ✅ | ✅ | ❌ | ❌ |
+| Receive Items | ✅ | ✅ | ❌ | ❌ |
+| Cancel Purchase Order | ✅ | ❌ | ❌ | ❌ |
+
+### Dashboard Integration
+
+The main dashboard includes a **Supply Watch** card showing:
+
+- **Inventory Risk**
+  - **Materials Below Reorder Point**: Count + deep links
+  - **Recent Manual Adjustments (48h)**: Highlights where counts were corrected recently (accountability + audit)
+- **Purchasing State**
+  - **Open Purchase Orders**: Count of DRAFT/SENT/PARTIALLY_RECEIVED POs
+  - **Days Since Last PO Received**: Helps identify receiving stagnation
+
+**How Supply Watch detects risk:**
+- “Below reorder point” is based on each material’s `currentStockQty < reorderPoint`
+- “Recent manual adjustments” comes from recent **InventoryAdjustment** records of type `MANUAL_CORRECTION`
+
+**Why adjustments appear in activity history:**
+- Every adjustment also writes an **Activity Log** entry so you can answer: *what changed, when, by whom, and why.*
+
+### Common Workflows
+
+#### Creating a PO for Low Stock Materials
+
+1. Go to Ops → Materials
+2. Identify materials below reorder point (red warning icon)
+3. Click "New PO" from Ops → Purchasing
+4. Select vendor who supplies those materials
+5. Add line items for each low stock material
+6. Use material's `reorderQuantity` as suggested order quantity
+7. Click "Create Draft PO"
+8. Review and click "Submit to Vendor"
+
+#### Receiving a Shipment
+
+1. When shipment arrives, open PO from Ops → Purchasing
+2. Click "Receive Items"
+3. Select receiving location
+4. Enter actual quantities received (may differ from ordered if short shipped)
+5. Click "Confirm Receipt"
+6. System creates inventory and updates stock
+
+#### Partial Receipts
+
+If vendor ships in multiple deliveries:
+
+1. Receive first delivery normally
+2. PO status changes to PARTIALLY_RECEIVED
+3. When second delivery arrives, open same PO
+4. Click "Receive Items" again
+5. Enter quantities from second delivery
+6. System tracks total received across all receipts
+7. When all items received, status automatically changes to RECEIVED
+
+---
+
 ## Tooltips & Quick Help
 
 PsillyOps includes contextual tooltips throughout the application to help users understand features without leaving the page.
@@ -2731,13 +3150,22 @@ Navigate to **Labels** in the main menu to manage templates.
 
 **SVG Requirements:**
 
-Your SVG file must contain a placeholder element for QR code injection:
+For optimal QR code placement, your SVG file should contain a placeholder element:
 
 ```svg
 <g id="qr-placeholder"></g>
 ```
 
 The QR code will be injected into this placeholder at render time.
+
+**Auto-Generated Placeholders:**
+
+If your SVG does not contain a `qr-placeholder` element, the system will automatically generate one:
+- **Position**: Bottom-right corner with 0.125in margin
+- **Size**: 0.75in for labels ≥ 2in wide, 0.5in otherwise
+- **Indicator**: The generated placeholder includes `data-auto-generated="true"`
+
+This allows raster-backed or simpler SVGs to work without manual placeholder insertion.
 
 #### Activating a Version
 
@@ -2782,7 +3210,119 @@ The label preview is designed to match print layout exactly while remaining safe
 - **Sheet Preview reflects actual print tiling** (Letter size + margins + rotation rule)
 - **Preview uses a fixed dummy token**: `qr_PREVIEW_TOKEN_DO_NOT_USE`
 - **Preview never creates or stores tokens**
-- **Why preview QR codes won’t scan**: the dummy token is not a real token in the database
+- **Why preview QR codes won't scan**: the dummy token is not a real token in the database
+
+### Adjusting QR Placement
+
+The preview modal provides controls for adjusting QR code size and position on labels.
+
+#### Opening the Preview
+
+1. Navigate to **Labels** in the menu
+2. Find your template and click **Preview** on the version you want to adjust
+
+#### QR Size Control
+
+Use the **QR Size** slider to adjust the QR code scale:
+- **Range**: 10% to 150% of placeholder size
+- **Default**: 100%
+- Smaller QR codes leave more room for label content
+- Warning: QR codes smaller than ~0.6in may have scan reliability issues
+
+#### QR Position Offset
+
+Use the directional pad to nudge the QR code position:
+- **Arrow buttons**: Move QR up, down, left, right by 2 SVG units
+- **Center button (⊙)**: Reset offset to center of placeholder
+- **Display**: Shows current X and Y offset values
+
+#### Visual Drag and Resize
+
+In single-label preview mode, a **blue dashed box** appears over the QR code area:
+
+**Dragging the QR:**
+1. Click and hold anywhere on the blue box
+2. Drag to move the QR to a new position
+3. Release to set the position
+
+**Resizing the QR:**
+1. Hover over the bottom-right corner of the blue box
+2. Click and drag diagonally to resize
+3. The size indicator updates in real-time (e.g., "0.75in")
+
+**Visual Indicators:**
+- **Blue box**: Normal QR size (≥0.6in)
+- **Red box**: QR too small (<0.6in) - may have scan reliability issues
+- **Offset display**: Shows current X,Y offset from original position
+
+**Note:** Visual drag/resize is only available in single-label mode. In sheet preview mode, use the slider and nudge controls.
+
+#### Quick Actions
+
+Two buttons help optimize QR placement quickly:
+
+**Maximize QR (Safe):**
+- Click to expand QR to the maximum size that fits the label
+- Centers the QR with 0.1in margin on all sides
+- Great for maximizing scan reliability on small labels
+
+**Suggest Better Placement:**
+- Click to move QR to the optimal recommended position
+- Uses intelligent detection of available space
+- Biased toward bottom-right corner (industry convention)
+
+#### Placement Zones
+
+Enable **Show zones** checkbox to see recommended placement regions:
+- Green translucent boxes show available zones
+- Click any zone to instantly move QR there
+- Zones: bottom-right, bottom-left, top-right, top-left, center
+
+#### Reset QR to Default
+
+Click **Reset QR to Default** to:
+- Set scale back to 100%
+- Clear all position offsets
+- If placeholder was auto-generated, returns QR to bottom-right corner
+
+#### Saving QR Position
+
+When you adjust QR position:
+1. Yellow "⚠️ Unsaved changes" warning appears
+2. Click **Save Position** to persist changes
+3. Saved settings apply to all labels printed with this version
+
+**Note:** You can also click **Revert Changes** to discard unsaved adjustments.
+
+### Label Size Override (Preview Only)
+
+The preview modal allows you to temporarily change label dimensions for testing.
+
+#### Enabling Size Override
+
+1. Find the **Label Size Override** section in the preview modal
+2. Toggle the switch to enable override mode
+3. Enter custom **Width** and **Height** values
+
+#### Size Controls
+
+- **Width / Height inputs**: Enter dimensions manually
+- **Unit selector**: Choose between inches (in) or millimeters (mm)
+- **Reset button**: Revert to native SVG dimensions
+- **Native size display**: Shows original SVG dimensions for reference
+
+#### Important Notes
+
+- **Preview-only**: Size override does NOT modify the original SVG file
+- **Render-time only**: Override is applied during preview rendering
+- **Sheet tiling**: Sheet preview recalculates tiling based on overridden dimensions
+- **Indicator**: Shows "(overridden for preview)" when override is active
+
+#### Use Cases
+
+- **Testing label fit** before committing to a specific SVG size
+- **Verifying sheet layout** with different label dimensions
+- **Quick prototyping** of label designs without re-uploading SVGs
 
 #### QR Code Notes (Small-Label Optimized)
 
@@ -2968,4 +3508,172 @@ For technical support or questions:
 ---
 
 **End of User Manual**
+
+---
+
+## Addendum (v0.14.2): AI Assist — Navigation, Lookup, and Confirmed Creation
+
+PsillyOps AI is designed to **assist and guide** operators. It can:
+- **Navigate** you to the right screen
+- **Prefill** forms with suggested values
+- **Look up** existing entities and open their detail pages
+- **Propose** a creation action that requires an explicit confirmation click
+
+PsillyOps AI will **never silently mutate data**.
+
+### Where to use AI
+
+- **AI Command Console** (global): Press **Cmd+K** to open the AI Command Console.
+- **Dashboard AI Input**: The dashboard input supports the same navigation + confirmation behaviors.
+
+> **Screenshot (placeholder):** AI Command Console  
+> `![AI Command Console](screenshots/ai/ai-command-console.png)`
+
+---
+
+## Safety Model (Must Read)
+
+### Phase 1.5: Read-only navigation & lookup
+
+- AI may open pages immediately (navigation only).
+- Examples: open inventory, show activity log, view a material/product/strain.
+- Logged as: `ai_navigate_entity`
+
+### Phase 2: Confirmed creation (write actions)
+
+- AI may propose creating a **Strain** or **Material**, but does **not** create anything yet.
+- You must click **Create** in the confirmation card.
+- Logged as:
+  - `ai_propose_create_entity` (proposal, no write)
+  - `ai_create_entity_confirmed` (write, confirmed)
+
+---
+
+## Supported AI Phrases (Examples)
+
+### Add (navigate + prefill)
+
+- “Add a new strain Penis Envy”
+- “Create material Enigma mushroom powder”
+- “Add capsules as a material”
+
+Behavior:
+- Opens the relevant add form.
+- Prefills **editable** fields.
+- Displays a banner: **“AI prepared this form — review before saving.”**
+- Prefilled inputs show helper text: **“Suggested by AI — review and edit before saving.”**
+
+### View (lookup + navigate)
+
+- “Take me to Golden Teacher”
+- “Show Enigma material”
+- “Open product Hercules”
+- “Open inventory”
+- “Show activity log”
+- “Open purchase orders”
+
+Behavior:
+- Best-effort lookup and navigation to a matching page.
+- No writes.
+
+### Create (proposal + explicit confirmation)
+
+- “Create a new strain Penis Envy”
+- “Create a new material Capsules”
+
+Behavior:
+- AI returns a confirmation card: **Create / Cancel**
+- Only clicking **Create** will create the record.
+- If the entity already exists, AI navigates to it instead of creating a duplicate.
+
+> **Screenshot (placeholder):** Confirmation Required card  
+> `![AI create confirmation](screenshots/ai/ai-create-confirmation.png)`
+
+---
+
+## Role-Based Instructions
+
+### Admin
+
+#### Create a new strain via AI (confirmed creation)
+
+1. Open **AI Command Console** (Cmd+K).
+2. Type: “Create a new strain Penis Envy”
+3. Review the proposed values.
+4. Click **Create**.
+5. PsillyOps opens the new strain detail page.
+
+Notes:
+- Strains are **ADMIN-only** for creation.
+- If the strain already exists, PsillyOps opens the existing record.
+
+#### Navigate to an existing entity via AI (read-only)
+
+1. Open AI Command Console.
+2. Type: “Show Enigma material” (or “Open product Hercules”).
+3. PsillyOps navigates to the best match.
+
+### Production
+
+#### Create a new material via AI (confirmed creation)
+
+1. Open AI Command Console (Cmd+K) or use the dashboard AI input.
+2. Type: “Create a new material Lion's Mane powder”
+3. Review the proposal (name, SKU suggestion, unit/category defaults).
+4. Click **Create**.
+
+Notes:
+- Materials can be created by Production users.
+- AI may suggest defaults; you can always adjust fields later in the form UI if desired.
+
+### Warehouse
+
+#### Navigate to key operational screens via AI (read-only)
+
+1. Open AI Command Console.
+2. Type: “Open inventory” or “Open purchase orders” or “Show activity log”.
+3. PsillyOps navigates immediately.
+
+#### Add a material via navigation + prefill
+
+1. Type: “Add packaging material labels”
+2. PsillyOps opens **New Material** with suggested name/category.
+3. Review and edit fields, then click **Create Material**.
+
+### Rep
+
+Reps do not have access to operational AI commands that create or mutate Ops data.
+If you are a Rep and need a new strain/material added, contact an Admin.
+
+---
+
+## AI Data Flow (Reference)
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User
+  participant UI as AI Command Console / Dashboard AI Input
+  participant API as POST /api/ai/command
+  participant DB as Database
+  participant Log as ActivityLog
+
+  User->>UI: Natural language command
+  UI->>API: { text, execute:false }
+  API->>DB: (Optional) resolve refs (read-only)
+  API->>Log: ai_navigate_entity OR ai_propose_create_entity
+  API-->>UI: { type:'NAVIGATION', destination } OR { type:'PROPOSE_CREATE', ... }
+
+  alt NAVIGATION
+    UI->>UI: router.push(destination)
+  else PROPOSE_CREATE (requires click)
+    User->>UI: Click "Create"
+    UI->>API: { confirm:true, logId, proposedAction }
+    API->>DB: Create record (only now)
+    API->>Log: ai_create_entity_confirmed
+    API-->>UI: { type:'NAVIGATION', destination }
+    UI->>UI: router.push(destination)
+  end
+```
+
 

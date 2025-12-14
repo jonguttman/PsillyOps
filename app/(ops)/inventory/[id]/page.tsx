@@ -7,6 +7,7 @@ import StatusBadge, { MovementTypeBadge } from '@/components/ui/StatusBadge';
 import TooltipWrapper, { TooltipIcon } from '@/components/ui/TooltipWrapper';
 import { QRBehaviorPanelServer } from '@/components/qr/QRBehaviorPanelServer';
 import { QRTokenInspector } from '@/components/qr/QRTokenInspector';
+import InventoryAdjustClient from './InventoryAdjustClient';
 
 const STATUS_COLORS: Record<string, string> = {
   AVAILABLE: 'bg-green-100 text-green-800',
@@ -76,7 +77,6 @@ export default async function InventoryDetailPage({
 
   const itemName = inventoryItem.product?.name || inventoryItem.material?.name || 'Unknown';
   const itemSku = inventoryItem.product?.sku || inventoryItem.material?.sku || '';
-  const available = inventoryItem.quantityOnHand - inventoryItem.quantityReserved;
   
   // Expiry status
   const getExpiryStatus = (expiryDate: Date | null) => {
@@ -120,33 +120,17 @@ export default async function InventoryDetailPage({
       {/* Overview Card */}
       <div className="bg-white shadow rounded-lg p-6">
         <h2 className="text-lg font-medium text-gray-900 mb-4">Overview</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-          <div>
-            <div className="text-sm text-gray-500">On Hand</div>
-            <div className="mt-1 text-2xl font-semibold text-gray-900">
-              {inventoryItem.quantityOnHand.toLocaleString()}
-              <span className="text-sm font-normal text-gray-500 ml-2">{inventoryItem.unitOfMeasure}</span>
-            </div>
-          </div>
-          <div>
-            <div className="text-sm text-gray-500">Reserved</div>
-            <div className="mt-1 text-2xl font-semibold text-yellow-600">
-              {inventoryItem.quantityReserved.toLocaleString()}
-              <span className="text-sm font-normal text-gray-500 ml-2">{inventoryItem.unitOfMeasure}</span>
-            </div>
-          </div>
-          <div>
-            <div className="text-sm text-gray-500">Available</div>
-            <div className="mt-1 text-2xl font-semibold text-green-600">
-              {available.toLocaleString()}
-              <span className="text-sm font-normal text-gray-500 ml-2">{inventoryItem.unitOfMeasure}</span>
-            </div>
-          </div>
-          <div>
-            <div className="text-sm text-gray-500">Unit Cost</div>
-            <div className="mt-1 text-xl font-semibold text-gray-900">
-              {inventoryItem.unitCost ? formatCurrency(inventoryItem.unitCost) : '-'}
-            </div>
+        <InventoryAdjustClient
+          inventoryId={id}
+          userRole={session.user.role}
+          unitOfMeasure={inventoryItem.unitOfMeasure}
+          initialOnHand={inventoryItem.quantityOnHand}
+          initialReserved={inventoryItem.quantityReserved}
+        />
+        <div className="mt-6">
+          <div className="text-sm text-gray-500">Unit Cost</div>
+          <div className="mt-1 text-xl font-semibold text-gray-900">
+            {inventoryItem.unitCost ? formatCurrency(inventoryItem.unitCost) : '-'}
           </div>
         </div>
       </div>

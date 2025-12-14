@@ -19,7 +19,7 @@ export interface LogActionParams {
 export interface ActivityFeedFilters {
   entityType?: ActivityEntity;
   entityId?: string;
-  userId?: string;
+  userId?: string | null; // null means filter for system actions (no user)
   tags?: string[];
   startDate?: Date;
   endDate?: Date;
@@ -183,12 +183,22 @@ export async function getActivityFeed(filters: ActivityFeedFilters) {
     where.entityId = filters.entityId;
   }
   
-  if (filters.userId) {
-    where.userId = filters.userId;
+  // Handle userId filter - null means filter for system actions (no user)
+  if (filters.userId !== undefined) {
+    if (filters.userId === null) {
+      where.userId = null; // System actions have no user
+    } else {
+      where.userId = filters.userId;
+    }
   }
   
+  // Tags filter - uses JSON contains for SQLite compatibility
   if (filters.tags && filters.tags.length > 0) {
-    where.tags = { hasSome: filters.tags };
+    // For SQLite, we need to use string_contains on the JSON field
+    // This searches for any matching tag in the JSON array
+    where.OR = filters.tags.map(tag => ({
+      tags: { string_contains: tag }
+    }));
   }
   
   if (filters.startDate || filters.endDate) {
@@ -225,8 +235,23 @@ export async function getActivityCount(filters: Omit<ActivityFeedFilters, 'limit
   
   if (filters.entityType) where.entityType = filters.entityType;
   if (filters.entityId) where.entityId = filters.entityId;
-  if (filters.userId) where.userId = filters.userId;
-  if (filters.tags?.length) where.tags = { hasSome: filters.tags };
+  
+  // Handle userId filter - null means filter for system actions
+  if (filters.userId !== undefined) {
+    if (filters.userId === null) {
+      where.userId = null;
+    } else {
+      where.userId = filters.userId;
+    }
+  }
+  
+  // Tags filter for SQLite
+  if (filters.tags?.length) {
+    where.OR = filters.tags.map(tag => ({
+      tags: { string_contains: tag }
+    }));
+  }
+  
   if (filters.startDate || filters.endDate) {
     where.createdAt = {};
     if (filters.startDate) where.createdAt.gte = filters.startDate;

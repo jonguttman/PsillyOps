@@ -38,13 +38,13 @@ export default async function OpsLayout({
             <div className="flex items-center gap-4">
               <AiCommandButton canUseAI={canUseAICommand(session.user.role)} />
               <div className="flex items-center gap-3 pl-4 border-l border-gray-200">
-                <span className="text-sm text-gray-700">{session.user.name}</span>
-                <Link
-                  href="/api/auth/signout"
+              <span className="text-sm text-gray-700">{session.user.name}</span>
+              <Link
+                href="/api/auth/signout"
                   className="text-sm text-gray-500 hover:text-gray-700"
-                >
-                  Sign out
-                </Link>
+              >
+                Sign out
+              </Link>
               </div>
             </div>
           </div>
@@ -64,7 +64,7 @@ export default async function OpsLayout({
             {children}
           </div>
         </main>
-      </div>
+        </div>
     </div>
   );
 }

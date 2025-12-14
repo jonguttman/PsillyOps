@@ -5,6 +5,8 @@ import { prisma } from '@/lib/db/prisma';
 import { AppError, ErrorCodes } from '@/lib/utils/errors';
 import { logAction, generateSummary } from './loggingService';
 import { ActivityEntity, InventoryType, MovementType, InventoryStatus } from '@prisma/client';
+import { createInventoryAdjustment } from '@/lib/services/inventoryAdjustmentService';
+import { InventoryAdjustmentType } from '@prisma/client';
 
 // ========================================
 // INVENTORY LIST & DETAIL
@@ -22,6 +24,31 @@ export interface InventoryFilter {
   expiringWithinDays?: number;
   limit?: number;
   offset?: number;
+}
+
+/**
+ * Get materials currently below their reorder point.
+ * Read-only helper for dashboard supply awareness.
+ */
+export async function getLowStockMaterials() {
+  const materials = await prisma.rawMaterial.findMany({
+    where: {
+      active: true,
+      reorderPoint: { gt: 0 },
+    },
+    select: {
+      id: true,
+      name: true,
+      sku: true,
+      unitOfMeasure: true,
+      currentStockQty: true,
+      reorderPoint: true,
+    },
+    orderBy: [{ currentStockQty: 'asc' }],
+  });
+
+  const low = materials.filter((m) => m.currentStockQty < m.reorderPoint);
+  return { materials: low };
 }
 
 /**
@@ -412,9 +439,10 @@ export async function produceFinishedGoods(params: {
   quantity: number;
   locationId: string;
   unitCost?: number;
+  productionOrderId?: string;
   userId?: string;
 }): Promise<string> {
-  const { productId, batchId, quantity, locationId, unitCost, userId } = params;
+  const { productId, batchId, quantity, locationId, unitCost, productionOrderId, userId } = params;
 
   const product = await prisma.product.findUnique({
     where: { id: productId }
@@ -454,15 +482,6 @@ export async function produceFinishedGoods(params: {
   let inventoryId: string;
 
   if (existingInventory) {
-    // Add to existing inventory
-    await prisma.inventoryItem.update({
-      where: { id: existingInventory.id },
-      data: {
-        quantityOnHand: {
-          increment: quantity
-        }
-      }
-    });
     inventoryId = existingInventory.id;
   } else {
     // Create new inventory item
@@ -472,7 +491,7 @@ export async function produceFinishedGoods(params: {
         productId,
         batchId,
         locationId,
-        quantityOnHand: quantity,
+        quantityOnHand: 0,
         unitOfMeasure: product.unitOfMeasure,
         status: InventoryStatus.AVAILABLE,
         unitCost,
@@ -482,16 +501,15 @@ export async function produceFinishedGoods(params: {
     inventoryId = newInventory.id;
   }
 
-  // Create movement record
-  await createMovement({
+  // Apply quantity via InventoryAdjustment (no silent mutations)
+  await createInventoryAdjustment({
     inventoryId,
-    productId,
-    batchId,
-    type: MovementType.PRODUCE,
-    quantity,
-    toLocation: location.name,
-    reason: `Batch ${batch.batchCode} production`,
-    userId
+    deltaQty: Math.trunc(quantity),
+    reason: `Production complete: batch ${batch.batchCode}`,
+    adjustmentType: InventoryAdjustmentType.PRODUCTION_COMPLETE,
+    relatedEntityType: productionOrderId ? ActivityEntity.PRODUCTION_ORDER : undefined,
+    relatedEntityId: productionOrderId,
+    userId,
   });
 
   await logAction({
@@ -531,93 +549,12 @@ export async function adjustInventory(params: {
 }): Promise<void> {
   const { inventoryId, deltaQuantity, reason, userId } = params;
 
-  const inventory = await prisma.inventoryItem.findUnique({
-    where: { id: inventoryId },
-    include: {
-      product: true,
-      material: true,
-      location: true
-    }
-  });
-
-  if (!inventory) {
-    throw new AppError(ErrorCodes.NOT_FOUND, 'Inventory item not found');
-  }
-
-  const newQuantity = inventory.quantityOnHand + deltaQuantity;
-
-  if (newQuantity < 0) {
-    throw new AppError(
-      ErrorCodes.INSUFFICIENT_INVENTORY,
-      'Adjustment would result in negative inventory'
-    );
-  }
-
-  const before = {
-    quantityOnHand: inventory.quantityOnHand
-  };
-
-  await prisma.inventoryItem.update({
-    where: { id: inventoryId },
-    data: {
-      quantityOnHand: newQuantity
-    }
-  });
-
-  // Create movement record for the adjustment
-  await createMovement({
+  await createInventoryAdjustment({
     inventoryId,
-    materialId: inventory.materialId || undefined,
-    productId: inventory.productId || undefined,
-    batchId: inventory.batchId || undefined,
-    type: MovementType.ADJUST,
-    quantity: deltaQuantity,
-    fromLocation: inventory.location.name,
-    toLocation: inventory.location.name,
+    deltaQty: Math.trunc(deltaQuantity),
     reason,
-    userId
-  });
-
-  // Update material current stock if this is a material
-  if (inventory.materialId && inventory.type === InventoryType.MATERIAL) {
-    await prisma.rawMaterial.update({
-      where: { id: inventory.materialId },
-      data: {
-        currentStockQty: {
-          increment: deltaQuantity
-        }
-      }
-    });
-  }
-
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  const itemName = inventory.product?.name || inventory.material?.name || 'Item';
-
-  await logAction({
-    entityType: inventory.type === InventoryType.PRODUCT ? ActivityEntity.PRODUCT : ActivityEntity.MATERIAL,
-    entityId: inventory.productId || inventory.materialId || inventoryId,
-    action: 'inventory_adjusted',
+    adjustmentType: InventoryAdjustmentType.MANUAL_CORRECTION,
     userId,
-    summary: generateSummary({
-      userName: user?.name || 'User',
-      action: 'adjusted',
-      entityName: itemName,
-      details: {
-        delta: deltaQuantity > 0 ? `+${deltaQuantity}` : deltaQuantity,
-        reason
-      }
-    }),
-    before,
-    after: {
-      quantityOnHand: newQuantity
-    },
-    details: {
-      inventoryId,
-      locationName: inventory.location.name,
-      deltaQuantity,
-      reason
-    },
-    tags: ['manual', 'adjustment']
   });
 }
 

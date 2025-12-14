@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import TooltipWrapper, { TooltipIcon } from '@/components/ui/TooltipWrapper';
+import { useRouter } from 'next/navigation';
 
 interface DashboardAiInputProps {
   userRole?: string;
@@ -46,6 +47,12 @@ interface CommandResult {
     message: string;
     details?: unknown;
   };
+  type?: 'NAVIGATION' | 'PROPOSE_CREATE';
+  destination?: string;
+  prefill?: Record<string, unknown>;
+  message?: string;
+  entity?: 'strain' | 'material';
+  confirmationText?: string;
   correctionApplied?: boolean;
   error?: string;
 }
@@ -58,6 +65,7 @@ const EXAMPLES = [
 ];
 
 export default function DashboardAiInput({ userRole }: DashboardAiInputProps) {
+  const router = useRouter();
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<CommandResult | null>(null);
@@ -89,6 +97,21 @@ export default function DashboardAiInput({ userRole }: DashboardAiInputProps) {
         throw new Error(data.message || 'Failed to interpret command');
       }
 
+      // Phase 1: navigation response (route + optional prefill)
+      if (data?.type === 'NAVIGATION' && typeof data.destination === 'string') {
+        const params = new URLSearchParams();
+        if (data.prefill && typeof data.prefill === 'object') {
+          params.set('prefill', JSON.stringify(data.prefill));
+        }
+        params.set('aiToast', '1');
+
+        const needsQuestionMark = !data.destination.includes('?');
+        const withQuery = `${data.destination}${needsQuestionMark ? '?' : '&'}${params.toString()}`;
+        router.push(withQuery);
+        reset();
+        return;
+      }
+
       setResult(data);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'An error occurred';
@@ -96,7 +119,7 @@ export default function DashboardAiInput({ userRole }: DashboardAiInputProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [inputText]);
+  }, [inputText, router, reset]);
 
   const executeCommand = useCallback(async () => {
     if (!result?.logId) return;
@@ -132,6 +155,63 @@ export default function DashboardAiInput({ userRole }: DashboardAiInputProps) {
       setIsLoading(false);
     }
   }, [inputText, result, reset]);
+
+  const confirmProposedCreate = useCallback(async () => {
+    if (!result?.logId || result.type !== 'PROPOSE_CREATE') return;
+
+    // Short-code safety: if AI could not safely suggest a shortCode, route to the form.
+    if (
+      result.entity === 'strain' &&
+      result.prefill &&
+      typeof result.prefill === 'object' &&
+      (result.prefill as Record<string, unknown>)['shortCodeNeedsManual'] === true
+    ) {
+      const params = new URLSearchParams();
+      const name = (result.prefill as Record<string, unknown>)['name'];
+      if (typeof name === 'string') params.set('prefill', JSON.stringify({ name }));
+      params.set('aiToast', '1');
+      router.push(`/strains/new?${params.toString()}`);
+      reset();
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/ai/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          confirm: true,
+          logId: result.logId,
+          proposedAction: {
+            type: 'PROPOSE_CREATE',
+            entity: result.entity,
+            prefill: result.prefill || {},
+            confirmationText: result.confirmationText,
+          },
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to create');
+      }
+
+      if (data?.type === 'NAVIGATION' && typeof data.destination === 'string') {
+        router.push(data.destination);
+        reset();
+        return;
+      }
+
+      setResult(data);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'An error occurred';
+      setError(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [result, router, reset]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -195,12 +275,13 @@ export default function DashboardAiInput({ userRole }: DashboardAiInputProps) {
                 Cancel
               </button>
               <button
-                type="submit"
-                className="px-5 py-3 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
-                disabled={isLoading}
-              >
-                {isLoading ? 'Running...' : 'Confirm'}
-              </button>
+              type={result.type === 'PROPOSE_CREATE' ? 'button' : 'submit'}
+              onClick={result.type === 'PROPOSE_CREATE' ? confirmProposedCreate : undefined}
+              className="px-5 py-3 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+              disabled={isLoading}
+            >
+              {isLoading ? 'Running...' : result.type === 'PROPOSE_CREATE' ? 'Create' : 'Confirm'}
+            </button>
             </div>
           ) : (
             <button
@@ -253,9 +334,16 @@ export default function DashboardAiInput({ userRole }: DashboardAiInputProps) {
                   <svg className="h-4 w-4 text-blue-500" viewBox="0 0 20 20" fill="currentColor">
                     <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
                   </svg>
-                  <span className="text-sm font-medium text-blue-700">Ready to execute</span>
+                  <span className="text-sm font-medium text-blue-700">
+                    {result.type === 'PROPOSE_CREATE' ? 'Confirmation required' : 'Ready to execute'}
+                  </span>
                 </div>
-                <p className="text-sm text-blue-600">{result.summary}</p>
+                <p className="text-sm text-blue-600 whitespace-pre-wrap">
+                  {result.type === 'PROPOSE_CREATE'
+                    ? (result.confirmationText ||
+                        `I’ve prepared a new ${result.entity || 'entity'}.\nPlease review and confirm before it’s created.`)
+                    : result.summary}
+                </p>
               </div>
             )}
           </div>

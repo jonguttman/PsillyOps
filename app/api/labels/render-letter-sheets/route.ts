@@ -64,6 +64,10 @@ export async function POST(req: NextRequest) {
       resolvedVersionId = active.activeVersion.id;
     }
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/labels/render-letter-sheets/route.ts:POST',message:'Render letter sheets request',data:{versionIdProvided: !!versionId, resolvedVersionId, entityType, entityId, quantity: qty},timestamp:Date.now(),sessionId:'debug-session',runId:'sheet-run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+
     // Render labels in token mode (creates 1 token per physical label)
     const baseUrl = getBaseUrl();
     const rendered = await renderLabelsShared({
@@ -78,6 +82,10 @@ export async function POST(req: NextRequest) {
 
     const { sheets, meta } = composeLetterSheetsFromLabelSvgs({ labelSvgs: rendered.svgs });
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/labels/render-letter-sheets/route.ts:POST',message:'Computed sheet layout',data:{resolvedVersionId, perSheet: meta.perSheet, columns: meta.columns, rows: meta.rows, rotationUsed: meta.rotationUsed, totalSheets: meta.totalSheets},timestamp:Date.now(),sessionId:'debug-session',runId:'sheet-run1',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
+
     return Response.json({
       sheets,
       perSheet: meta.perSheet,
@@ -87,6 +95,9 @@ export async function POST(req: NextRequest) {
       totalSheets: meta.totalSheets
     });
   } catch (error) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/labels/render-letter-sheets/route.ts:POST',message:'Render letter sheets failed',data:{error: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? error.stack : undefined},timestamp:Date.now(),sessionId:'debug-session',runId:'sheet-run1',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
     return handleApiError(error);
   }
 }

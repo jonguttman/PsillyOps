@@ -153,6 +153,40 @@ export const adjustInventorySchema = z.object({
   reason: z.string().min(1, 'Reason is required')
 });
 
+// Inventory adjustment system (Phase 4.2)
+export const inventoryAdjustmentTypeValues = [
+  'PRODUCTION_COMPLETE',
+  'PRODUCTION_SCRAP',
+  'MANUAL_CORRECTION',
+  'RECEIVING',
+  'CONSUMPTION',
+] as const;
+
+export const inventoryAdjustmentRelatedEntityTypeValues = [
+  'PRODUCT',
+  'MATERIAL',
+  'BATCH',
+  'ORDER',
+  'PRODUCTION_ORDER',
+  'PURCHASE_ORDER',
+  'VENDOR',
+  'INVENTORY',
+  'WORK_CENTER',
+  'INVOICE',
+  'LABEL',
+  'SYSTEM',
+  // UI-only value (mapped server-side)
+  'QR_TOKEN',
+] as const;
+
+export const createInventoryAdjustmentSchema = z.object({
+  deltaQty: z.number().int().refine((n) => n !== 0, 'Quantity cannot be 0'),
+  reason: z.string().min(1, 'Reason is required'),
+  adjustmentType: z.enum(inventoryAdjustmentTypeValues),
+  relatedEntityType: z.enum(inventoryAdjustmentRelatedEntityTypeValues).optional(),
+  relatedEntityId: z.string().min(1).optional(),
+});
+
 export const moveInventorySchema = z.object({
   inventoryId: idSchema,
   toLocationId: idSchema,

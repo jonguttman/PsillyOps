@@ -3,54 +3,24 @@ import { auth } from '@/lib/auth/auth';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import Link from 'next/link';
+import StrainsHashRedirectClient from './StrainsHashRedirectClient';
 
-async function createStrain(formData: FormData) {
-  'use server';
-  
-  const session = await auth();
-  if (!session || session.user.role !== 'ADMIN') {
-    throw new Error('Unauthorized');
-  }
-  
-  const name = formData.get('name') as string;
-  const shortCode = formData.get('shortCode') as string;
-  const aliasesStr = formData.get('aliases') as string;
-  const aliases = aliasesStr 
-    ? aliasesStr.split(',').map(a => a.trim()).filter(a => a.length > 0)
-    : [];
+type StrainRow = {
+  id: string;
+  name: string;
+  shortCode: string;
+  aliases: unknown;
+  active: boolean;
+  _count?: { products: number };
+};
 
-  // Check for duplicates
-  const normalizedName = name.trim();
-  const normalizedShortCode = shortCode.toUpperCase().trim();
-  
-  const existing = await prisma.strain.findFirst({
-    where: {
-      OR: [
-        { name: normalizedName },
-        { shortCode: normalizedShortCode }
-      ]
-    }
-  });
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null;
+}
 
-  if (existing) {
-    if (existing.name === normalizedName) {
-      throw new Error(`A strain with the name "${normalizedName}" already exists.`);
-    }
-    if (existing.shortCode === normalizedShortCode) {
-      throw new Error(`A strain with the short code "${normalizedShortCode}" already exists.`);
-    }
-  }
-
-  await prisma.strain.create({
-    data: {
-      name: normalizedName,
-      shortCode: normalizedShortCode,
-      aliases: JSON.stringify(aliases),
-      active: true
-    }
-  });
-
-  revalidatePath('/strains');
+function isStrainRow(v: unknown): v is StrainRow {
+  if (!isRecord(v)) return false;
+  return typeof v.id === 'string' && typeof v.name === 'string' && typeof v.shortCode === 'string' && typeof v.active === 'boolean';
 }
 
 async function archiveStrain(formData: FormData) {
@@ -63,7 +33,10 @@ async function archiveStrain(formData: FormData) {
   
   const id = formData.get('id') as string;
   
-  await prisma.strain.update({
+  // NOTE: Prisma Client typings can be stale in some dev environments.
+  // Keep runtime correct while avoiding explicit `any`.
+  const prismaWithStrain = prisma as unknown as { strain: { update: (args: unknown) => Promise<unknown> } };
+  await prismaWithStrain.strain.update({
     where: { id },
     data: { active: false }
   });
@@ -81,7 +54,8 @@ async function restoreStrain(formData: FormData) {
   
   const id = formData.get('id') as string;
   
-  await prisma.strain.update({
+  const prismaWithStrain = prisma as unknown as { strain: { update: (args: unknown) => Promise<unknown> } };
+  await prismaWithStrain.strain.update({
     where: { id },
     data: { active: true }
   });
@@ -92,7 +66,7 @@ async function restoreStrain(formData: FormData) {
 export default async function StrainsPage({
   searchParams
 }: {
-  searchParams: Promise<{ showArchived?: string }>
+  searchParams: Promise<{ showArchived?: string; prefill?: string; aiToast?: string }>
 }) {
   const session = await auth();
 
@@ -107,8 +81,18 @@ export default async function StrainsPage({
 
   const params = await searchParams;
   const showArchived = params.showArchived === 'true';
+  const aiToast = params.aiToast === '1' || params.aiToast === 'true';
 
-  const strains = await prisma.strain.findMany({
+  // If AI tried to prefill on the old route, redirect to the canonical `/strains/new`.
+  if (params.prefill || aiToast) {
+    const qs = new URLSearchParams();
+    if (params.prefill) qs.set('prefill', params.prefill);
+    if (params.aiToast) qs.set('aiToast', params.aiToast);
+    redirect(`/strains/new?${qs.toString()}`);
+  }
+
+  const prismaWithStrain = prisma as unknown as { strain: { findMany: (args: unknown) => Promise<unknown[]> } };
+  const strains = await prismaWithStrain.strain.findMany({
     where: showArchived ? {} : { active: true },
     include: {
       _count: {
@@ -121,7 +105,7 @@ export default async function StrainsPage({
   });
 
   // Parse aliases for display
-  const strainsWithAliases = strains.map(strain => {
+  const strainsWithAliases = strains.filter(isStrainRow).map((strain) => {
     let aliases: string[] = [];
     try {
       if (strain.aliases) {
@@ -138,6 +122,7 @@ export default async function StrainsPage({
 
   return (
     <div className="space-y-6">
+      <StrainsHashRedirectClient />
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Strains</h1>
@@ -147,64 +132,18 @@ export default async function StrainsPage({
         </div>
         <div className="flex items-center gap-3">
           <Link
+            href="/strains/new"
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
+          >
+            New Strain
+          </Link>
+          <Link
             href={showArchived ? '/strains' : '/strains?showArchived=true'}
             className="text-sm text-blue-600 hover:text-blue-800"
           >
             {showArchived ? 'Hide Archived' : 'Show Archived'}
           </Link>
         </div>
-      </div>
-
-      {/* Create Form */}
-      <div className="bg-white shadow rounded-lg p-6">
-        <h2 className="text-lg font-medium text-gray-900 mb-4">Add New Strain</h2>
-        <form action={createStrain} className="flex flex-wrap gap-4 items-end">
-          <div className="flex-1 min-w-[200px]">
-            <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-              Name <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              name="name"
-              id="name"
-              required
-              placeholder="e.g., Penis Envy"
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-            />
-          </div>
-          <div className="w-32">
-            <label htmlFor="shortCode" className="block text-sm font-medium text-gray-700">
-              Short Code <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              name="shortCode"
-              id="shortCode"
-              required
-              placeholder="e.g., PE"
-              maxLength={10}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm uppercase"
-            />
-          </div>
-          <div className="flex-1 min-w-[200px]">
-            <label htmlFor="aliases" className="block text-sm font-medium text-gray-700">
-              Aliases (comma-separated)
-            </label>
-            <input
-              type="text"
-              name="aliases"
-              id="aliases"
-              placeholder="e.g., P. Envy, PenisEnvy"
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-            />
-          </div>
-          <button
-            type="submit"
-            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
-          >
-            Add Strain
-          </button>
-        </form>
       </div>
 
       {/* Strains Table */}
@@ -243,7 +182,9 @@ export default async function StrainsPage({
               strainsWithAliases.map((strain) => (
                 <tr key={strain.id} className={`hover:bg-gray-50 ${!strain.active ? 'opacity-50' : ''}`}>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">{strain.name}</div>
+                    <Link href={`/strains/${strain.id}`} className="text-sm font-medium text-blue-700 hover:text-blue-900">
+                      {strain.name}
+                    </Link>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
@@ -253,7 +194,7 @@ export default async function StrainsPage({
                   <td className="px-6 py-4">
                     {strain.parsedAliases.length > 0 ? (
                       <div className="flex flex-wrap gap-1">
-                        {strain.parsedAliases.map((alias, i) => (
+                        {strain.parsedAliases.map((alias: string, i: number) => (
                           <span
                             key={i}
                             className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600"
@@ -267,7 +208,7 @@ export default async function StrainsPage({
                     )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">{strain._count.products}</div>
+                    <div className="text-sm text-gray-900">{strain._count?.products ?? 0}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     {strain.active ? (
@@ -287,10 +228,10 @@ export default async function StrainsPage({
                         <button
                           type="submit"
                           className="text-red-600 hover:text-red-900"
-                          disabled={strain._count.products > 0}
-                          title={strain._count.products > 0 ? 'Cannot archive strain with active products' : 'Archive strain'}
+                          disabled={(strain._count?.products ?? 0) > 0}
+                          title={(strain._count?.products ?? 0) > 0 ? 'Cannot archive strain with active products' : 'Archive strain'}
                         >
-                          {strain._count.products > 0 ? (
+                          {(strain._count?.products ?? 0) > 0 ? (
                             <span className="text-gray-400 cursor-not-allowed">Archive</span>
                           ) : (
                             'Archive'

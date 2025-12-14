@@ -7,7 +7,7 @@ import { formatDateTime } from '@/lib/utils/formatters';
 import { createTemplate, createVersion, activateVersion, deactivateVersion } from '@/lib/services/labelService';
 import { LabelEntityType } from '@prisma/client';
 import LabelUploadForm from '@/components/labels/LabelUploadForm';
-import LabelPreviewButton from '@/components/labels/LabelPreviewButton';
+import LabelVersionHistory from '@/components/labels/LabelVersionHistory';
 
 const ENTITY_TYPE_LABELS: Record<string, string> = {
   PRODUCT: 'Product Labels',
@@ -108,9 +108,9 @@ export default async function LabelsPage() {
             </svg>
           </div>
           <div className="ml-3">
-            <h3 className="text-sm font-medium text-blue-800">SVG Label Requirements</h3>
+            <h3 className="text-sm font-medium text-blue-800">SVG Label Guidelines</h3>
             <div className="mt-2 text-sm text-blue-700">
-              <p>Labels must be SVG files containing a <code className="bg-blue-100 px-1 rounded">&lt;g id=&quot;qr-placeholder&quot;&gt;&lt;/g&gt;</code> element for QR code injection.</p>
+              <p>Labels should be SVG files. For optimal QR placement, include a <code className="bg-blue-100 px-1 rounded">&lt;g id=&quot;qr-placeholder&quot;&gt;&lt;/g&gt;</code> element. If missing, a QR placeholder will be auto-generated in the bottom-right corner.</p>
             </div>
           </div>
         </div>
@@ -191,96 +191,18 @@ export default async function LabelsPage() {
                 </div>
 
                 {/* Versions Table */}
-                {template.versions.length > 0 ? (
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Version
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Status
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Notes
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Created
-                        </th>
-                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Actions
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {template.versions.map((version) => (
-                        <tr key={version.id} className={version.isActive ? 'bg-green-50' : ''}>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="text-sm font-medium text-gray-900">v{version.version}</span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            {version.isActive ? (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                Active
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                                Inactive
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className="text-sm text-gray-500">{version.notes || '-'}</span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {formatDateTime(version.createdAt)}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                            <div className="flex justify-end gap-2">
-                              <LabelPreviewButton 
-                                versionId={version.id} 
-                                entityType={template.entityType}
-                                initialQrScale={version.qrScale}
-                                initialQrOffsetX={version.qrOffsetX}
-                                initialQrOffsetY={version.qrOffsetY}
-                              />
-                              {canManage && (
-                                version.isActive ? (
-                                  <form action={handleDeactivateVersion} className="inline">
-                                    <input type="hidden" name="versionId" value={version.id} />
-                                    <button
-                                      type="submit"
-                                      className="text-yellow-600 hover:text-yellow-900"
-                                    >
-                                      Deactivate
-                                    </button>
-                                  </form>
-                                ) : (
-                                  <form action={handleActivateVersion} className="inline">
-                                    <input type="hidden" name="versionId" value={version.id} />
-                                    <button
-                                      type="submit"
-                                      className="text-green-600 hover:text-green-900"
-                                    >
-                                      Activate
-                                    </button>
-                                  </form>
-                                )
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : (
-                  <div className="px-6 py-8 text-center text-gray-500">
-                    <p>No versions uploaded yet</p>
-                    {canManage && (
-                      <p className="text-sm mt-1">Upload an SVG file to create the first version</p>
-                    )}
-                  </div>
-                )}
+                <LabelVersionHistory
+                  templateId={template.id}
+                  templateEntityType={template.entityType}
+                  versions={template.versions.map(v => ({
+                    ...v,
+                    createdAt: v.createdAt.toISOString(),
+                    updatedAt: v.updatedAt ? v.updatedAt.toISOString() : null
+                  }))}
+                  canManage={canManage}
+                  onActivate={handleActivateVersion}
+                  onDeactivate={handleDeactivateVersion}
+                />
               </div>
             ))}
           </div>

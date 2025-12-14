@@ -7,6 +7,9 @@ import { auth } from '@/lib/auth/auth';
 import { createVersion } from '@/lib/services/labelService';
 import { handleApiError, AppError, ErrorCodes } from '@/lib/utils/errors';
 import { hasPermission } from '@/lib/auth/rbac';
+import { prisma } from '@/lib/db/prisma';
+import { getLabelStorage } from '@/lib/services/labelStorage';
+import { logAction } from '@/lib/services/loggingService';
 
 export async function POST(
   req: NextRequest,
@@ -79,3 +82,62 @@ export async function POST(
   }
 }
 
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await auth();
+  if (!session || session.user.role !== 'ADMIN') {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  try {
+    const { versionId } = await req.json();
+
+    if (!versionId) {
+      return new Response('Version ID is required', { status: 400 });
+    }
+
+    const version = await prisma.labelTemplateVersion.findUnique({
+      where: { id: versionId },
+    });
+
+    if (!version) {
+      return new Response('Label version not found', { status: 404 });
+    }
+
+    if (version.isActive) {
+      return new Response(
+        'Active label versions cannot be deleted',
+        { status: 400 }
+      );
+    }
+
+    // Delete file from storage
+    const labelStorage = getLabelStorage();
+    if (version.fileUrl) {
+      await labelStorage.delete(version.fileUrl);
+    }
+
+    // Delete DB record
+    await prisma.labelTemplateVersion.delete({
+      where: { id: versionId },
+    });
+
+    await logAction({
+      entityType: 'LABEL',
+      entityId: versionId, // Note: entityId usually refers to the existing entity. Since it's deleted, this might be tricky for filtering, but logging the ID is standard.
+      action: 'label_version_deleted',
+      userId: session.user.id,
+      summary: `Deleted label version ${version.version}`,
+      details: {
+        templateId: version.templateId,
+        version: version.version
+      }
+    });
+
+    return Response.json({ success: true });
+  } catch (error) {
+    return handleApiError(error);
+  }
+}

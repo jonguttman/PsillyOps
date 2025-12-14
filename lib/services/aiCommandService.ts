@@ -137,6 +137,58 @@ export type CreateMaterialCommand = {
   };
 };
 
+export type NavigateAddStrainCommand = {
+  command: 'NAVIGATE_ADD_STRAIN';
+  args: {
+    name?: string;
+  };
+};
+
+export type NavigateAddMaterialCommand = {
+  command: 'NAVIGATE_ADD_MATERIAL';
+  args: {
+    name?: string;
+    categoryHint?: 'STRAIN' | 'PACKAGING' | 'INGREDIENT' | 'OTHER';
+  };
+};
+
+export type NavigateViewEntityCommand = {
+  command: 'NAVIGATE_VIEW_ENTITY';
+  args: {
+    entityType: 'strain' | 'material' | 'product';
+    ref: string;
+  };
+  resolved?: {
+    entityType: 'strain' | 'material' | 'product';
+    id?: string;
+    name?: string;
+    matchedBy?: string;
+  };
+};
+
+export type NavigateDashboardSectionCommand = {
+  command: 'NAVIGATE_DASHBOARD_SECTION';
+  args: {
+    section: 'inventory' | 'activity' | 'purchase-orders';
+  };
+};
+
+export type ProposeCreateStrainCommand = {
+  command: 'PROPOSE_CREATE_STRAIN';
+  args: {
+    name?: string;
+    shortCode?: string;
+  };
+};
+
+export type ProposeCreateMaterialCommand = {
+  command: 'PROPOSE_CREATE_MATERIAL';
+  args: {
+    name?: string;
+    categoryHint?: 'STRAIN' | 'PACKAGING' | 'INGREDIENT' | 'OTHER';
+  };
+};
+
 export type GenerateInvoiceCommand = {
   command: 'GENERATE_INVOICE';
   args: {
@@ -171,6 +223,12 @@ export type AICommandInterpretation =
   | CreateRetailerOrderCommand
   | CompleteBatchCommand
   | CreateMaterialCommand
+  | NavigateAddStrainCommand
+  | NavigateAddMaterialCommand
+  | NavigateViewEntityCommand
+  | NavigateDashboardSectionCommand
+  | ProposeCreateStrainCommand
+  | ProposeCreateMaterialCommand
   | GenerateInvoiceCommand
   | GenerateManifestCommand;
 
@@ -280,11 +338,13 @@ export async function resolveProductRef(ref: string): Promise<{
   // If we have a strain, try to find product with matching strain
   if (strainId && productPart) {
     const withStrain = await prisma.product.findFirst({
-      where: { 
+      // NOTE: Prisma Client types can get stale after schema changes in dev.
+      // We keep this query runtime-correct, but loosen TS typing here.
+      where: ({
         name: { contains: productPart },
         strainId: strainId,
-        active: true 
-      },
+        active: true
+      } as any),
       select: { id: true, name: true, sku: true }
     });
     if (withStrain) return withStrain;
@@ -313,7 +373,7 @@ export async function resolveProductRef(ref: string): Promise<{
   // If we found a strain but couldn't match with product part, try strain-only match
   if (strainId) {
     const byStrainOnly = await prisma.product.findFirst({
-      where: { strainId: strainId, active: true },
+      where: ({ strainId: strainId, active: true } as any),
       select: { id: true, name: true, sku: true }
     });
     if (byStrainOnly) return byStrainOnly;
@@ -573,8 +633,16 @@ export async function interpretCommand(
   let command: AICommandInterpretation;
 
   try {
+    // Phase 1 navigation intents (strains/materials) should never mutate data.
+    // We detect these deterministically and bypass the AI client stub so
+    // phrases like "Create material X" route to the form instead of creating.
+    const nav = detectNavigationIntent(inputText);
+    if (nav) {
+      rawResult = nav;
+    } else {
     // Call AI client to interpret
     rawResult = await interpretNaturalLanguageCommand(inputText);
+    }
   } catch (error) {
     if (error instanceof AIClientError) {
       // Log the failed attempt
@@ -734,6 +802,82 @@ async function mapRawResultToCommand(raw: { command: string; args: Record<string
           unit: args.unit,
           vendorRef: args.vendorRef,
           description: args.description,
+        }
+      };
+
+    case 'NAVIGATE_ADD_STRAIN':
+      return {
+        command: 'NAVIGATE_ADD_STRAIN',
+        args: {
+          name: typeof args.name === 'string' ? args.name : undefined,
+        }
+      };
+
+    case 'NAVIGATE_ADD_MATERIAL':
+      return {
+        command: 'NAVIGATE_ADD_MATERIAL',
+        args: {
+          name: typeof args.name === 'string' ? args.name : undefined,
+          categoryHint:
+            args.categoryHint === 'STRAIN' ||
+            args.categoryHint === 'PACKAGING' ||
+            args.categoryHint === 'INGREDIENT' ||
+            args.categoryHint === 'OTHER'
+              ? args.categoryHint
+              : undefined,
+        }
+      };
+
+    case 'NAVIGATE_VIEW_ENTITY':
+      if (!args.ref || typeof args.ref !== 'string') {
+        throw new Error('NAVIGATE_VIEW_ENTITY requires ref');
+      }
+      return {
+        command: 'NAVIGATE_VIEW_ENTITY',
+        args: {
+          entityType:
+            args.entityType === 'strain' || args.entityType === 'material' || args.entityType === 'product'
+              ? args.entityType
+              : 'product',
+          ref: args.ref,
+        },
+      };
+
+    case 'NAVIGATE_DASHBOARD_SECTION':
+      if (!args.section || typeof args.section !== 'string') {
+        throw new Error('NAVIGATE_DASHBOARD_SECTION requires section');
+      }
+      if (args.section !== 'inventory' && args.section !== 'activity' && args.section !== 'purchase-orders') {
+        throw new Error(`Invalid section: ${args.section}`);
+      }
+      return {
+        command: 'NAVIGATE_DASHBOARD_SECTION',
+        args: {
+          section: args.section,
+        },
+      };
+
+    case 'PROPOSE_CREATE_STRAIN':
+      return {
+        command: 'PROPOSE_CREATE_STRAIN',
+        args: {
+          name: typeof args.name === 'string' ? args.name : undefined,
+          shortCode: typeof args.shortCode === 'string' ? args.shortCode : undefined,
+        }
+      };
+
+    case 'PROPOSE_CREATE_MATERIAL':
+      return {
+        command: 'PROPOSE_CREATE_MATERIAL',
+        args: {
+          name: typeof args.name === 'string' ? args.name : undefined,
+          categoryHint:
+            args.categoryHint === 'STRAIN' ||
+            args.categoryHint === 'PACKAGING' ||
+            args.categoryHint === 'INGREDIENT' ||
+            args.categoryHint === 'OTHER'
+              ? args.categoryHint
+              : undefined,
         }
       };
 
@@ -910,6 +1054,17 @@ export async function resolveCommandReferences(cmd: AICommandInterpretation): Pr
       } as GenerateInvoiceCommand | GenerateManifestCommand;
     }
 
+    case 'NAVIGATE_VIEW_ENTITY': {
+      const resolved = await resolveViewEntity(cmd.args.entityType, cmd.args.ref);
+      return {
+        ...cmd,
+        resolved,
+      };
+    }
+
+    case 'NAVIGATE_DASHBOARD_SECTION':
+      return cmd;
+
     default:
       return cmd;
   }
@@ -953,6 +1108,31 @@ export async function executeInterpretedCommand(
         break;
       case 'CREATE_MATERIAL':
         result = await executeCreateMaterial(interpreted, userId);
+        break;
+      case 'NAVIGATE_ADD_STRAIN':
+        result = {
+          success: true,
+          message: 'Navigation command prepared (no data was created)',
+          details: {
+            type: 'NAVIGATION',
+            destination: '/strains/new',
+            prefill: { name: interpreted.args.name },
+          },
+        };
+        break;
+      case 'NAVIGATE_ADD_MATERIAL':
+        result = {
+          success: true,
+          message: 'Navigation command prepared (no data was created)',
+          details: {
+            type: 'NAVIGATION',
+            destination: '/materials/new',
+            prefill: {
+              name: interpreted.args.name,
+              categoryHint: interpreted.args.categoryHint,
+            },
+          },
+        };
         break;
       case 'GENERATE_INVOICE':
         result = await executeGenerateInvoice(interpreted, userId);
@@ -1090,6 +1270,26 @@ function validateCommand(cmd: AICommandInterpretation): void {
       }
       break;
 
+    case 'NAVIGATE_ADD_STRAIN':
+    case 'NAVIGATE_ADD_MATERIAL':
+      // No required args for navigation.
+      break;
+
+    case 'NAVIGATE_VIEW_ENTITY':
+      if (!cmd.args.ref || cmd.args.ref.trim().length === 0) {
+        throw new Error('Entity reference is required');
+      }
+      break;
+
+    case 'NAVIGATE_DASHBOARD_SECTION':
+      // section is validated during mapping
+      break;
+
+    case 'PROPOSE_CREATE_STRAIN':
+    case 'PROPOSE_CREATE_MATERIAL':
+      // Proposal is validated at confirmation time; no write occurs here.
+      break;
+
     case 'GENERATE_INVOICE':
       if (!cmd.resolved?.orderId) {
         throw new Error(`Order not found: "${cmd.args.orderRef || cmd.args.retailerRef}"`);
@@ -1115,10 +1315,220 @@ function getCommandTag(command: string): string {
     'CREATE_RETAILER_ORDER': 'order',
     'COMPLETE_BATCH': 'production',
     'CREATE_MATERIAL': 'material',
+    'NAVIGATE_ADD_STRAIN': 'navigation',
+    'NAVIGATE_ADD_MATERIAL': 'navigation',
+    'NAVIGATE_VIEW_ENTITY': 'navigation',
+    'NAVIGATE_DASHBOARD_SECTION': 'navigation',
+    'PROPOSE_CREATE_STRAIN': 'ai_proposal',
+    'PROPOSE_CREATE_MATERIAL': 'ai_proposal',
     'GENERATE_INVOICE': 'invoice',
     'GENERATE_MANIFEST': 'shipping',
   };
   return tagMap[command] || 'other';
+}
+
+// ========================================
+// PHASE 1: NAVIGATION INTENT DETECTION (NO MUTATION)
+// ========================================
+
+function cleanPrefillName(value: string): string {
+  return value
+    .trim()
+    .replace(/^["']|["']$/g, '')
+    .replace(/[.;,!?]+$/g, '')
+    .trim();
+}
+
+function guessMaterialCategoryHint(text: string, name: string | undefined): NavigateAddMaterialCommand['args']['categoryHint'] {
+  const hay = `${text} ${name || ''}`.toLowerCase();
+
+  if (hay.includes('packaging')) return 'PACKAGING';
+  if (hay.includes('strain')) return 'STRAIN';
+
+  // Packaging-ish words (best effort; non-binding)
+  if (hay.match(/\b(capsule|capsules|cap|lid|jar|bottle|seal|shrink|bag|pouch|box|carton|insert|label|labels|sticker|stickers)\b/)) {
+    return 'PACKAGING';
+  }
+
+  // Ingredient-ish words (best effort; non-binding)
+  if (hay.match(/\b(powder|extract|mushroom|mycelium|herb|botanical|active|ingredient|blend)\b/)) {
+    return 'INGREDIENT';
+  }
+
+  return 'OTHER';
+}
+
+/**
+ * Detect "add strain/material" phrases and produce a navigation command.
+ * This is intentionally conservative: it only triggers when "strain" or
+ * "material"/"as a material" is present, so it won't collide with "add 50 PE".
+ */
+function detectNavigationIntent(inputText: string): { command: string; args: Record<string, any> } | null {
+  const text = inputText.trim();
+  if (!text) return null;
+  const lower = text.toLowerCase().trim();
+
+  // Phase 2: explicit confirmed creation (proposal only)
+  // Example: "Create a new strain Penis Envy"
+  const createNewStrain = text.match(/(?:^|\b)create\s+(?:a\s+)?new\s+strain\s*[:\-]?\s*(.+)$/i);
+  if (createNewStrain) {
+    const name = cleanPrefillName(createNewStrain[1] || '');
+    return {
+      command: 'PROPOSE_CREATE_STRAIN',
+      args: { name: name.length > 0 ? name : undefined },
+    };
+  }
+
+  const createNewMaterial = text.match(/(?:^|\b)create\s+(?:a\s+)?new\s+material\s*[:\-]?\s*(.+)$/i);
+  if (createNewMaterial) {
+    const name = cleanPrefillName(createNewMaterial[1] || '');
+    return {
+      command: 'PROPOSE_CREATE_MATERIAL',
+      args: {
+        name: name.length > 0 ? name : undefined,
+        categoryHint: guessMaterialCategoryHint(text, name.length > 0 ? name : undefined),
+      },
+    };
+  }
+
+  // Dashboard section navigation
+  if (lower.match(/\b(open|show|go\s+to|take\s+me\s+to)\s+(?:the\s+)?inventory\b/)) {
+    return { command: 'NAVIGATE_DASHBOARD_SECTION', args: { section: 'inventory' } };
+  }
+  if (lower.match(/\b(open|show|go\s+to|take\s+me\s+to)\s+(?:the\s+)?activity(?:\s+log)?\b/)) {
+    return { command: 'NAVIGATE_DASHBOARD_SECTION', args: { section: 'activity' } };
+  }
+  if (lower.match(/\b(open|show|go\s+to|take\s+me\s+to)\s+(?:the\s+)?purchase(?:\s+)?orders?\b/)) {
+    return { command: 'NAVIGATE_DASHBOARD_SECTION', args: { section: 'purchase-orders' } };
+  }
+
+  // View entity navigation (read-only lookup)
+  // Examples:
+  // - "Take me to Golden Teacher"
+  // - "Show Enigma material"
+  // - "Open product Hercules"
+  const typedTail = text.match(/(?:^|\b)(?:open|show|go\s+to|take\s+me\s+to)\s+(.+?)\s+(strain|material|product)\s*$/i);
+  if (typedTail) {
+    const ref = cleanPrefillName(typedTail[1] || '');
+    const entityType = typedTail[2].toLowerCase();
+    if (ref.length > 0) {
+      return { command: 'NAVIGATE_VIEW_ENTITY', args: { entityType, ref } };
+    }
+  }
+
+  const typedHead = text.match(/(?:^|\b)(?:open|show|go\s+to|take\s+me\s+to)\s+(strain|material|product)\s+(.+)\s*$/i);
+  if (typedHead) {
+    const entityType = typedHead[1].toLowerCase();
+    const ref = cleanPrefillName(typedHead[2] || '');
+    if (ref.length > 0) {
+      return { command: 'NAVIGATE_VIEW_ENTITY', args: { entityType, ref } };
+    }
+  }
+
+  const genericNav = text.match(/(?:^|\b)(?:open|show|go\s+to|take\s+me\s+to)\s+(.+)\s*$/i);
+  if (genericNav) {
+    const ref = cleanPrefillName(genericNav[1] || '');
+    if (ref.length > 0) {
+      // Infer entityType if user said "X material/strain/product" in the phrase; default to product.
+      let entityType: 'strain' | 'material' | 'product' = 'product';
+      if (lower.includes(' material')) entityType = 'material';
+      if (lower.includes(' strain')) entityType = 'strain';
+      if (lower.includes(' product')) entityType = 'product';
+
+      return { command: 'NAVIGATE_VIEW_ENTITY', args: { entityType, ref } };
+    }
+  }
+
+  // Strain examples:
+  // - "Add a new strain Penis Envy"
+  // - "Create strain Golden Teacher"
+  // - "Add strain Enigma"
+  const strainMatch =
+    text.match(/(?:^|\b)(?:add|create|new)\s+(?:a\s+)?(?:new\s+)?strain\s*[:\-]?\s*(.+)$/i) ||
+    text.match(/(?:^|\b)strain\s*[:\-]\s*(.+)$/i);
+  if (strainMatch) {
+    const name = cleanPrefillName(strainMatch[1] || '');
+    return {
+      command: 'NAVIGATE_ADD_STRAIN',
+      args: {
+        name: name.length > 0 ? name : undefined,
+      }
+    };
+  }
+
+  // Material examples:
+  // - "Add material Enigma mushroom powder"
+  // - "Create capsules as a material"
+  // - "Add packaging material labels"
+  const packagingMatch = text.match(/(?:^|\b)(?:add|create|new)\s+(?:a\s+)?(?:new\s+)?packaging\s+material\s+(.+)$/i);
+  if (packagingMatch) {
+    const name = cleanPrefillName(packagingMatch[1] || '');
+    return {
+      command: 'NAVIGATE_ADD_MATERIAL',
+      args: {
+        name: name.length > 0 ? name : undefined,
+        categoryHint: 'PACKAGING',
+      }
+    };
+  }
+
+  const asMaterialMatch = text.match(/(?:^|\b)(?:add|create)\s+(.+?)\s+as\s+(?:a\s+)?material\b/i);
+  if (asMaterialMatch) {
+    const name = cleanPrefillName(asMaterialMatch[1] || '');
+    return {
+      command: 'NAVIGATE_ADD_MATERIAL',
+      args: {
+        name: name.length > 0 ? name : undefined,
+        categoryHint: guessMaterialCategoryHint(text, name.length > 0 ? name : undefined),
+      }
+    };
+  }
+
+  const materialMatch = text.match(/(?:^|\b)(?:add|create|new)\s+(?:a\s+)?(?:new\s+)?material\s+(.+)$/i);
+  if (materialMatch) {
+    const name = cleanPrefillName(materialMatch[1] || '');
+    return {
+      command: 'NAVIGATE_ADD_MATERIAL',
+      args: {
+        name: name.length > 0 ? name : undefined,
+        categoryHint: guessMaterialCategoryHint(text, name.length > 0 ? name : undefined),
+      }
+    };
+  }
+
+  return null;
+}
+
+async function resolveViewEntity(
+  entityType: NavigateViewEntityCommand['args']['entityType'],
+  ref: string
+): Promise<NonNullable<NavigateViewEntityCommand['resolved']>> {
+  const cleaned = ref.trim();
+
+  const tryResolveStrain = async () => {
+    const s = await resolveStrainRef(cleaned);
+    return s ? ({ entityType: 'strain' as const, id: s.id, name: s.name, matchedBy: 'strainRef' } as const) : null;
+  };
+
+  const tryResolveMaterial = async () => {
+    const m = await resolveMaterialRef(cleaned);
+    return m ? ({ entityType: 'material' as const, id: m.id, name: m.name, matchedBy: 'materialRef' } as const) : null;
+  };
+
+  const tryResolveProduct = async () => {
+    const p = await resolveProductRef(cleaned);
+    return p ? ({ entityType: 'product' as const, id: p.id, name: p.name, matchedBy: 'productRef' } as const) : null;
+  };
+
+  // Prefer the requested entity type, then fall back to others.
+  if (entityType === 'strain') {
+    return (await tryResolveStrain()) || (await tryResolveProduct()) || (await tryResolveMaterial()) || { entityType, matchedBy: 'none' };
+  }
+  if (entityType === 'material') {
+    return (await tryResolveMaterial()) || (await tryResolveProduct()) || (await tryResolveStrain()) || { entityType, matchedBy: 'none' };
+  }
+  // product default
+  return (await tryResolveProduct()) || (await tryResolveStrain()) || (await tryResolveMaterial()) || { entityType, matchedBy: 'none' };
 }
 
 // ========================================

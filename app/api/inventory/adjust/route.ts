@@ -3,10 +3,11 @@
 
 import { NextRequest } from 'next/server';
 import { auth } from '@/lib/auth/auth';
-import { adjustInventory } from '@/lib/services/inventoryService';
 import { handleApiError } from '@/lib/utils/errors';
 import { adjustInventorySchema } from '@/lib/utils/validators';
 import { hasPermission } from '@/lib/auth/rbac';
+import { createInventoryAdjustment } from '@/lib/services/inventoryAdjustmentService';
+import { InventoryAdjustmentType } from '@prisma/client';
 
 export async function POST(req: NextRequest) {
   try {
@@ -30,11 +31,12 @@ export async function POST(req: NextRequest) {
     const validated = adjustInventorySchema.parse(body);
 
     // 2. Call Service
-    await adjustInventory({
+    await createInventoryAdjustment({
       inventoryId: validated.inventoryId,
-      deltaQuantity: validated.deltaQuantity,
+      deltaQty: Math.trunc(validated.deltaQuantity),
       reason: validated.reason,
-      userId: session.user.id
+      adjustmentType: InventoryAdjustmentType.MANUAL_CORRECTION,
+      userId: session.user.id,
     });
 
     // 3. Return JSON

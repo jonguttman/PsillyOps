@@ -120,7 +120,7 @@ export default function LabelUploadForm({ templateId, templateName }: LabelUploa
                             className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                           />
                           <p className="mt-1 text-xs text-gray-500">
-                            Must contain <code className="bg-gray-100 px-1 rounded">&lt;g id=&quot;qr-placeholder&quot;&gt;</code>
+                            Optionally include <code className="bg-gray-100 px-1 rounded">&lt;g id=&quot;qr-placeholder&quot;&gt;</code> for custom QR placement
                           </p>
                         </div>
 

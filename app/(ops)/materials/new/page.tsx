@@ -63,7 +63,11 @@ async function createMaterial(formData: FormData) {
   redirect("/materials");
 }
 
-export default async function NewMaterialPage() {
+export default async function NewMaterialPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ prefill?: string; aiToast?: string }>;
+}) {
   const session = await auth();
 
   if (!session || !session.user) {
@@ -72,6 +76,30 @@ export default async function NewMaterialPage() {
 
   if (session.user.role === "REP") {
     redirect("/");
+  }
+
+  const params = (await searchParams) || {};
+  const aiToast = params.aiToast === "1" || params.aiToast === "true";
+  let prefillName: string | undefined;
+  let prefillCategory: (typeof CATEGORY_OPTIONS)[number]["value"] | undefined;
+  if (params.prefill) {
+    try {
+      const parsed = JSON.parse(params.prefill) as unknown;
+      if (parsed && typeof parsed === "object") {
+        const rec = parsed as Record<string, unknown>;
+        const n = rec["name"];
+        if (typeof n === "string" && n.trim().length > 0) {
+          prefillName = n.trim();
+        }
+
+        const hint = rec["categoryHint"];
+        if (typeof hint === "string") {
+          prefillCategory = mapCategoryHintToMaterialCategory(hint, prefillName);
+        }
+      }
+    } catch {
+      // ignore malformed prefill
+    }
   }
 
   return (
@@ -94,6 +122,11 @@ export default async function NewMaterialPage() {
 
       {/* Form Card */}
       <div className="bg-white shadow rounded-lg p-6">
+        {(aiToast || prefillName || prefillCategory) && (
+          <div className="mb-4 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+            AI prepared this form — review before saving.
+          </div>
+        )}
         <form action={createMaterial} className="space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <div>
@@ -106,8 +139,13 @@ export default async function NewMaterialPage() {
                 id="name"
                 required
                 placeholder="e.g., Lions Mane Extract Powder"
+                defaultValue={prefillName || undefined}
+                autoFocus={Boolean(prefillName)}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
               />
+              {prefillName && (
+                <p className="mt-1 text-xs text-gray-500">Suggested by AI — review and edit before saving</p>
+              )}
             </div>
 
             <div>
@@ -133,7 +171,7 @@ export default async function NewMaterialPage() {
                 name="category"
                 id="category"
                 required
-                defaultValue="OTHER"
+                defaultValue={prefillCategory || "OTHER"}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
               >
                 {CATEGORY_OPTIONS.map((cat) => (
@@ -142,6 +180,9 @@ export default async function NewMaterialPage() {
                   </option>
                 ))}
               </select>
+              {prefillCategory && (
+                <p className="mt-1 text-xs text-gray-500">Suggested by AI — review and edit before saving</p>
+              )}
             </div>
 
             <div>
@@ -266,5 +307,25 @@ export default async function NewMaterialPage() {
       </div>
     </div>
   );
+}
+
+function mapCategoryHintToMaterialCategory(
+  hint: string,
+  name?: string
+): (typeof CATEGORY_OPTIONS)[number]["value"] | undefined {
+  const upper = hint.trim().toUpperCase();
+  const lowerName = (name || "").toLowerCase();
+
+  if (upper === "PACKAGING") {
+    // If the name strongly indicates labels, pick LABEL category.
+    if (lowerName.includes("label") || lowerName.includes("sticker")) return "LABEL";
+    return "PACKAGING";
+  }
+
+  if (upper === "INGREDIENT") return "ACTIVE_INGREDIENT";
+  if (upper === "STRAIN") return "ACTIVE_INGREDIENT";
+  if (upper === "OTHER") return "OTHER";
+
+  return undefined;
 }
 

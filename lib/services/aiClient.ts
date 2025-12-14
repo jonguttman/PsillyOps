@@ -65,6 +65,17 @@ export async function interpretNaturalLanguageCommand(
     const result = parseInvoiceCommand(text);
     if (result) return result;
   }
+
+  // 0.5 Phase 1 navigation intents (strains/materials) - NEVER mutate data.
+  // These should route to the relevant form with optional prefill.
+  if (lowerText.includes('strain')) {
+    const result = parseNavigateStrainCommand(text);
+    if (result) return result;
+  }
+  if (lowerText.includes('material') || lowerText.includes('as a material')) {
+    const result = parseNavigateMaterialCommand(text);
+    if (result) return result;
+  }
   
   // 1. Batch completion (most specific)
   if (lowerText.includes('batch') || lowerText.includes('yield') || lowerText.includes('complete')) {
@@ -467,18 +478,102 @@ function parseNewMaterialCommand(text: string): RawAICommandResult | null {
   const match = normalized.match(/(?:new|create|add)\s+material\s+(.+?)(?:\s+sku\s+([A-Z0-9-]+))?(?:\s+from\s+(.+))?$/i);
   
   if (match) {
+    const name = match[1].trim();
+    const categoryHint = guessMaterialCategoryHint(normalized, name);
     return {
-      command: 'CREATE_MATERIAL',
+      command: 'NAVIGATE_ADD_MATERIAL',
       args: {
-        name: match[1].trim(),
-        sku: match[2] || undefined,
-        vendorRef: match[3]?.trim()
+        name,
+        categoryHint,
       },
       confidence: 0.7
     };
   }
   
   return null;
+}
+
+function parseNavigateStrainCommand(text: string): RawAICommandResult | null {
+  const normalized = text.trim();
+  const match =
+    normalized.match(/(?:^|\b)(?:add|create|new)\s+(?:a\s+)?(?:new\s+)?strain\s*[:\-]?\s*(.+)$/i) ||
+    normalized.match(/(?:^|\b)strain\s*[:\-]\s*(.+)$/i);
+
+  if (!match) return null;
+
+  const name = cleanPrefillName(match[1] || '');
+  return {
+    command: 'NAVIGATE_ADD_STRAIN',
+    args: { name: name.length > 0 ? name : undefined },
+    confidence: 0.85,
+  };
+}
+
+function parseNavigateMaterialCommand(text: string): RawAICommandResult | null {
+  const normalized = text.trim();
+
+  const packagingMatch = normalized.match(/(?:^|\b)(?:add|create|new)\s+(?:a\s+)?(?:new\s+)?packaging\s+material\s+(.+)$/i);
+  if (packagingMatch) {
+    const name = cleanPrefillName(packagingMatch[1] || '');
+    return {
+      command: 'NAVIGATE_ADD_MATERIAL',
+      args: {
+        name: name.length > 0 ? name : undefined,
+        categoryHint: 'PACKAGING',
+      },
+      confidence: 0.85,
+    };
+  }
+
+  const asMaterialMatch = normalized.match(/(?:^|\b)(?:add|create)\s+(.+?)\s+as\s+(?:a\s+)?material\b/i);
+  if (asMaterialMatch) {
+    const name = cleanPrefillName(asMaterialMatch[1] || '');
+    return {
+      command: 'NAVIGATE_ADD_MATERIAL',
+      args: {
+        name: name.length > 0 ? name : undefined,
+        categoryHint: guessMaterialCategoryHint(normalized, name.length > 0 ? name : undefined),
+      },
+      confidence: 0.8,
+    };
+  }
+
+  const materialMatch = normalized.match(/(?:^|\b)(?:add|create|new)\s+(?:a\s+)?(?:new\s+)?material\s+(.+)$/i);
+  if (materialMatch) {
+    const name = cleanPrefillName(materialMatch[1] || '');
+    return {
+      command: 'NAVIGATE_ADD_MATERIAL',
+      args: {
+        name: name.length > 0 ? name : undefined,
+        categoryHint: guessMaterialCategoryHint(normalized, name.length > 0 ? name : undefined),
+      },
+      confidence: 0.8,
+    };
+  }
+
+  return null;
+}
+
+function cleanPrefillName(value: string): string {
+  return value
+    .trim()
+    .replace(/^["']|["']$/g, '')
+    .replace(/[.;,!?]+$/g, '')
+    .trim();
+}
+
+function guessMaterialCategoryHint(text: string, name: string | undefined): 'STRAIN' | 'PACKAGING' | 'INGREDIENT' | 'OTHER' {
+  const hay = `${text} ${name || ''}`.toLowerCase();
+
+  if (hay.includes('packaging')) return 'PACKAGING';
+  if (hay.includes('strain')) return 'STRAIN';
+  if (hay.match(/\b(capsule|capsules|cap|lid|jar|bottle|seal|shrink|bag|pouch|box|carton|insert|label|labels|sticker|stickers)\b/)) {
+    return 'PACKAGING';
+  }
+  if (hay.match(/\b(powder|extract|mushroom|mycelium|herb|botanical|active|ingredient|blend)\b/)) {
+    return 'INGREDIENT';
+  }
+  return 'OTHER';
 }
 
 function parseGenericQuantityCommand(text: string): RawAICommandResult | null {
