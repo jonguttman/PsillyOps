@@ -189,6 +189,22 @@ export type ProposeCreateMaterialCommand = {
   };
 };
 
+export type ProposeCreateProductionRunCommand = {
+  command: 'PROPOSE_CREATE_PRODUCTION_RUN';
+  args: {
+    productRef: string;
+    quantity?: number;
+  };
+  resolved?: {
+    productId?: string;
+    productName?: string;
+    productSku?: string;
+    defaultBatchSize?: number | null;
+    ambiguous?: boolean;
+    choices?: Array<{ id: string; name: string; sku: string }>;
+  };
+};
+
 export type GenerateInvoiceCommand = {
   command: 'GENERATE_INVOICE';
   args: {
@@ -229,6 +245,7 @@ export type AICommandInterpretation =
   | NavigateDashboardSectionCommand
   | ProposeCreateStrainCommand
   | ProposeCreateMaterialCommand
+  | ProposeCreateProductionRunCommand
   | GenerateInvoiceCommand
   | GenerateManifestCommand;
 
@@ -881,6 +898,26 @@ async function mapRawResultToCommand(raw: { command: string; args: Record<string
         }
       };
 
+    case 'PROPOSE_CREATE_PRODUCTION_RUN': {
+      const productRef = typeof args.productRef === 'string' ? args.productRef : '';
+      if (!productRef) {
+        throw new Error('PROPOSE_CREATE_PRODUCTION_RUN requires productRef');
+      }
+      const qty =
+        typeof args.quantity === 'number'
+          ? args.quantity
+          : typeof args.quantity === 'string'
+            ? Number(args.quantity)
+            : undefined;
+      return {
+        command: 'PROPOSE_CREATE_PRODUCTION_RUN',
+        args: {
+          productRef,
+          quantity: Number.isFinite(qty) ? qty : undefined,
+        },
+      };
+    }
+
     case 'GENERATE_INVOICE':
       if (!args.orderRef && !args.retailerRef) {
         throw new Error('GENERATE_INVOICE requires orderRef or retailerRef');
@@ -946,6 +983,66 @@ export async function resolveCommandReferences(cmd: AICommandInterpretation): Pr
           toLocationId: toLocation?.id,
           toLocationName: toLocation?.name,
         }
+      };
+    }
+
+    case 'PROPOSE_CREATE_PRODUCTION_RUN': {
+      const ref = (cmd.args.productRef || '').trim();
+      const resolved = await resolveProductRef(ref);
+
+      // Detect ambiguity for broad name-only references (e.g., "Mighty Caps")
+      let choices: Array<{ id: string; name: string; sku: string }> | undefined;
+      let ambiguous = false;
+
+      const looksSpecific = /^[A-Za-z0-9\-]+$/.test(ref) && ref.length <= 12; // likely SKU/short ref
+      const hasDash = ref.includes('-') || ref.includes('–');
+
+      if (!looksSpecific && !hasDash) {
+        const matches = await prisma.product.findMany({
+          where: { name: { contains: ref }, active: true },
+          select: { id: true, name: true, sku: true, defaultBatchSize: true },
+          take: 10,
+        });
+        if (matches.length > 1) {
+          ambiguous = true;
+          choices = matches.map((m) => ({ id: m.id, name: m.name, sku: m.sku }));
+        }
+      }
+
+      if (ambiguous && choices) {
+        return {
+          ...cmd,
+          resolved: {
+            ambiguous: true,
+            choices,
+          },
+        };
+      }
+
+      if (!resolved) {
+        return {
+          ...cmd,
+          resolved: {
+            productId: undefined,
+            productName: undefined,
+            productSku: undefined,
+          },
+        };
+      }
+
+      const product = await prisma.product.findUnique({
+        where: { id: resolved.id },
+        select: { id: true, name: true, sku: true, defaultBatchSize: true },
+      });
+
+      return {
+        ...cmd,
+        resolved: {
+          productId: product?.id,
+          productName: product?.name,
+          productSku: product?.sku,
+          defaultBatchSize: product?.defaultBatchSize,
+        },
       };
     }
 
@@ -1287,6 +1384,7 @@ function validateCommand(cmd: AICommandInterpretation): void {
 
     case 'PROPOSE_CREATE_STRAIN':
     case 'PROPOSE_CREATE_MATERIAL':
+    case 'PROPOSE_CREATE_PRODUCTION_RUN':
       // Proposal is validated at confirmation time; no write occurs here.
       break;
 
@@ -1321,6 +1419,7 @@ function getCommandTag(command: string): string {
     'NAVIGATE_DASHBOARD_SECTION': 'navigation',
     'PROPOSE_CREATE_STRAIN': 'ai_proposal',
     'PROPOSE_CREATE_MATERIAL': 'ai_proposal',
+    'PROPOSE_CREATE_PRODUCTION_RUN': 'ai_proposal',
     'GENERATE_INVOICE': 'invoice',
     'GENERATE_MANIFEST': 'shipping',
   };
@@ -1389,6 +1488,54 @@ function detectNavigationIntent(inputText: string): { command: string; args: Rec
         categoryHint: guessMaterialCategoryHint(text, name.length > 0 ? name : undefined),
       },
     };
+  }
+
+  // Phase 5.2: propose creating a production run (confirmation required)
+  // Examples:
+  // - "Make Enigma mighty caps"
+  // - "Start a run for Mighty Caps Enigma"
+  // - "Make 200 Mighty Caps - Penis Envy"
+  const startRunFor = text.match(/(?:^|\b)(?:start|create)\s+(?:a\s+)?run\s+for\s+(.+)$/i);
+  if (startRunFor) {
+    const tail = cleanPrefillName(startRunFor[1] || '');
+    const qtyTail = tail.match(/^(.*?)(?:\s+x?\s*)?(\d{1,6})\s*$/);
+    const productRef = cleanPrefillName((qtyTail ? qtyTail[1] : tail) || '');
+    const quantity = qtyTail ? Number(qtyTail[2]) : undefined;
+    if (productRef.length > 0) {
+      return {
+        command: 'PROPOSE_CREATE_PRODUCTION_RUN',
+        args: { productRef, quantity: Number.isFinite(quantity) ? quantity : undefined },
+      };
+    }
+  }
+
+  const makeQtyFirst = text.match(/(?:^|\b)make\s+(\d{1,6})\s+(?:of\s+)?(.+)$/i);
+  if (makeQtyFirst) {
+    const quantity = Number(makeQtyFirst[1]);
+    const productRef = cleanPrefillName(makeQtyFirst[2] || '');
+    if (productRef.length > 0) {
+      return {
+        command: 'PROPOSE_CREATE_PRODUCTION_RUN',
+        args: { productRef, quantity: Number.isFinite(quantity) ? quantity : undefined },
+      };
+    }
+  }
+
+  const makeTail = text.match(/(?:^|\b)make\s+(.+)$/i);
+  if (makeTail) {
+    const tail = cleanPrefillName(makeTail[1] || '');
+    // Avoid collisions with existing "generate" style commands.
+    if (!lower.includes('invoice') && !lower.includes('manifest')) {
+      const qtyTail = tail.match(/^(.*?)(?:\s+x?\s*)?(\d{1,6})\s*$/);
+      const productRef = cleanPrefillName((qtyTail ? qtyTail[1] : tail) || '');
+      const quantity = qtyTail ? Number(qtyTail[2]) : undefined;
+      if (productRef.length > 0) {
+        return {
+          command: 'PROPOSE_CREATE_PRODUCTION_RUN',
+          args: { productRef, quantity: Number.isFinite(quantity) ? quantity : undefined },
+        };
+      }
+    }
   }
 
   // Dashboard section navigation

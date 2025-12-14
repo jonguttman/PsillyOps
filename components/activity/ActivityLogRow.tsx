@@ -17,9 +17,11 @@ import {
 import { ActivityEntity } from '@prisma/client';
 import ActivityLogDetail from '@/components/activity/ActivityLogDetail';
 
+type ActivityEntityLike = ActivityEntity | 'PRODUCTION_RUN';
+
 export interface ActivityLogItem {
   id: string;
-  entityType: ActivityEntity;
+  entityType: ActivityEntityLike;
   entityId: string;
   action: string;
   summary: string;
@@ -93,6 +95,8 @@ function getEntityDeepLink(activity: ActivityLogItem): { href: string; label: st
       return { href: `/orders/${activity.entityId}`, label: 'Order' };
     case ActivityEntity.PRODUCTION_ORDER:
       return { href: `/production-orders/${activity.entityId}`, label: 'Production Order' };
+    case 'PRODUCTION_RUN':
+      return { href: `/production-runs/${activity.entityId}`, label: 'Production Run' };
     case ActivityEntity.MATERIAL:
       return { href: `/materials/${activity.entityId}`, label: 'Material' };
     default:
@@ -100,7 +104,7 @@ function getEntityDeepLink(activity: ActivityLogItem): { href: string; label: st
   }
 }
 
-function getEntityLabel(entityType: ActivityEntity): string {
+function getEntityLabel(entityType: ActivityEntityLike): string {
   const labels: Record<string, string> = {
     PRODUCT: 'Product',
     MATERIAL: 'Material',
@@ -109,6 +113,7 @@ function getEntityLabel(entityType: ActivityEntity): string {
     ORDER: 'Order',
     PURCHASE_ORDER: 'PO',
     PRODUCTION_ORDER: 'Production',
+    PRODUCTION_RUN: 'Production Run',
     VENDOR: 'Vendor',
     INVOICE: 'Invoice',
     LABEL: 'Label',
@@ -118,8 +123,8 @@ function getEntityLabel(entityType: ActivityEntity): string {
   return labels[entityType] || entityType;
 }
 
-function getEntityBadgeColor(entityType: ActivityEntity): string {
-  const colors: Partial<Record<ActivityEntity, string>> = {
+function getEntityBadgeColor(entityType: ActivityEntityLike): string {
+  const colors: Record<string, string> = {
     PRODUCT: 'bg-blue-100 text-blue-700',
     MATERIAL: 'bg-amber-100 text-amber-700',
     BATCH: 'bg-purple-100 text-purple-700',
@@ -127,6 +132,7 @@ function getEntityBadgeColor(entityType: ActivityEntity): string {
     ORDER: 'bg-pink-100 text-pink-700',
     PURCHASE_ORDER: 'bg-cyan-100 text-cyan-700',
     PRODUCTION_ORDER: 'bg-orange-100 text-orange-700',
+    PRODUCTION_RUN: 'bg-indigo-100 text-indigo-700',
     VENDOR: 'bg-slate-100 text-slate-700',
     SYSTEM: 'bg-gray-100 text-gray-600',
   };

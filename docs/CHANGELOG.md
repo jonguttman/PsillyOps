@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Labels automatically rotate 90° when it increases sheet capacity (no scaling)
 - **Auto-generate QR placeholder**: SVGs without `<g id="qr-placeholder">` now auto-generate a fallback placeholder at render time (bottom-right corner, 0.75in for labels ≥2in wide, 0.5in otherwise)
 
+### Production Runs
+- Required-step markers + inline skip justification display; dashboard production attention summary.
+
 ## [0.14.2] - 2025-12-14
 
 ### Added
@@ -75,6 +78,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Supply Watch dashboard card
 - Inventory adjustments surfaced in dashboard + activity
 - Explicit reseed requirement after Prisma migrations (`npx prisma db seed`)
+
+## [0.14.0] - 2025-12-14
+
+### Added
+- **Production Runs (Phase 5)**:
+  - Product-level production step templates (editable, ordered, gap-free)
+  - Production Runs that snapshot templates into immutable run steps
+  - Canonical run QR routing via `/qr/{token}` (single token per run)
+  - Mobile-friendly production run workflow (scan → checklist → start/stop/complete/skip)
+  - Run step overrides (pre-start only): add/remove/reorder steps + required/optional (run-only)
+  - Step assignment: workers claim steps; only the assignee can act (ADMIN override)
+  - “My Work” view for assigned steps
+  - Run health flags (required skips, stalled steps, blocked runs) with UI warnings
+- **AI (proposal-only)**
+  - `PROPOSE_CREATE_PRODUCTION_RUN` (confirmed creation only)
+  - `PROPOSE_RUN_EDIT` (confirmed run edits only)
+
+### Activity Log Events
+- `production_step_template_created|updated|deleted|reordered`
+- `production_run_steps_modified`
+- `production_step_assigned` / `production_step_reassigned`
+- `ai_propose_run_edit` / `ai_propose_run_edit_confirmed`
 
 ## [0.15.0] - 2024-12-13
 

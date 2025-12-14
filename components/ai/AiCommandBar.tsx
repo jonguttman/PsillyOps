@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 
 // QR Context from scanned/pasted QR code
 interface QRContext {
@@ -71,12 +71,23 @@ interface CommandResult {
     message: string;
     details?: any;
   };
-  type?: 'NAVIGATION' | 'PROPOSE_CREATE';
+  type?: 'NAVIGATION' | 'PROPOSE_CREATE' | 'PROPOSE_CREATE_PRODUCTION_RUN' | 'PROPOSE_RUN_EDIT' | 'NEEDS_INPUT';
   destination?: string;
   prefill?: Record<string, unknown>;
   message?: string;
   entity?: 'strain' | 'material';
   confirmationText?: string;
+  product?: { id: string; name: string; sku: string };
+  suggestedQuantity?: number;
+  missingFields?: string[];
+  kind?: string;
+  choices?: Array<{ id: string; name: string; sku: string }>;
+  runId?: string;
+  operations?: Array<
+    | { op: 'ADD_STEP'; label: string; required: boolean }
+    | { op: 'SKIP_STEP'; stepId: string; reason: string }
+    | { op: 'REORDER_STEPS'; orderedStepIds: string[] }
+  >;
   correctionApplied?: boolean;
   error?: string;
 }
@@ -99,6 +110,7 @@ const COMMAND_TYPES = [
 
 export default function AiCommandBar({ isOpen, onClose }: AiCommandBarProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<CommandResult | null>(null);
@@ -106,6 +118,7 @@ export default function AiCommandBar({ isOpen, onClose }: AiCommandBarProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editedCommand, setEditedCommand] = useState<ParsedCommand | null>(null);
   const [qrContext, setQrContext] = useState<QRResolveResult | null>(null);
+  const [runQuantity, setRunQuantity] = useState<string>('');
 
   // Reset state when dialog opens
   useEffect(() => {
@@ -116,8 +129,20 @@ export default function AiCommandBar({ isOpen, onClose }: AiCommandBarProps) {
       setIsEditing(false);
       setEditedCommand(null);
       setQrContext(null);
+      setRunQuantity('');
     }
   }, [isOpen]);
+
+  // Initialize production run quantity when proposal arrives
+  useEffect(() => {
+    if (result?.type === 'PROPOSE_CREATE_PRODUCTION_RUN') {
+      setRunQuantity(
+        typeof result.suggestedQuantity === 'number' && Number.isFinite(result.suggestedQuantity)
+          ? String(Math.trunc(result.suggestedQuantity))
+          : ''
+      );
+    }
+  }, [result]);
 
   // Check for QR pattern in input
   const detectQRPattern = (text: string): boolean => {
@@ -183,7 +208,7 @@ export default function AiCommandBar({ isOpen, onClose }: AiCommandBarProps) {
       const response = await fetch('/api/ai/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: inputText, execute: false }),
+        body: JSON.stringify({ text: inputText, execute: false, context: { pathname } }),
       });
 
       const data = await response.json();
@@ -218,6 +243,44 @@ export default function AiCommandBar({ isOpen, onClose }: AiCommandBarProps) {
       setIsLoading(false);
     }
   }, [inputText, resolveQRContext, router, onClose]);
+
+  const confirmProposedRunEdit = useCallback(async () => {
+    if (!result?.logId || result.type !== 'PROPOSE_RUN_EDIT' || !result.runId || !Array.isArray(result.operations)) return;
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/ai/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          confirm: true,
+          logId: result.logId,
+          proposedAction: {
+            type: 'PROPOSE_RUN_EDIT',
+            runId: result.runId,
+            operations: result.operations,
+          },
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Failed to apply run edit');
+
+      if (data?.type === 'NAVIGATION' && typeof data.destination === 'string') {
+        router.push(data.destination);
+        onClose();
+        return;
+      }
+
+      setResult(data);
+    } catch (err: any) {
+      setError(err.message || 'An error occurred');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [result, router, onClose]);
 
   const confirmProposedCreate = useCallback(async () => {
     if (!result?.logId || result.type !== 'PROPOSE_CREATE') return;
@@ -260,6 +323,43 @@ export default function AiCommandBar({ isOpen, onClose }: AiCommandBarProps) {
       setIsLoading(false);
     }
   }, [result, router, onClose]);
+
+  const confirmProposedCreateRun = useCallback(async () => {
+    if (!result || result.type !== 'PROPOSE_CREATE_PRODUCTION_RUN' || !result.product?.id) return;
+
+    const qty = Number(runQuantity);
+    if (!Number.isInteger(qty) || qty <= 0) {
+      setError('Quantity must be a positive integer.');
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/production-runs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productId: result.product.id, quantity: qty }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to create production run');
+      }
+
+      if (data?.runId) {
+        router.push(`/production-runs/${data.runId}?aiRunCreated=1&productId=${result.product.id}`);
+        onClose();
+        return;
+      }
+
+      setResult(data);
+    } catch (err: any) {
+      setError(err.message || 'An error occurred');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [result, runQuantity, router, onClose]);
 
   const executeCommand = useCallback(async (withCorrection: boolean = false) => {
     if (!result?.logId) return;
@@ -451,7 +551,122 @@ export default function AiCommandBar({ isOpen, onClose }: AiCommandBarProps) {
                   ) : (
                     // Interpretation result with editable fields
                     <div>
-                      {result.type === 'PROPOSE_CREATE' ? (
+                      {result.type === 'NEEDS_INPUT' && Array.isArray(result.choices) ? (
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center">
+                              <svg className="h-5 w-5 text-amber-600 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l6.516 11.59c.75 1.335-.213 2.99-1.743 2.99H3.484c-1.53 0-2.493-1.655-1.743-2.99l6.516-11.59zM11 14a1 1 0 10-2 0 1 1 0 002 0zm-1-2a1 1 0 01-1-1V7a1 1 0 012 0v4a1 1 0 01-1 1z" clipRule="evenodd" />
+                              </svg>
+                              <span className="font-medium text-amber-800">Needs input</span>
+                            </div>
+                          </div>
+
+                          <p className="text-sm text-amber-800">
+                            {result.message || 'Please choose an option to continue.'}
+                          </p>
+
+                          <div className="mt-3 space-y-2">
+                            {result.choices.map((c) => (
+                              <button
+                                key={c.id}
+                                type="button"
+                                onClick={() => {
+                                  setResult({
+                                    ...result,
+                                    type: 'PROPOSE_CREATE_PRODUCTION_RUN',
+                                    product: { id: c.id, name: c.name, sku: c.sku },
+                                    suggestedQuantity: undefined,
+                                    missingFields: ['quantity'],
+                                  });
+                                }}
+                                className="w-full text-left rounded-md border border-amber-200 bg-white/70 px-3 py-2 hover:bg-amber-50"
+                              >
+                                <div className="text-sm font-medium text-gray-900">{c.name}</div>
+                                <div className="text-xs text-gray-500">{c.sku}</div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : result.type === 'PROPOSE_CREATE_PRODUCTION_RUN' ? (
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center">
+                              <svg className="h-5 w-5 text-blue-500 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                              </svg>
+                              <span className="font-medium text-blue-700">Review & Confirm</span>
+                            </div>
+                            <span className="text-xs text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
+                              No data written yet
+                            </span>
+                          </div>
+
+                          <p className="text-sm text-blue-700 whitespace-pre-wrap">
+                            {result.confirmationText ||
+                              `I’ve prepared a new production run.\nPlease review and confirm before it’s created.`}
+                          </p>
+
+                          <div className="mt-3 bg-white/70 border border-blue-200 rounded p-3 space-y-2">
+                            <div className="text-xs font-medium text-blue-800">Proposed run</div>
+                            <div className="text-sm text-gray-900 font-medium">
+                              {result.product?.name || 'Unknown product'}{' '}
+                              <span className="text-xs text-gray-500">{result.product?.sku || ''}</span>
+                            </div>
+                            <label className="block text-xs font-medium text-gray-600">Quantity</label>
+                            <input
+                              type="number"
+                              inputMode="numeric"
+                              min={1}
+                              value={runQuantity}
+                              onChange={(e) => setRunQuantity(e.target.value)}
+                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                              placeholder="Enter quantity…"
+                            />
+                            <p className="text-xs text-gray-500">
+                              This will create a Production Run and bind a single QR token to it.
+                            </p>
+                          </div>
+                        </div>
+                      ) : result.type === 'PROPOSE_RUN_EDIT' ? (
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center">
+                              <svg className="h-5 w-5 text-blue-500 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                                <path
+                                  fillRule="evenodd"
+                                  d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                                  clipRule="evenodd"
+                                />
+                              </svg>
+                              <span className="font-medium text-blue-700">Review & Confirm</span>
+                            </div>
+                            <span className="text-xs text-blue-700 bg-blue-100 px-2 py-0.5 rounded">No data written yet</span>
+                          </div>
+
+                          <p className="text-sm text-blue-700 whitespace-pre-wrap">
+                            {result.confirmationText ||
+                              `I’ve prepared changes to this production run.\nPlease review and confirm before anything is modified.`}
+                          </p>
+
+                          <div className="mt-3 bg-white/70 border border-blue-200 rounded p-3 space-y-2">
+                            <div className="text-xs font-medium text-blue-800">Proposed changes</div>
+                            <ul className="text-sm text-gray-800 space-y-1 list-disc list-inside">
+                              {(result.operations || []).map((op, idx) => (
+                                <li key={idx}>
+                                  {op.op === 'ADD_STEP'
+                                    ? `Add step: "${op.label}"${op.required ? ' (required)' : ' (optional)'}`
+                                    : op.op === 'REORDER_STEPS'
+                                      ? 'Reorder steps'
+                                      : op.op === 'SKIP_STEP'
+                                        ? `Skip step (reason: "${op.reason}")`
+                                        : 'Edit'}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                      ) : result.type === 'PROPOSE_CREATE' ? (
                         <div>
                           <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center">
@@ -685,6 +900,24 @@ export default function AiCommandBar({ isOpen, onClose }: AiCommandBarProps) {
                     disabled={isLoading}
                   >
                     {isLoading ? 'Creating...' : 'Create'}
+                  </button>
+                ) : result?.type === 'PROPOSE_CREATE_PRODUCTION_RUN' ? (
+                  <button
+                    type="button"
+                    onClick={confirmProposedCreateRun}
+                    className="px-4 py-2 text-sm font-medium text-white bg-green-600 border border-transparent rounded-lg hover:bg-green-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={isLoading}
+                  >
+                    {isLoading ? 'Creating…' : 'Create Run'}
+                  </button>
+                ) : result?.type === 'PROPOSE_RUN_EDIT' ? (
+                  <button
+                    type="button"
+                    onClick={confirmProposedRunEdit}
+                    className="px-4 py-2 text-sm font-medium text-white bg-green-600 border border-transparent rounded-lg hover:bg-green-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={isLoading}
+                  >
+                    {isLoading ? 'Applying…' : 'Apply Changes'}
                   </button>
                 ) : result && !result.executed ? (
                   <button

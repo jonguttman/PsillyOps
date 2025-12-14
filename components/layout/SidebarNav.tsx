@@ -14,6 +14,7 @@ import {
   Tags,
   QrCode,
   ScanLine,
+  ListChecks,
   Dna,
   Building2,
   Activity,
@@ -72,6 +73,8 @@ export function SidebarNav({ userRole }: SidebarNavProps) {
     { href: '/materials', label: 'Materials', icon: Boxes },
     { href: '/inventory', label: 'Inventory', icon: Warehouse },
     { href: '/production', label: 'Production', icon: Factory },
+    { href: '/production-runs', label: 'Production Runs', icon: ListChecks },
+    { href: '/production-runs/my-work', label: 'My Work', icon: ListChecks },
     { href: '/orders', label: 'Orders', icon: ShoppingCart },
     { href: '/purchase-orders', label: 'Purchasing', icon: FileText },
   ];
@@ -84,6 +87,11 @@ export function SidebarNav({ userRole }: SidebarNavProps) {
   // QR section - Identity & traceability
   const qrItems: NavItem[] = [
     ...(userRole === 'ADMIN' ? [{ href: '/qr-redirects', label: 'Redirect Rules', icon: QrCode }] : []),
+  ];
+
+  // Mobile tools - lightweight pages for phone workflows
+  const mobileItems: NavItem[] = [
+    { href: '/m/scan', label: 'Scan (mobile)', icon: ScanLine },
   ];
 
   // SYSTEM section - Governance
@@ -136,6 +144,19 @@ export function SidebarNav({ userRole }: SidebarNavProps) {
           ))}
         </SidebarSection>
       )}
+
+      {/* MOBILE TOOLS */}
+      <SidebarSection title="Mobile Tools" defaultExpanded={false} persistKey="mobile-tools">
+        {mobileItems.map((item) => (
+          <NavItem
+            key={item.href}
+            href={item.href}
+            label={item.label}
+            icon={item.icon}
+            isActive={isActive(item.href)}
+          />
+        ))}
+      </SidebarSection>
 
       {/* SYSTEM - Governance */}
       <SidebarSection title="System" defaultExpanded={false} persistKey="system">

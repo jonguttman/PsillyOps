@@ -1,7 +1,7 @@
 # PsillyOps User Manual
 
 **Version 0.14.0**  
-**Last Updated: December 13, 2024**
+**Last Updated: December 13, 2025**
 
 ---
 
@@ -742,6 +742,38 @@ Templates save time for recurring production runs:
 - Select template when creating production order
 - Template's default batch size auto-fills
 - Instructions provide guidance for operators
+
+### Production Runs (QR-driven Step Checklist)
+
+Production Runs provide a **step-by-step checklist** for making a product batch, where a **single QR token follows the run** from start to finish.
+
+**Key concepts**
+- **Product step templates**: Each product has an ordered, gap-free list of default step templates (label + required flag).
+  - Editable at: `Products → (open product) → /products/[id]/steps`
+  - Changes affect **future runs only**
+- **Run step snapshot**: When a run is created, it receives an **immutable snapshot** of steps copied from the product templates.
+- **Run-only overrides (Admin/Supervisor)**: A run’s steps can be adjusted **before any step starts**:
+  - Add/remove/reorder steps
+  - Mark a step required/optional (run-only)
+  - These overrides **do not modify** product templates
+
+**Scanning / QR behavior**
+- Production Run QR codes always encode the canonical path: `/qr/{token}`
+- Scanning redirects to the run detail page and logs the scan event for audit.
+
+**Step assignment rules**
+- Any worker may **claim** an unassigned step.
+- Only the **assigned worker** may Start/Stop/Complete/Skip that step.
+- **ADMIN override** is allowed.
+
+**Skip justification**
+- Skipping requires a reason (minimum length enforced in the UI/API).
+- Skipping a **required** step will raise a **run health warning** on the run page and in the run list.
+  - Required steps are visually marked in the checklist, and skipped steps show their justification inline.
+
+**AI boundaries (safe-by-default)**
+- AI may **propose** production run creation and run edits.
+- AI will **never** silently mutate production data — a human must click **Confirm**.
 
 ### Production Order Lifecycle
 
@@ -3202,6 +3234,8 @@ Every printed label gets its own unique token:
 - **One QR per physical label**
 - **QR content**: URL-only, in the form `${baseUrl}/qr/${token}`
 - **Scan route**: `/qr/{token}` resolves server-side to the correct Product/Batch/Inventory entity
+
+**Production Runs follow the same rule:** Production Run QR codes should always encode `${baseUrl}/qr/${token}` (never a direct `/production-runs/{id}` URL) so redirects, analytics, and overrides remain consistent.
 
 #### Label Preview (Sheet Preview)
 

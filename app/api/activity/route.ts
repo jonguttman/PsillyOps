@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
         case 'production':
         case 'production complete':
         case 'production_complete':
-          mappedTags.push('production_complete');
+          mappedTags.push('production_complete', 'production');
           break;
         case 'receiving':
         case 'received':

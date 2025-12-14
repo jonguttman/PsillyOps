@@ -7,6 +7,7 @@ import StatsStrip from "@/components/dashboard/StatsStrip";
 import ActivityFeed from "@/components/dashboard/ActivityFeed";
 import RecentQRScans from "@/components/dashboard/RecentQRScans";
 import SupplyWatchCard from "@/components/dashboard/SupplyWatchCard";
+import ProductionAttentionCard from "@/components/dashboard/ProductionAttentionCard";
 import { getLowStockMaterials } from "@/lib/services/inventoryService";
 import { getRecentAdjustments } from "@/lib/services/inventoryAdjustmentService";
 
@@ -164,6 +165,9 @@ export default async function AdminDashboardPage() {
         openPOsCount={openPurchaseOrders}
         daysSinceLastReceipt={daysSinceLastReceipt}
       />
+
+      {/* Production Attention */}
+      <ProductionAttentionCard />
 
       {/* Recent QR Scans */}
       <RecentQRScans />

@@ -31,6 +31,8 @@ const ENTITY_TYPES: { value: ActivityFilters['entityType'] | ''; label: string }
   { value: ActivityEntity.INVENTORY, label: 'Inventory' },
   { value: ActivityEntity.PURCHASE_ORDER, label: 'Purchase Order' },
   { value: ActivityEntity.ORDER, label: 'Order' },
+  // Avoid direct enum member dependency in case Prisma types are stale in dev
+  { value: 'PRODUCTION_RUN' as ActivityEntity, label: 'Production Run' },
   { value: ActivityEntity.MATERIAL, label: 'Material' },
 ];
 

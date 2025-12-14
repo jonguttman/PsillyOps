@@ -6,6 +6,29 @@ The PsillyOps Inventory Management System has been fully implemented according t
 
 ---
 
+## 🏭 Phase 5 — Production Runs (5.1 → 5.3)
+
+Phase 5 adds a QR-driven, human-in-the-loop production system:
+
+- **Product step templates (5.3)**: editable, ordered default steps per product
+  - UI: `app/(ops)/products/[id]/steps/page.tsx`
+  - APIs: `GET/POST/PATCH/DELETE /api/products/[id]/steps…`
+- **Production runs + mobile workflow (5.1/5.2)**:
+  - Single **canonical QR token** per run (`/qr/{token}` is always the encoded URL)
+  - Mobile-friendly run page with step checklist + timers + stop/complete/skip
+- **Run-only step overrides (5.3)**:
+  - Admin/supervisor can add/remove/reorder steps and toggle required/optional **before any step starts**
+  - Logged with before/after snapshots (`production_run_steps_modified`)
+- **Worker assignment + “My Work” (5.3)**:
+  - Steps can be claimed; only the assignee may start/stop/complete/skip (ADMIN override allowed)
+  - My assigned steps: `GET /api/production-runs/my-steps` + `app/(ops)/production-runs/my-work/page.tsx`
+- **Run health indicators (5.3)**:
+  - Derived flags: required skips, stalled step (>4h), blocked runs
+  - Exposed on run endpoints and shown as warning banners/badges
+- **AI boundaries (5.3)**:
+  - AI may propose run edits (`PROPOSE_RUN_EDIT`) but never auto-mutates production data
+  - Confirmed edits are logged (`ai_propose_run_edit_confirmed`)
+
 ## 📦 Product Management Module
 
 ### Overview

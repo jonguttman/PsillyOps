@@ -10,6 +10,7 @@ import { prisma } from '@/lib/db/prisma';
 import { logAction } from '@/lib/services/loggingService';
 import { ActivityEntity, MaterialCategory, Prisma } from '@prisma/client';
 import { AICommandStatus } from '@/lib/types/enums';
+import { addAdhocRunStep, reorderRunSteps, skipStep } from '@/lib/services/productionRunService';
 
 type JsonRecord = Record<string, unknown>;
 function isRecord(v: unknown): v is JsonRecord {
@@ -19,6 +20,111 @@ function getString(obj: unknown, key: string): string | undefined {
   if (!isRecord(obj)) return undefined;
   const v = obj[key];
   return typeof v === 'string' ? v : undefined;
+}
+
+function getPathnameFromContext(body: unknown): string | undefined {
+  if (!isRecord(body)) return undefined;
+  const ctx = body.context;
+  if (!isRecord(ctx)) return undefined;
+  const pathname = ctx.pathname;
+  return typeof pathname === 'string' ? pathname : undefined;
+}
+
+function runIdFromPathname(pathname: string | undefined): string | undefined {
+  if (!pathname) return undefined;
+  const m = pathname.match(/^\/production-runs\/([^\/\?]+)/);
+  return m ? m[1] : undefined;
+}
+
+type ProposedRunEditOp =
+  | { op: 'ADD_STEP'; label: string; required: boolean }
+  | { op: 'SKIP_STEP'; stepId: string; reason: string }
+  | { op: 'REORDER_STEPS'; orderedStepIds: string[] };
+
+async function maybeBuildRunEditProposal(params: {
+  text: string;
+  runId?: string;
+  userId: string;
+}): Promise<
+  | null
+  | {
+      logId: string;
+      runId: string;
+      operations: ProposedRunEditOp[];
+      confirmationText: string;
+    }
+> {
+  const { text, runId, userId } = params;
+  if (!runId) return null;
+
+  const t = text.trim();
+  const lower = t.toLowerCase();
+
+  // Heuristics for Phase 5.3 proposal-only run edits.
+  const wantsAddPackaging = /\badd\b/.test(lower) && /\bpackag/.test(lower) && /\bstep\b/.test(lower);
+  const wantsReorderPackagingLast =
+    /\breorder\b/.test(lower) && /\bpackag/.test(lower) && (/\blast\b/.test(lower) || /\bat the end\b/.test(lower));
+  const wantsSkipLabeling = /\bskip\b/.test(lower) && /\blabel/.test(lower);
+
+  if (!wantsAddPackaging && !wantsReorderPackagingLast && !wantsSkipLabeling) return null;
+
+  const prismaWithRun = prisma as unknown as {
+    productionRun: { findUnique: (args: unknown) => Promise<unknown> };
+  };
+  const runUnknown = await prismaWithRun.productionRun.findUnique({
+    where: { id: runId },
+    include: { steps: { orderBy: { order: 'asc' }, select: { id: true, label: true, templateKey: true, order: true } } },
+  });
+  if (!isRecord(runUnknown) || !Array.isArray(runUnknown.steps)) return null;
+  const steps = (runUnknown.steps as unknown[]).filter(isRecord).map((s) => ({
+    id: typeof s.id === 'string' ? s.id : '',
+    label: typeof s.label === 'string' ? s.label : '',
+    templateKey: typeof s.templateKey === 'string' ? s.templateKey : '',
+    order: typeof s.order === 'number' ? s.order : 0,
+  }));
+  if (steps.some((s) => !s.id)) return null;
+
+  const operations: ProposedRunEditOp[] = [];
+
+  if (wantsSkipLabeling) {
+    const reasonMatch = t.match(/reason\s+(.+)$/i);
+    const reason = (reasonMatch ? reasonMatch[1] : '').trim();
+    const labelStep =
+      steps.find((s) => s.templateKey.toLowerCase() === 'label') || steps.find((s) => s.label.toLowerCase().includes('label'));
+    if (!labelStep) {
+      return null;
+    }
+    operations.push({ op: 'SKIP_STEP', stepId: labelStep.id, reason: reason || 'AI-proposed skip' });
+  } else if (wantsReorderPackagingLast) {
+    const packaging =
+      steps.find((s) => s.templateKey.toLowerCase().includes('pack')) || steps.find((s) => s.label.toLowerCase().includes('pack'));
+    if (!packaging) return null;
+    const ids = steps.map((s) => s.id).filter((id) => id !== packaging.id);
+    ids.push(packaging.id);
+    operations.push({ op: 'REORDER_STEPS', orderedStepIds: ids });
+  } else if (wantsAddPackaging) {
+    operations.push({ op: 'ADD_STEP', label: 'Packaging', required: true });
+  }
+
+  if (operations.length === 0) return null;
+
+  const log = await prisma.aICommandLog.create({
+    data: {
+      userId,
+      inputText: t,
+      normalized: 'PROPOSE_RUN_EDIT',
+      status: AICommandStatus.PENDING,
+      aiResult: { kind: 'PROPOSE_RUN_EDIT', runId, operations } as unknown as Prisma.InputJsonValue,
+    },
+    select: { id: true },
+  });
+
+  return {
+    logId: log.id,
+    runId,
+    operations,
+    confirmationText: `I’ve prepared changes to this production run.\nPlease review and confirm before anything is modified.`,
+  };
 }
 
 export async function POST(req: NextRequest) {
@@ -55,6 +161,35 @@ export async function POST(req: NextRequest) {
         { code: 'VALIDATION_ERROR', message: 'Text is required' },
         { status: 400 }
       );
+    }
+
+    // Phase 5.3: proposal-only run edits ("this run" supported via pathname context)
+    const pathname = getPathnameFromContext(body);
+    const runIdFromContext = runIdFromPathname(pathname);
+    const runEditProposal = await maybeBuildRunEditProposal({
+      text: text.trim(),
+      runId: runIdFromContext,
+      userId: session.user.id,
+    });
+    if (runEditProposal) {
+      await logAction({
+        entityType: 'PRODUCTION_RUN' as unknown as ActivityEntity,
+        entityId: runEditProposal.runId,
+        action: 'ai_propose_run_edit',
+        userId: session.user.id,
+        summary: `AI proposed run edits`,
+        details: { operations: runEditProposal.operations },
+        tags: ['ai', 'production', 'proposal'],
+      });
+
+      return Response.json({
+        success: true,
+        logId: runEditProposal.logId,
+        type: 'PROPOSE_RUN_EDIT',
+        runId: runEditProposal.runId,
+        operations: runEditProposal.operations,
+        confirmationText: runEditProposal.confirmationText,
+      });
     }
 
     // 4. Interpret the command
@@ -156,6 +291,69 @@ export async function POST(req: NextRequest) {
         entity,
         prefill,
         confirmationText: `I’ve prepared a new ${entity} named ${proposedName || '(unnamed)'}.\nPlease review and confirm before it’s created.`,
+      });
+    }
+
+    // Phase 5.2: propose create production run (no write yet; UI must confirm)
+    if (resolvedCommand?.command === 'PROPOSE_CREATE_PRODUCTION_RUN') {
+      const resolved = (resolvedCommand as unknown as { resolved?: unknown }).resolved;
+      const resolvedRec = isRecord(resolved) ? resolved : null;
+
+      const ambiguous = resolvedRec ? resolvedRec['ambiguous'] === true : false;
+      const choices = resolvedRec && Array.isArray(resolvedRec['choices']) ? (resolvedRec['choices'] as unknown[]) : [];
+
+      if (ambiguous && choices.length > 0) {
+        return Response.json({
+          success: true,
+          logId: log.id,
+          type: 'NEEDS_INPUT',
+          kind: 'production_run_product',
+          message: 'Which product did you mean?',
+          choices,
+        });
+      }
+
+      const productId = getString(resolvedRec, 'productId');
+      const productName = getString(resolvedRec, 'productName');
+      const productSku = getString(resolvedRec, 'productSku');
+      const defaultBatchSize =
+        resolvedRec && typeof resolvedRec['defaultBatchSize'] === 'number' ? (resolvedRec['defaultBatchSize'] as number) : undefined;
+
+      if (!productId || !productName || !productSku) {
+        return Response.json(
+          {
+            success: false,
+            logId: log.id,
+            message: 'I couldn’t find a matching product for that run. Try a more specific product name or SKU.',
+          },
+          { status: 400 }
+        );
+      }
+
+      const qtyArg =
+        isRecord(resolvedCommand.args) && typeof resolvedCommand.args.quantity === 'number'
+          ? resolvedCommand.args.quantity
+          : undefined;
+      const suggestedQuantity = qtyArg || defaultBatchSize || undefined;
+
+      await logAction({
+        entityType: ActivityEntity.SYSTEM,
+        entityId: log.id,
+        action: 'ai_propose_create_production_run',
+        userId: session.user.id,
+        summary: `AI prepared a production run: ${productName}${suggestedQuantity ? ` × ${suggestedQuantity}` : ''}`,
+        details: { productId, productName, productSku, suggestedQuantity },
+        tags: ['ai_command', 'proposal'],
+      });
+
+      return Response.json({
+        success: true,
+        logId: log.id,
+        type: 'PROPOSE_CREATE_PRODUCTION_RUN',
+        product: { id: productId, name: productName, sku: productSku },
+        suggestedQuantity,
+        missingFields: qtyArg ? [] : ['quantity'],
+        confirmationText: `I’ve prepared a new production run for ${productName}.\nPlease review and confirm before it’s created.`,
       });
     }
 
@@ -348,8 +546,76 @@ async function confirmProposedCreate(
     return Response.json({ code: 'VALIDATION_ERROR', message: 'logId is required' }, { status: 400 });
   }
 
-  if (!isRecord(proposed) || proposed.type !== 'PROPOSE_CREATE') {
+  if (!isRecord(proposed) || typeof proposed.type !== 'string') {
     return Response.json({ code: 'VALIDATION_ERROR', message: 'proposedAction is required' }, { status: 400 });
+  }
+
+  // Phase 5.3: confirmed run edits (explicit confirmation only)
+  if (proposed.type === 'PROPOSE_RUN_EDIT') {
+    if (!['ADMIN', 'PRODUCTION'].includes(userRole)) {
+      return Response.json({ code: 'FORBIDDEN', message: 'Insufficient permissions to edit runs' }, { status: 403 });
+    }
+
+    const runId = typeof proposed.runId === 'string' ? proposed.runId : null;
+    const operationsRaw = proposed.operations;
+    if (!runId || !Array.isArray(operationsRaw) || operationsRaw.length === 0) {
+      return Response.json({ code: 'VALIDATION_ERROR', message: 'runId and operations are required' }, { status: 400 });
+    }
+
+    // Apply operations in order, using existing service logic.
+    for (const opUnknown of operationsRaw) {
+      if (!isRecord(opUnknown) || typeof opUnknown.op !== 'string') {
+        return Response.json({ code: 'VALIDATION_ERROR', message: 'Invalid operation' }, { status: 400 });
+      }
+      const op = opUnknown.op;
+      if (op === 'ADD_STEP') {
+        const label = typeof opUnknown.label === 'string' ? opUnknown.label : '';
+        const required = typeof opUnknown.required === 'boolean' ? opUnknown.required : true;
+        await addAdhocRunStep({ runId, label, required, userId });
+      } else if (op === 'REORDER_STEPS') {
+        const orderedStepIds = Array.isArray(opUnknown.orderedStepIds)
+          ? (opUnknown.orderedStepIds as unknown[]).filter((x): x is string => typeof x === 'string')
+          : [];
+        await reorderRunSteps({ runId, orderedStepIds, userId });
+      } else if (op === 'SKIP_STEP') {
+        const stepId = typeof opUnknown.stepId === 'string' ? opUnknown.stepId : '';
+        const reason = typeof opUnknown.reason === 'string' ? opUnknown.reason : '';
+        await skipStep(stepId, reason, userId, userRole);
+      } else {
+        return Response.json({ code: 'VALIDATION_ERROR', message: `Unknown op: ${op}` }, { status: 400 });
+      }
+    }
+
+    await prisma.aICommandLog.update({
+      where: { id: logId },
+      data: {
+        status: AICommandStatus.APPLIED,
+        appliedAt: new Date(),
+        executedPayload: { type: 'CONFIRM_RUN_EDIT', runId, operations: operationsRaw } as unknown as Prisma.InputJsonValue,
+      },
+    });
+
+    await logAction({
+      entityType: 'PRODUCTION_RUN' as unknown as ActivityEntity,
+      entityId: runId,
+      action: 'ai_propose_run_edit_confirmed',
+      userId,
+      summary: 'AI run edit applied (confirmed)',
+      details: { runId, operations: operationsRaw },
+      tags: ['ai', 'production', 'confirmed'],
+    });
+
+    return Response.json({
+      success: true,
+      logId,
+      type: 'NAVIGATION',
+      destination: `/production-runs/${runId}?aiRunEdit=1`,
+      message: 'Run updated.',
+    });
+  }
+
+  if (proposed.type !== 'PROPOSE_CREATE') {
+    return Response.json({ code: 'VALIDATION_ERROR', message: 'Invalid proposedAction type' }, { status: 400 });
   }
 
   const entity = proposed.entity;

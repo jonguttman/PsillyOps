@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
       filters.status = searchParams.get('status') as PurchaseOrderStatus;
     }
     if (searchParams.get('vendorId')) {
-      filters.vendorId = searchParams.get('vendorId');
+      filters.vendorId = searchParams.get('vendorId') || undefined;
     }
     if (searchParams.get('startDate')) {
       filters.startDate = new Date(searchParams.get('startDate')!);

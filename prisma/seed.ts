@@ -10,6 +10,11 @@ async function main() {
 
   // Clear existing data (in reverse order of dependencies)
   await prisma.activityLog.deleteMany();
+  await prisma.productionRunStep.deleteMany();
+  await prisma.productionRun.deleteMany();
+  await prisma.productionStepTemplate.deleteMany();
+  await prisma.qRToken.deleteMany();
+  await prisma.qRRedirectRule.deleteMany();
   await prisma.inventoryAdjustment.deleteMany();
   await prisma.materialCostHistory.deleteMany();
   await prisma.materialAttachment.deleteMany();
@@ -575,6 +580,32 @@ async function main() {
   });
 
   console.log('✅ Created products');
+
+  // 5.5 CREATE PRODUCTION STEP TEMPLATES (Phase 5.1)
+  // Templates are editable and apply only to future runs.
+  const defaultCapsuleSteps = (productId: string) => ([
+    { productId, key: 'prep', label: 'Prep & Sanitize', order: 1, required: true },
+    { productId, key: 'weigh', label: 'Weigh Materials', order: 2, required: true },
+    { productId, key: 'mix', label: 'Mix / Blend', order: 3, required: true },
+    { productId, key: 'encapsulate', label: 'Encapsulate', order: 4, required: true },
+    { productId, key: 'pack', label: 'Package', order: 5, required: true },
+    { productId, key: 'label', label: 'Label & Record', order: 6, required: true },
+  ]);
+
+  await prisma.productionStepTemplate.createMany({
+    data: [
+      ...defaultCapsuleSteps(hercules.id),
+      ...defaultCapsuleSteps(lionsManeProduct.id),
+      ...defaultCapsuleSteps(reishiCalm.id),
+      ...defaultCapsuleSteps(cordycepsEnergy.id),
+      ...defaultCapsuleSteps(masterBlend.id),
+      ...defaultCapsuleSteps(mightyCapsPE.id),
+      ...defaultCapsuleSteps(mightyCapsGT.id),
+      ...defaultCapsuleSteps(mightyCapsFMP.id),
+    ]
+  });
+
+  console.log('✅ Created production step templates');
 
   // 6. CREATE BILLS OF MATERIALS (BOMs)
   // Hercules BOM

@@ -45,6 +45,10 @@ function entityHref(entityType: ActivityEntity, entityId: string) {
       return `/purchase-orders/${entityId}`;
     case 'ORDER':
       return `/orders/${entityId}`;
+    case 'PRODUCTION_ORDER':
+      return `/production-orders/${entityId}`;
+    case 'PRODUCTION_RUN':
+      return `/production-runs/${entityId}`;
     case 'MATERIAL':
       return `/materials/${entityId}`;
     default:
@@ -93,6 +97,7 @@ function extractRelatedLinks(activity: ActivityLogItem) {
     { key: 'purchaseOrderId', entityType: 'PURCHASE_ORDER', label: 'Purchase Order' },
     { key: 'orderId', entityType: 'ORDER', label: 'Order' },
     { key: 'productionOrderId', entityType: 'PRODUCTION_ORDER', label: 'Production Order' },
+    { key: 'productionRunId', entityType: 'PRODUCTION_RUN', label: 'Production Run' },
     { key: 'materialId', entityType: 'MATERIAL', label: 'Material' },
   ];
 
@@ -183,12 +188,12 @@ export default function ActivityLogDetail({ activity }: { activity: ActivityLogI
       )}
 
       {/* Notes / details */}
-      {noteLike && (
+      {noteLike !== undefined && noteLike !== null ? (
         <div className="space-y-1">
           <div className="text-xs font-medium text-gray-600">Notes</div>
           <div className="text-sm text-gray-800 leading-snug">{formatValue(noteLike)}</div>
         </div>
-      )}
+      ) : null}
 
       {/* AI context */}
       {tags.includes('ai_command') && (

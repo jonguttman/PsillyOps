@@ -104,6 +104,7 @@ enum ActivityEntity {
   BATCH
   ORDER
   PRODUCTION_ORDER
+  PRODUCTION_RUN
   PURCHASE_ORDER
   VENDOR
   INVENTORY
@@ -111,6 +112,20 @@ enum ActivityEntity {
   INVOICE
   LABEL
   SYSTEM
+}
+
+enum ProductionRunStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum ProductionStepStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
 }
 
 enum LabelEntityType {
@@ -164,12 +179,15 @@ model User {
   createdOrders             RetailerOrder[]    @relation("OrderCreator")
   approvedOrders            RetailerOrder[]    @relation("OrderApprover")
   createdProductionOrders   ProductionOrder[]  @relation("ProductionOrderCreator")
+  createdProductionRuns     ProductionRun[]    @relation("ProductionRunCreator")
   createdPurchaseOrders     PurchaseOrder[]    @relation("PurchaseOrderCreator")
   batches                   BatchMaker[]
   activityLogs              ActivityLog[]
   inventoryAdjustments      InventoryAdjustment[] @relation("UserInventoryAdjustments")
   assignedRetailers         Retailer[]
   laborEntries              LaborEntry[]
+  productionRunSteps        ProductionRunStep[] @relation("ProductionRunStepPerformer")
+  assignedProductionRunSteps ProductionRunStep[] @relation("ProductionRunStepAssignee")
   aiCommandLogs             AICommandLog[]
   aiDocumentImports         AIDocumentImport[]
   qrTokens                  QRToken[]
@@ -213,12 +231,86 @@ model Product {
   inventory         InventoryItem[]
   orderLines        OrderLineItem[]
   productionOrders  ProductionOrder[]
+  productionRuns    ProductionRun[]
   batches           Batch[]
   productionTemplates ProductionTemplate[]
+  productionStepTemplates ProductionStepTemplate[]
   
   @@index([sku])
   @@index([active])
   @@index([strainId])
+}
+
+model ProductionStepTemplate {
+  id        String   @id @default(cuid())
+
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+
+  key       String   // machine-friendly identifier (e.g. "mix", "encapsulate")
+  label     String   // human-friendly label
+  order     Int
+  required  Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+
+  @@unique([productId, key])
+  @@unique([productId, order])
+  @@index([productId, order])
+}
+
+model ProductionRun {
+  id            String   @id @default(cuid())
+
+  productId     String
+  product       Product  @relation(fields: [productId], references: [id])
+
+  quantity      Int
+  status        ProductionRunStatus @default(PLANNED)
+
+  qrTokenId     String?  @unique
+  qrToken       QRToken? @relation("ProductionRunQrToken", fields: [qrTokenId], references: [id])
+
+  startedAt     DateTime?
+  completedAt   DateTime?
+
+  createdById   String?
+  createdBy     User?    @relation("ProductionRunCreator", fields: [createdById], references: [id])
+
+  steps         ProductionRunStep[]
+
+  createdAt     DateTime @default(now())
+
+  @@index([productId])
+}
+
+model ProductionRunStep {
+  id              String @id @default(cuid())
+
+  productionRunId String
+  productionRun   ProductionRun @relation(fields: [productionRunId], references: [id])
+
+  templateKey     String
+  label           String
+  order           Int
+  required        Boolean
+
+  status          ProductionStepStatus @default(PENDING)
+
+  startedAt       DateTime?
+  completedAt     DateTime?
+  skippedAt       DateTime?
+  skipReason      String?
+
+  performedById   String?
+  performedBy     User? @relation("ProductionRunStepPerformer", fields: [performedById], references: [id])
+
+  assignedToUserId String?
+  assignedToUser   User? @relation("ProductionRunStepAssignee", fields: [assignedToUserId], references: [id])
+
+  createdAt       DateTime @default(now())
+
+  @@index([productionRunId, order])
 }
 
 model RawMaterial {
@@ -883,6 +975,9 @@ model QRToken {
   // Audit
   createdByUserId String?
   createdBy       User?           @relation(fields: [createdByUserId], references: [id])
+
+  // Optional linkage to a ProductionRun (Phase 5)
+  productionRun   ProductionRun?  @relation("ProductionRunQrToken")
   
   @@index([token])
   @@index([entityType, entityId])

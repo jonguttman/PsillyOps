@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import TooltipWrapper, { TooltipIcon } from '@/components/ui/TooltipWrapper';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 
 interface DashboardAiInputProps {
   userRole?: string;
@@ -47,12 +47,23 @@ interface CommandResult {
     message: string;
     details?: unknown;
   };
-  type?: 'NAVIGATION' | 'PROPOSE_CREATE';
+  type?: 'NAVIGATION' | 'PROPOSE_CREATE' | 'PROPOSE_CREATE_PRODUCTION_RUN' | 'PROPOSE_RUN_EDIT' | 'NEEDS_INPUT';
   destination?: string;
   prefill?: Record<string, unknown>;
   message?: string;
   entity?: 'strain' | 'material';
   confirmationText?: string;
+  product?: { id: string; name: string; sku: string };
+  suggestedQuantity?: number;
+  missingFields?: string[];
+  kind?: string;
+  choices?: Array<{ id: string; name: string; sku: string }>;
+  runId?: string;
+  operations?: Array<
+    | { op: 'ADD_STEP'; label: string; required: boolean }
+    | { op: 'SKIP_STEP'; stepId: string; reason: string }
+    | { op: 'REORDER_STEPS'; orderedStepIds: string[] }
+  >;
   correctionApplied?: boolean;
   error?: string;
 }
@@ -66,16 +77,29 @@ const EXAMPLES = [
 
 export default function DashboardAiInput({ userRole }: DashboardAiInputProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<CommandResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [runQuantity, setRunQuantity] = useState<string>('');
 
   const reset = useCallback(() => {
     setInputText('');
     setResult(null);
     setError(null);
+    setRunQuantity('');
   }, []);
+
+  useEffect(() => {
+    if (result?.type === 'PROPOSE_CREATE_PRODUCTION_RUN') {
+      setRunQuantity(
+        typeof result.suggestedQuantity === 'number' && Number.isFinite(result.suggestedQuantity)
+          ? String(Math.trunc(result.suggestedQuantity))
+          : ''
+      );
+    }
+  }, [result]);
 
   const interpretCommand = useCallback(async () => {
     if (!inputText.trim()) return;
@@ -88,7 +112,7 @@ export default function DashboardAiInput({ userRole }: DashboardAiInputProps) {
       const response = await fetch('/api/ai/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: inputText, execute: false }),
+        body: JSON.stringify({ text: inputText, execute: false, context: { pathname } }),
       });
 
       const data = await response.json();
@@ -213,6 +237,40 @@ export default function DashboardAiInput({ userRole }: DashboardAiInputProps) {
     }
   }, [result, router, reset]);
 
+  const confirmProposedCreateRun = useCallback(async () => {
+    if (!result || result.type !== 'PROPOSE_CREATE_PRODUCTION_RUN' || !result.product?.id) return;
+
+    const qty = Number(runQuantity);
+    if (!Number.isInteger(qty) || qty <= 0) {
+      setError('Quantity must be a positive integer.');
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/production-runs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productId: result.product.id, quantity: qty }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Failed to create production run');
+
+      if (data?.runId) {
+        router.push(`/production-runs/${data.runId}?aiRunCreated=1&productId=${result.product.id}`);
+        reset();
+        return;
+      }
+      setResult(data);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'An error occurred';
+      setError(msg);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [result, runQuantity, router, reset]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (result && !result.executed) {
@@ -275,12 +333,24 @@ export default function DashboardAiInput({ userRole }: DashboardAiInputProps) {
                 Cancel
               </button>
               <button
-              type={result.type === 'PROPOSE_CREATE' ? 'button' : 'submit'}
-              onClick={result.type === 'PROPOSE_CREATE' ? confirmProposedCreate : undefined}
+              type={result.type === 'PROPOSE_CREATE' || result.type === 'PROPOSE_CREATE_PRODUCTION_RUN' ? 'button' : 'submit'}
+              onClick={
+                result.type === 'PROPOSE_CREATE'
+                  ? confirmProposedCreate
+                  : result.type === 'PROPOSE_CREATE_PRODUCTION_RUN'
+                    ? confirmProposedCreateRun
+                    : undefined
+              }
               className="px-5 py-3 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
               disabled={isLoading}
             >
-              {isLoading ? 'Running...' : result.type === 'PROPOSE_CREATE' ? 'Create' : 'Confirm'}
+              {isLoading
+                ? 'Running...'
+                : result.type === 'PROPOSE_CREATE'
+                  ? 'Create'
+                  : result.type === 'PROPOSE_CREATE_PRODUCTION_RUN'
+                    ? 'Create Run'
+                    : 'Confirm'}
             </button>
             </div>
           ) : (
@@ -342,8 +412,57 @@ export default function DashboardAiInput({ userRole }: DashboardAiInputProps) {
                   {result.type === 'PROPOSE_CREATE'
                     ? (result.confirmationText ||
                         `I’ve prepared a new ${result.entity || 'entity'}.\nPlease review and confirm before it’s created.`)
-                    : result.summary}
+                    : result.type === 'PROPOSE_CREATE_PRODUCTION_RUN'
+                      ? (result.confirmationText ||
+                          `I’ve prepared a new production run.\nPlease review and confirm before it’s created.`)
+                      : result.type === 'NEEDS_INPUT'
+                        ? (result.message || 'More input needed.')
+                        : result.summary}
                 </p>
+
+                {result.type === 'NEEDS_INPUT' && Array.isArray(result.choices) && result.choices.length > 0 ? (
+                  <div className="mt-3 space-y-2">
+                    {result.choices.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() =>
+                          setResult({
+                            ...result,
+                            type: 'PROPOSE_CREATE_PRODUCTION_RUN',
+                            product: { id: c.id, name: c.name, sku: c.sku },
+                            suggestedQuantity: undefined,
+                            missingFields: ['quantity'],
+                          })
+                        }
+                        className="w-full text-left rounded-md border border-blue-200 bg-white/70 px-3 py-2 hover:bg-blue-50"
+                      >
+                        <div className="text-sm font-medium text-gray-900">{c.name}</div>
+                        <div className="text-xs text-gray-500">{c.sku}</div>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+
+                {result.type === 'PROPOSE_CREATE_PRODUCTION_RUN' ? (
+                  <div className="mt-3 bg-white/70 border border-blue-200 rounded p-3 space-y-2">
+                    <div className="text-xs font-medium text-blue-800">Proposed run</div>
+                    <div className="text-sm text-gray-900 font-medium">
+                      {result.product?.name || 'Unknown product'}{' '}
+                      <span className="text-xs text-gray-500">{result.product?.sku || ''}</span>
+                    </div>
+                    <label className="block text-xs font-medium text-gray-600">Quantity</label>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      value={runQuantity}
+                      onChange={(e) => setRunQuantity(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded"
+                      placeholder="Enter quantity…"
+                    />
+                  </div>
+                ) : null}
               </div>
             )}
           </div>

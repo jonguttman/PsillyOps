@@ -244,6 +244,51 @@ Defined in both `prisma/schema.prisma` and `lib/types/enums.ts`:
 
 The service layer contains **ALL business logic**. No logic in API routes or UI components.
 
+### Production Runs (Phase 5)
+
+Phase 5 introduces a QR-driven, human-in-the-loop **Production Run** system.
+
+**Data model (Prisma)**
+- `ProductionStepTemplate`: product-level default step templates (gap-free integer `order`, `@@unique([productId, order])`)
+- `ProductionRun`: run instance (product + quantity) with a single canonical QR token
+- `ProductionRunStep`: run snapshot steps
+  - Step lifecycle: `PENDING → IN_PROGRESS → COMPLETED` (or `SKIPPED` with reason)
+  - Assignment (Phase 5.3): `assignedToUserId` enforced for step actions (ADMIN override allowed)
+
+**Single source of truth**
+- `lib/services/productionRunService.ts` owns:
+  - step lifecycle transitions
+  - step ordering integrity
+  - run-level step overrides (pre-start only)
+  - derived run health flags
+  - activity/audit logging
+
+**Key API routes (high-signal)**
+- Product step templates:
+  - `GET/POST /api/products/[id]/steps`
+  - `PATCH/DELETE /api/products/[id]/steps/[stepId]`
+  - `POST /api/products/[id]/steps/reorder`
+- Runs:
+  - `POST /api/production-runs`
+  - `GET /api/production-runs` (includes health flags)
+  - `GET /api/production-runs/[id]` (includes health flags)
+- Run step overrides (pre-start only):
+  - `POST /api/production-runs/[id]/steps` (add ad-hoc step)
+  - `POST /api/production-runs/[id]/steps/reorder`
+  - `PATCH/DELETE /api/production-runs/steps/[stepId]`
+- Assignment:
+  - `POST /api/production-runs/steps/[stepId]/claim`
+  - `POST /api/production-runs/steps/[stepId]/assign` (ADMIN)
+  - `GET /api/production-runs/my-steps`
+
+**Run health (derived, no schema)**
+- `hasRequiredSkips`
+- `hasStalledStep` (default threshold 4 hours)
+- `isBlocked`
+
+**QR canonical rule**
+Production runs must always route through `/qr/{token}` (never direct `/production-runs/{id}`) so redirects and scan analytics remain centralized.
+
 ### Core Services
 
 #### loggingService.ts

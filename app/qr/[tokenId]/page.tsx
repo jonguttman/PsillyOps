@@ -9,6 +9,7 @@ import { resolveToken, isValidTokenFormat, getTokenByValue } from '@/lib/service
 import { findActiveRedirectRule } from '@/lib/services/qrRedirectService';
 import { logAction } from '@/lib/services/loggingService';
 import { ActivityEntity } from '@prisma/client';
+import { prisma } from '@/lib/db/prisma';
 import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
 
@@ -63,24 +64,67 @@ export default async function QRTokenResolverPage({ params }: Props) {
       }
     }
 
-    // Log ALL scans with resolution metadata
-    // This captures scan-time destination for audit and analytics
-    await logAction({
-      entityType: ActivityEntity.LABEL,
-      entityId: result.entityId,
-      action: 'qr_token_scanned',
-      summary: `QR token scanned for ${result.entityType} ${result.entityId} → ${resolutionType} resolution`,
-      details: {
-        tokenId: result.token?.id,
-        entityType: result.entityType,
+    // Phase 5.1: If this token is bound to a ProductionRun, log a production-run scan event
+    // and prefer routing to the run page.
+    const productionRun = tokenRecord
+      ? await prisma.productionRun.findFirst({
+          where: { qrTokenId: tokenRecord.id },
+          include: {
+            product: { select: { id: true, name: true, sku: true } },
+            steps: { orderBy: { order: 'asc' } },
+          },
+        })
+      : null;
+
+    if (productionRun) {
+      const inProgress = productionRun.steps.find((s) => s.status === 'IN_PROGRESS');
+      const nextPending = productionRun.steps.find((s) => s.status === 'PENDING');
+      const current = inProgress || nextPending;
+
+      destination = `/production-runs/${productionRun.id}`;
+      resolutionType = 'TOKEN';
+
+      await logAction({
+        entityType: ActivityEntity.PRODUCTION_RUN,
+        entityId: productionRun.id,
+        action: 'qr_scanned_production_run',
+        summary: `QR scanned: Production run for ${productionRun.product.name} × ${productionRun.quantity}`,
+        details: {
+          runStatus: productionRun.status,
+          currentStep: current
+            ? {
+                stepKey: current.templateKey,
+                stepLabel: current.label,
+                stepStatus: current.status,
+                order: current.order,
+              }
+            : null,
+          tokenId: tokenRecord?.id,
+          token: tokenRecord?.token,
+          scanCount: result.token?.scanCount,
+        },
+        tags: ['qr', 'scan', 'production'],
+      });
+    } else {
+      // Log ALL scans with resolution metadata (label / general tokens)
+      // This captures scan-time destination for audit and analytics
+      await logAction({
+        entityType: ActivityEntity.LABEL,
         entityId: result.entityId,
-        resolutionType,
-        redirectUrl: destination,
-        ruleId,
-        scanCount: result.token?.scanCount
-      },
-      tags: ['qr', 'label', 'scan', resolutionType.toLowerCase()]
-    });
+        action: 'qr_token_scanned',
+        summary: `QR token scanned for ${result.entityType} ${result.entityId} → ${resolutionType} resolution`,
+        details: {
+          tokenId: result.token?.id,
+          entityType: result.entityType,
+          entityId: result.entityId,
+          resolutionType,
+          redirectUrl: destination,
+          ruleId,
+          scanCount: result.token?.scanCount
+        },
+        tags: ['qr', 'label', 'scan', resolutionType.toLowerCase()]
+      });
+    }
 
     redirect(destination);
   }
