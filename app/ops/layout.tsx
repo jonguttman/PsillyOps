@@ -1,3 +1,4 @@
+export const runtime = "nodejs";
 import { auth } from '@/lib/auth/auth';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
