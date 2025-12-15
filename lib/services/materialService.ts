@@ -3,6 +3,7 @@
 import { prisma } from '@/lib/db/prisma';
 import { logAction, generateSummary } from './loggingService';
 import { ActivityEntity } from '@prisma/client';
+import { MaterialCategory } from '@/lib/types/enums';
 
 export interface MaterialWithVendors {
   id: string;
@@ -407,7 +408,7 @@ export async function createMaterial(
     name: string;
     sku: string;
     unitOfMeasure: string;
-    category?: string;
+    category: string;
     description?: string;
     reorderPoint?: number;
     reorderQuantity?: number;
@@ -416,12 +417,16 @@ export async function createMaterial(
   },
   userId?: string
 ) {
+  if (!data.category || !Object.values(MaterialCategory).includes(data.category as MaterialCategory)) {
+    throw new Error('Category is required');
+  }
+
   const material = await prisma.rawMaterial.create({
     data: {
       name: data.name,
       sku: data.sku,
       unitOfMeasure: data.unitOfMeasure,
-      category: (data.category as any) || 'OTHER',
+      category: data.category,
       description: data.description,
       reorderPoint: data.reorderPoint || 0,
       reorderQuantity: data.reorderQuantity || 0,
@@ -473,13 +478,17 @@ export async function updateMaterial(
     throw new Error('Material not found');
   }
 
+  if (data.category !== undefined && !Object.values(MaterialCategory).includes(data.category as MaterialCategory)) {
+    throw new Error('Category is required');
+  }
+
   const material = await prisma.rawMaterial.update({
     where: { id: materialId },
     data: {
       ...(data.name !== undefined && { name: data.name }),
       ...(data.sku !== undefined && { sku: data.sku }),
       ...(data.unitOfMeasure !== undefined && { unitOfMeasure: data.unitOfMeasure }),
-      ...(data.category !== undefined && { category: data.category as any }),
+      ...(data.category !== undefined && { category: data.category }),
       ...(data.description !== undefined && { description: data.description }),
       ...(data.reorderPoint !== undefined && { reorderPoint: data.reorderPoint }),
       ...(data.reorderQuantity !== undefined && { reorderQuantity: data.reorderQuantity }),
@@ -512,19 +521,109 @@ export async function updateMaterial(
 export async function archiveMaterial(materialId: string, userId?: string) {
   const material = await prisma.rawMaterial.update({
     where: { id: materialId },
-    data: { active: false }
+    data: { 
+      active: false,
+      archivedAt: new Date()
+    }
   });
 
   await logAction({
     entityType: ActivityEntity.MATERIAL,
     entityId: material.id,
-    action: 'archived',
+    action: 'material_archived',
     userId,
     summary: `Archived material ${material.name}`,
-    tags: ['archived', 'deleted', 'material']
+    tags: ['archived', 'material']
   });
 
   return material;
+}
+
+/**
+ * Check if a material can be deleted (hard delete)
+ * Returns { canDelete: boolean, reason?: string }
+ */
+export async function canDeleteMaterial(materialId: string): Promise<{ canDelete: boolean; reason?: string }> {
+  const material = await prisma.rawMaterial.findUnique({
+    where: { id: materialId },
+    include: {
+      inventory: true,
+      poLineItems: true,
+      bomUsage: true
+    }
+  });
+
+  if (!material) {
+    return { canDelete: false, reason: 'Material not found' };
+  }
+
+  if (!material.archivedAt) {
+    return { canDelete: false, reason: 'Material must be archived before deletion' };
+  }
+
+  if (material.inventory.length > 0) {
+    return { canDelete: false, reason: 'Material has inventory records' };
+  }
+
+  if (material.poLineItems.length > 0) {
+    return { canDelete: false, reason: 'Material has purchase order line items' };
+  }
+
+  if (material.bomUsage.length > 0) {
+    return { canDelete: false, reason: 'Material is used in product BOMs' };
+  }
+
+  return { canDelete: true };
+}
+
+/**
+ * Permanently delete a material (hard delete)
+ * Only allowed if material is archived and has no dependencies
+ */
+export async function deleteMaterial(materialId: string, userId?: string) {
+  // Check if deletion is allowed
+  const checkResult = await canDeleteMaterial(materialId);
+  
+  if (!checkResult.canDelete) {
+    throw new Error(checkResult.reason || 'Cannot delete material');
+  }
+
+  // Get material snapshot for logging
+  const material = await prisma.rawMaterial.findUnique({
+    where: { id: materialId }
+  });
+
+  if (!material) {
+    throw new Error('Material not found');
+  }
+
+  // Create snapshot for audit log
+  const materialSnapshot = {
+    id: material.id,
+    name: material.name,
+    sku: material.sku,
+    category: material.category,
+    unitOfMeasure: material.unitOfMeasure,
+    archivedAt: material.archivedAt
+  };
+
+  // Delete the material
+  await prisma.rawMaterial.delete({
+    where: { id: materialId }
+  });
+
+  // Log the deletion
+  await logAction({
+    entityType: ActivityEntity.MATERIAL,
+    entityId: materialId,
+    action: 'material_deleted',
+    userId,
+    summary: `Permanently deleted material ${material.name}`,
+    details: { materialSnapshot },
+    tags: ['deleted', 'material', 'permanent']
+  });
+
+  return materialSnapshot;
 }
 
 /**

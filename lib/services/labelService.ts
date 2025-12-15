@@ -882,10 +882,6 @@ export async function renderLabelsShared(params: RenderLabelsParams): Promise<Re
   // Get the version
   const version = await fetchVersionWithSettings(versionId);
 
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'labelService.ts:renderLabelsShared',message:'Loaded version for print',data:{versionId, keys: version ? Object.keys(version) : null, labelWidthIn: (version as any)?.labelWidthIn, labelHeightIn: (version as any)?.labelHeightIn, contentScale: (version as any)?.contentScale},timestamp:Date.now(),sessionId:'debug-session',runId:'sheet-run1',hypothesisId:'C'})}).catch(()=>{});
-  // #endregion
-
   if (!version) {
     throw new AppError(ErrorCodes.NOT_FOUND, 'Label version not found');
   }
@@ -919,15 +915,6 @@ export async function renderLabelsShared(params: RenderLabelsParams): Promise<Re
       svgTemplate = applyContentTransform(svgTemplate, contentOffsetX, contentOffsetY, widthIn, heightIn, contentScale);
     } catch {}
   }
-
-  // #region agent log
-  try {
-    const sizeAfter = getSvgPhysicalSizeInches(svgTemplate);
-    fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'labelService.ts:renderLabelsShared',message:'Template physical size after adjustments',data:{versionId, widthIn: sizeAfter.widthIn, heightIn: sizeAfter.heightIn},timestamp:Date.now(),sessionId:'debug-session',runId:'sheet-run1',hypothesisId:'A'})}).catch(()=>{});
-  } catch (e) {
-    fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'labelService.ts:renderLabelsShared',message:'Failed to compute template physical size',data:{versionId, error: e instanceof Error ? e.message : String(e)},timestamp:Date.now(),sessionId:'debug-session',runId:'sheet-run1',hypothesisId:'D'})}).catch(()=>{});
-  }
-  // #endregion
 
   // Build position options from version settings
   const qrOptions: QrPositionOptions = {

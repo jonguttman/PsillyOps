@@ -227,7 +227,7 @@ erDiagram
 
 ### Canonical Enums
 
-Defined in both `prisma/schema.prisma` and `lib/types/enums.ts`:
+Most enums are defined in both `prisma/schema.prisma` and `lib/types/enums.ts`:
 
 - **UserRole**: ADMIN, PRODUCTION, WAREHOUSE, REP
 - **OrderStatus**: DRAFT, SUBMITTED, APPROVED, IN_FULFILLMENT, SHIPPED, CANCELLED
@@ -237,6 +237,11 @@ Defined in both `prisma/schema.prisma` and `lib/types/enums.ts`:
 - **InventoryStatus**: AVAILABLE, RESERVED, DAMAGED, SCRAPPED
 - **PurchaseOrderStatus**: DRAFT, SENT, PARTIALLY_RECEIVED, RECEIVED, CANCELLED
 - **ActivityEntity**: PRODUCT, MATERIAL, BATCH, ORDER, PRODUCTION_ORDER, PURCHASE_ORDER
+
+### Material Categories
+
+`RawMaterial.category` is stored as a **string** and validated against the production-aligned taxonomy in `lib/types/enums.ts`:
+- Ingredients, dosage/delivery, packaging/security, labels/print, shipping, production supplies, equipment.
 
 ---
 

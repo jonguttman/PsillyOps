@@ -11,6 +11,8 @@ import { computeRunHealth } from '@/lib/services/productionRunService';
 
 export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await ctx.params;
+
     const session = await auth();
     if (!session || !session.user) {
       return Response.json({ code: 'UNAUTHORIZED', message: 'Not authenticated' }, { status: 401 });
@@ -19,8 +21,6 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     if (!['ADMIN', 'PRODUCTION', 'WAREHOUSE', 'REP'].includes(session.user.role)) {
       return Response.json({ code: 'FORBIDDEN', message: 'Insufficient permissions' }, { status: 403 });
     }
-
-    const { id } = await ctx.params;
     const run = await getProductionRun(id);
 
     const inProgress = run.steps.find((s) => s.status === ProductionStepStatus.IN_PROGRESS);

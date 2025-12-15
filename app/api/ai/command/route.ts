@@ -8,9 +8,10 @@ import { handleApiError } from '@/lib/utils/errors';
 import { hasPermission } from '@/lib/auth/rbac';
 import { prisma } from '@/lib/db/prisma';
 import { logAction } from '@/lib/services/loggingService';
-import { ActivityEntity, MaterialCategory, Prisma } from '@prisma/client';
+import { ActivityEntity, Prisma } from '@prisma/client';
 import { AICommandStatus } from '@/lib/types/enums';
 import { addAdhocRunStep, reorderRunSteps, skipStep } from '@/lib/services/productionRunService';
+import { MaterialCategory } from '@/lib/types/enums';
 
 type JsonRecord = Record<string, unknown>;
 function isRecord(v: unknown): v is JsonRecord {
@@ -747,7 +748,7 @@ async function confirmProposedCreate(
 
   // material
   const categoryHint = getString(prefill, 'categoryHint');
-  const category = mapCategoryHintToMaterialCategory(categoryHint, name) || MaterialCategory.OTHER;
+  const category = mapCategoryHintToMaterialCategory(categoryHint, name) || MaterialCategory.PRODUCTION_SUPPLIES;
   const unitOfMeasure = getString(prefill, 'unitOfMeasure') || guessMaterialUnitOfMeasure(name, categoryHint);
   const sku = getString(prefill, 'sku') || generateMaterialSku(name);
 
@@ -756,7 +757,7 @@ async function confirmProposedCreate(
       name,
       sku,
       unitOfMeasure,
-      category,
+      category: category as unknown as any,
       active: true,
       reorderPoint: 0,
       reorderQuantity: 0,
@@ -845,12 +846,13 @@ function mapCategoryHintToMaterialCategory(hint: string | undefined, name?: stri
   const lowerName = (name || '').toLowerCase();
 
   if (upper === 'PACKAGING') {
-    if (lowerName.includes('label') || lowerName.includes('sticker')) return MaterialCategory.LABEL;
-    return MaterialCategory.PACKAGING;
+    if (lowerName.includes('label') || lowerName.includes('sticker')) return MaterialCategory.LABELS;
+    if (lowerName.includes('capsule')) return MaterialCategory.CAPSULES;
+    return MaterialCategory.PRIMARY_PACKAGING;
   }
   if (upper === 'INGREDIENT') return MaterialCategory.ACTIVE_INGREDIENT;
   if (upper === 'STRAIN') return MaterialCategory.ACTIVE_INGREDIENT;
-  if (upper === 'OTHER') return MaterialCategory.OTHER;
+  if (upper === 'OTHER') return MaterialCategory.PRODUCTION_SUPPLIES;
   return undefined;
 }
 

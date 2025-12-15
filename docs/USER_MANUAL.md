@@ -313,18 +313,7 @@ Materials are the raw ingredients, packaging components, and other inputs needed
 
 #### Material Categories
 
-Materials are organized into categories for easier management:
-
-| Category | Description | Examples |
-|----------|-------------|----------|
-| **Raw Botanical** | Plant-based raw ingredients | Mushroom powders, herb extracts |
-| **Active Ingredient** | Concentrated active compounds | Standardized extracts |
-| **Excipient** | Inactive filler/binder ingredients | Cellulose, starch |
-| **Flavoring** | Taste/aroma additives | Natural flavors, sweeteners |
-| **Packaging** | Containers and closures | Jars, bottles, caps |
-| **Label** | Product labels and inserts | Printed labels, instruction cards |
-| **Shipping** | Shipping materials | Boxes, bubble wrap, tape |
-| **Other** | Miscellaneous items | Cleaning supplies |
+Materials are categorized based on real production workflows (ingredients, dosage/delivery components, packaging, security, labels/print, shipping, and general production supplies/equipment). Categories are **required** and must be selected explicitly when creating a material.
 
 #### Material List Page
 
@@ -477,6 +466,32 @@ PsillyOps automatically tracks material cost changes:
 2. Scroll to "Cost History" section
 3. View price changes over time
 4. Note vendor and source for each entry
+
+#### Editing Materials
+
+You can edit material metadata directly from the material detail page:
+
+1. Navigate to the material detail page
+2. Click **"Edit"** button in the header
+3. Update editable fields (name, SKU, category, unit, reorder point, MOQ, lead time, description)
+4. Click **"Save Changes"**
+
+**Note:** Inventory quantities and production-linked fields are read-only.
+
+#### Archiving and Deleting Materials
+
+**Archiving (Soft Delete):**
+- Click **"Archive"** on material detail page
+- Archived materials are hidden from default list (toggle "Show Archived" to view)
+- Cannot be used in new purchase orders or production runs
+- Still accessible for historical reference
+
+**Permanent Deletion:**
+- Only available for archived materials with no dependencies
+- Requirements: no inventory records, no PO line items, no BOM usage
+- Click **"Delete Permanently"** when available
+- Requires confirmation by typing material name
+- **Cannot be undone**
 
 #### Material Attachments
 
@@ -3236,6 +3251,19 @@ Every printed label gets its own unique token:
 - **Scan route**: `/qr/{token}` resolves server-side to the correct Product/Batch/Inventory entity
 
 **Production Runs follow the same rule:** Production Run QR codes should always encode `${baseUrl}/qr/${token}` (never a direct `/production-runs/{id}` URL) so redirects, analytics, and overrides remain consistent.
+
+#### Paper Inventory Tracking
+
+Paper inventory is only deducted when you explicitly confirm paper usage during a reprint. Initial prints are assumed successful but do not deduct inventory automatically.
+
+**How it works:**
+- **Initial print**: Creates a print job record but does NOT deduct paper from inventory
+- **Reprint**: Shows a confirmation modal asking if paper was consumed
+  - Select **"No — test / preview only"** if you're just viewing or testing (default)
+  - Select **"Yes — use X sheets"** if you actually printed and consumed physical paper sheets
+- **Paper usage**: Only recorded when you confirm "Yes" during reprint, which creates an inventory adjustment for the sheets used
+
+This approach prevents accidental deductions while maintaining accurate paper tracking for successful reprints.
 
 #### Label Preview (Sheet Preview)
 

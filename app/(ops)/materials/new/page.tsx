@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
+import { MaterialCategory } from "@/lib/types/enums";
 
 const UNIT_OPTIONS = [
   "kg",
@@ -20,16 +21,17 @@ const UNIT_OPTIONS = [
   "each"
 ];
 
-const CATEGORY_OPTIONS = [
-  { value: "RAW_BOTANICAL", label: "Raw Botanical" },
-  { value: "ACTIVE_INGREDIENT", label: "Active Ingredient" },
-  { value: "EXCIPIENT", label: "Excipient" },
-  { value: "FLAVORING", label: "Flavoring" },
-  { value: "PACKAGING", label: "Packaging" },
-  { value: "LABEL", label: "Label" },
-  { value: "SHIPPING", label: "Shipping" },
-  { value: "OTHER", label: "Other" }
-];
+const MATERIAL_CATEGORY_GROUPS: Record<string, MaterialCategory[]> = {
+  Ingredients: [MaterialCategory.ACTIVE_INGREDIENT, MaterialCategory.SECONDARY_INGREDIENT],
+  'Dosage & Delivery': [
+    MaterialCategory.CAPSULES,
+    MaterialCategory.STRAWS_STICKS,
+    MaterialCategory.POWDERS_FILLERS,
+  ],
+  Packaging: [MaterialCategory.PRIMARY_PACKAGING, MaterialCategory.SECONDARY_PACKAGING, MaterialCategory.SEALS_SECURITY],
+  'Labels & Print': [MaterialCategory.LABELS, MaterialCategory.PAPER_PRINT],
+  'Logistics & Operations': [MaterialCategory.SHIPPING, MaterialCategory.PRODUCTION_SUPPLIES, MaterialCategory.EQUIPMENT],
+};
 
 async function createMaterial(formData: FormData) {
   "use server";
@@ -44,12 +46,16 @@ async function createMaterial(formData: FormData) {
   const moq = parseFloat(formData.get("moq") as string) || 0;
   const leadTimeDays = parseInt(formData.get("leadTimeDays") as string, 10) || 0;
 
+  if (!category || !Object.values(MaterialCategory).includes(category as MaterialCategory)) {
+    throw new Error("Category is required");
+  }
+
   await prisma.rawMaterial.create({
     data: {
       name,
       sku,
       unitOfMeasure,
-      category: category as "RAW_BOTANICAL" | "ACTIVE_INGREDIENT" | "EXCIPIENT" | "FLAVORING" | "PACKAGING" | "LABEL" | "SHIPPING" | "OTHER",
+      category,
       description: description || null,
       reorderPoint,
       reorderQuantity,
@@ -81,7 +87,6 @@ export default async function NewMaterialPage({
   const params = (await searchParams) || {};
   const aiToast = params.aiToast === "1" || params.aiToast === "true";
   let prefillName: string | undefined;
-  let prefillCategory: (typeof CATEGORY_OPTIONS)[number]["value"] | undefined;
   if (params.prefill) {
     try {
       const parsed = JSON.parse(params.prefill) as unknown;
@@ -90,11 +95,6 @@ export default async function NewMaterialPage({
         const n = rec["name"];
         if (typeof n === "string" && n.trim().length > 0) {
           prefillName = n.trim();
-        }
-
-        const hint = rec["categoryHint"];
-        if (typeof hint === "string") {
-          prefillCategory = mapCategoryHintToMaterialCategory(hint, prefillName);
         }
       }
     } catch {
@@ -122,7 +122,7 @@ export default async function NewMaterialPage({
 
       {/* Form Card */}
       <div className="bg-white shadow rounded-lg p-6">
-        {(aiToast || prefillName || prefillCategory) && (
+        {(aiToast || prefillName) && (
           <div className="mb-4 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
             AI prepared this form — review before saving.
           </div>
@@ -171,18 +171,22 @@ export default async function NewMaterialPage({
                 name="category"
                 id="category"
                 required
-                defaultValue={prefillCategory || "OTHER"}
+                defaultValue=""
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
               >
-                {CATEGORY_OPTIONS.map((cat) => (
-                  <option key={cat.value} value={cat.value}>
-                    {cat.label}
-                  </option>
+                <option value="" disabled>
+                  Select a category…
+                </option>
+                {Object.entries(MATERIAL_CATEGORY_GROUPS).map(([groupLabel, cats]) => (
+                  <optgroup key={groupLabel} label={groupLabel}>
+                    {cats.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
-              {prefillCategory && (
-                <p className="mt-1 text-xs text-gray-500">Suggested by AI — review and edit before saving</p>
-              )}
             </div>
 
             <div>
@@ -309,23 +313,6 @@ export default async function NewMaterialPage({
   );
 }
 
-function mapCategoryHintToMaterialCategory(
-  hint: string,
-  name?: string
-): (typeof CATEGORY_OPTIONS)[number]["value"] | undefined {
-  const upper = hint.trim().toUpperCase();
-  const lowerName = (name || "").toLowerCase();
-
-  if (upper === "PACKAGING") {
-    // If the name strongly indicates labels, pick LABEL category.
-    if (lowerName.includes("label") || lowerName.includes("sticker")) return "LABEL";
-    return "PACKAGING";
-  }
-
-  if (upper === "INGREDIENT") return "ACTIVE_INGREDIENT";
-  if (upper === "STRAIN") return "ACTIVE_INGREDIENT";
-  if (upper === "OTHER") return "OTHER";
-
-  return undefined;
-}
+// Intentionally no category auto-selection:
+// Category is required and must be chosen explicitly by the user.
 

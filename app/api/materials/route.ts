@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { getMaterialsList, createMaterial } from "@/lib/services/materialService";
+import { MaterialCategory } from "@/lib/types/enums";
 
 // GET /api/materials - List all materials
 export async function GET(request: NextRequest) {
@@ -67,11 +68,15 @@ export async function POST(request: NextRequest) {
     const { name, sku, unitOfMeasure, category, description, reorderPoint, reorderQuantity, moq, leadTimeDays } = body;
 
     // Validation
-    if (!name || !sku || !unitOfMeasure) {
+    if (!name || !sku || !unitOfMeasure || !category) {
       return NextResponse.json(
-        { error: "Name, SKU, and Unit of Measure are required" },
+        { error: "Name, SKU, Unit of Measure, and Category are required" },
         { status: 400 }
       );
+    }
+
+    if (!Object.values(MaterialCategory).includes(category as MaterialCategory)) {
+      return NextResponse.json({ error: "Invalid category" }, { status: 400 });
     }
 
     const material = await createMaterial(

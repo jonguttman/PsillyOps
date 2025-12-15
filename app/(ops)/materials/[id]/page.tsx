@@ -4,33 +4,44 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { ArchiveButton } from "./ArchiveButton";
+import { DeleteButton } from "./DeleteButton";
 import { SetPreferredButton } from "./SetPreferredButton";
 import { AddAttachmentForm } from "./AddAttachmentForm";
 import TooltipWrapper from "@/components/ui/TooltipWrapper";
+import { MaterialCategory } from "@/lib/types/enums";
+import { canDeleteMaterial } from "@/lib/services/materialService";
 
 const UNIT_OPTIONS = ["kg", "g", "mg", "L", "mL", "oz", "lb", "pcs", "units", "sheets", "rolls", "boxes", "each"];
-const CATEGORY_OPTIONS = [
-  { value: "RAW_BOTANICAL", label: "Raw Botanical" },
-  { value: "ACTIVE_INGREDIENT", label: "Active Ingredient" },
-  { value: "EXCIPIENT", label: "Excipient" },
-  { value: "FLAVORING", label: "Flavoring" },
-  { value: "PACKAGING", label: "Packaging" },
-  { value: "LABEL", label: "Label" },
-  { value: "SHIPPING", label: "Shipping" },
-  { value: "OTHER", label: "Other" }
-];
-const CATEGORY_LABELS: Record<string, string> = Object.fromEntries(
-  CATEGORY_OPTIONS.map(c => [c.value, c.label])
-);
+const MATERIAL_CATEGORY_GROUPS: Record<string, MaterialCategory[]> = {
+  Ingredients: [MaterialCategory.ACTIVE_INGREDIENT, MaterialCategory.SECONDARY_INGREDIENT],
+  'Dosage & Delivery': [
+    MaterialCategory.CAPSULES,
+    MaterialCategory.STRAWS_STICKS,
+    MaterialCategory.POWDERS_FILLERS,
+  ],
+  Packaging: [MaterialCategory.PRIMARY_PACKAGING, MaterialCategory.SECONDARY_PACKAGING, MaterialCategory.SEALS_SECURITY],
+  'Labels & Print': [MaterialCategory.LABELS, MaterialCategory.PAPER_PRINT],
+  'Logistics & Operations': [MaterialCategory.SHIPPING, MaterialCategory.PRODUCTION_SUPPLIES, MaterialCategory.EQUIPMENT],
+};
+
 const CATEGORY_COLORS: Record<string, string> = {
-  RAW_BOTANICAL: "bg-green-100 text-green-800",
-  ACTIVE_INGREDIENT: "bg-purple-100 text-purple-800",
-  EXCIPIENT: "bg-blue-100 text-blue-800",
-  FLAVORING: "bg-orange-100 text-orange-800",
-  PACKAGING: "bg-gray-100 text-gray-800",
-  LABEL: "bg-yellow-100 text-yellow-800",
-  SHIPPING: "bg-indigo-100 text-indigo-800",
-  OTHER: "bg-slate-100 text-slate-800"
+  [MaterialCategory.ACTIVE_INGREDIENT]: "bg-purple-100 text-purple-800",
+  [MaterialCategory.SECONDARY_INGREDIENT]: "bg-purple-100 text-purple-800",
+
+  [MaterialCategory.CAPSULES]: "bg-teal-100 text-teal-800",
+  [MaterialCategory.STRAWS_STICKS]: "bg-teal-100 text-teal-800",
+  [MaterialCategory.POWDERS_FILLERS]: "bg-teal-100 text-teal-800",
+
+  [MaterialCategory.PRIMARY_PACKAGING]: "bg-gray-100 text-gray-800",
+  [MaterialCategory.SECONDARY_PACKAGING]: "bg-gray-100 text-gray-800",
+  [MaterialCategory.SEALS_SECURITY]: "bg-gray-100 text-gray-800",
+
+  [MaterialCategory.LABELS]: "bg-yellow-100 text-yellow-800",
+  [MaterialCategory.PAPER_PRINT]: "bg-yellow-100 text-yellow-800",
+
+  [MaterialCategory.SHIPPING]: "bg-indigo-100 text-indigo-800",
+  [MaterialCategory.PRODUCTION_SUPPLIES]: "bg-slate-100 text-slate-800",
+  [MaterialCategory.EQUIPMENT]: "bg-slate-100 text-slate-800",
 };
 
 async function updateMaterial(formData: FormData) {
@@ -46,13 +57,17 @@ async function updateMaterial(formData: FormData) {
   const moq = parseFloat(formData.get("moq") as string) || 0;
   const leadTimeDays = parseInt(formData.get("leadTimeDays") as string, 10) || 0;
 
+  if (!category || !Object.values(MaterialCategory).includes(category as MaterialCategory)) {
+    throw new Error("Category is required");
+  }
+
   await prisma.rawMaterial.update({
     where: { id },
     data: {
       name,
       sku,
       unitOfMeasure,
-      category: category as "RAW_BOTANICAL" | "ACTIVE_INGREDIENT" | "EXCIPIENT" | "FLAVORING" | "PACKAGING" | "LABEL" | "SHIPPING" | "OTHER",
+      category: category as unknown as any,
       description: description || null,
       reorderPoint,
       reorderQuantity,
@@ -70,8 +85,32 @@ async function archiveMaterial(formData: FormData) {
   const id = formData.get("id") as string;
   await prisma.rawMaterial.update({
     where: { id },
-    data: { active: false }
+    data: { 
+      active: false,
+      archivedAt: new Date()
+    }
   });
+  revalidatePath("/materials");
+  redirect("/materials");
+}
+
+async function deleteMaterial(formData: FormData) {
+  "use server";
+  const id = formData.get("id") as string;
+  
+  // Call the API endpoint to handle deletion with guards
+  const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/materials/${id}`, {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to delete material');
+  }
+
   revalidatePath("/materials");
   redirect("/materials");
 }
@@ -188,6 +227,11 @@ export default async function MaterialDetailPage({
   const preferredMv = material.vendors.find(v => v.preferred);
   const currentCost = preferredMv?.lastPrice || material.vendors[0]?.lastPrice || null;
 
+  // Check if material can be deleted
+  const deleteCheck = await canDeleteMaterial(id);
+  const canDelete = deleteCheck.canDelete;
+  const deleteReason = deleteCheck.reason;
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -198,10 +242,14 @@ export default async function MaterialDetailPage({
             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
               {material.sku}
             </span>
-            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${CATEGORY_COLORS[material.category]}`}>
-              {CATEGORY_LABELS[material.category]}
+            <span
+              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                CATEGORY_COLORS[material.category] || "bg-gray-100 text-gray-800"
+              }`}
+            >
+              {material.category}
             </span>
-            {!material.active && (
+            {material.archivedAt && (
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
                 Archived
               </span>
@@ -218,8 +266,17 @@ export default async function MaterialDetailPage({
               >
                 Edit
               </Link>
-              {material.active && (
+              {!material.archivedAt && (
                 <ArchiveButton materialId={id} archiveAction={archiveMaterial} />
+              )}
+              {material.archivedAt && (
+                <DeleteButton 
+                  materialId={id}
+                  materialName={material.name}
+                  canDelete={canDelete}
+                  deleteReason={deleteReason}
+                  deleteAction={deleteMaterial}
+                />
               )}
             </>
           ) : (
@@ -268,8 +325,24 @@ export default async function MaterialDetailPage({
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">Category</label>
-                <select name="category" defaultValue={material.category} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
-                  {CATEGORY_OPTIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                <select
+                  name="category"
+                  required
+                  defaultValue={material.category || ""}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                >
+                  <option value="" disabled>
+                    Select a category…
+                  </option>
+                  {Object.entries(MATERIAL_CATEGORY_GROUPS).map(([groupLabel, cats]) => (
+                    <optgroup key={groupLabel} label={groupLabel}>
+                      {cats.map((cat) => (
+                        <option key={cat} value={cat}>
+                          {cat}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
                 </select>
               </div>
               <div>

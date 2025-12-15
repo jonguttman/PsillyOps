@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Materials Management
+- **Edit Materials**: Metadata fields (name, category, notes, vendor) are now editable on existing materials
+- **Archive Materials**: Soft delete materials with `archivedAt` timestamp; archived materials hidden by default with toggle to show
+- **Delete Materials**: Guarded permanent deletion only for archived materials with no inventory, PO, or BOM dependencies
+
 ### Labels & QR Codes
 - Added auto-tiled letter-size label sheets for printing (8.5×11in with 0.25in margins)
 - Printing now generates token-based QR codes (one token per physical label)

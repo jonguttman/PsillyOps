@@ -6,18 +6,6 @@ import { revalidatePath } from "next/cache";
 import { ArchiveButton } from "./ArchiveButton";
 import { getVendorScorecard } from "@/lib/services/vendorService";
 
-// Category labels
-const CATEGORY_LABELS: Record<string, string> = {
-  RAW_BOTANICAL: "Raw Botanical",
-  ACTIVE_INGREDIENT: "Active Ingredient",
-  EXCIPIENT: "Excipient",
-  FLAVORING: "Flavoring",
-  PACKAGING: "Packaging",
-  LABEL: "Label",
-  SHIPPING: "Shipping",
-  OTHER: "Other"
-};
-
 async function updateVendor(formData: FormData) {
   "use server";
   const id = formData.get("id") as string;
@@ -302,7 +290,7 @@ export default async function VendorDetailPage({
                     </Link>
                   </td>
                   <td className="py-2 text-sm text-gray-500">
-                    {CATEGORY_LABELS[mv.material.category] || mv.material.category}
+                    {mv.material.category}
                   </td>
                   <td className="py-2 text-sm text-gray-900 text-right">
                     {mv.lastPrice ? `$${mv.lastPrice.toFixed(2)}` : "—"}

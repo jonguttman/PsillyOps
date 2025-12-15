@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth/auth";
 import { NextRequest, NextResponse } from "next/server";
-import { getMaterialWithVendors, updateMaterial, archiveMaterial } from "@/lib/services/materialService";
+import { getMaterialWithVendors, updateMaterial, archiveMaterial, canDeleteMaterial, deleteMaterial } from "@/lib/services/materialService";
+import { MaterialCategory } from "@/lib/types/enums";
 
 // GET /api/materials/[id] - Get material details
 export async function GET(
@@ -67,6 +68,10 @@ export async function PATCH(
       active
     } = body;
 
+    if (category !== undefined && !Object.values(MaterialCategory).includes(category as MaterialCategory)) {
+      return NextResponse.json({ error: "Invalid category" }, { status: 400 });
+    }
+
     const material = await updateMaterial(
       id,
       {
@@ -106,7 +111,8 @@ export async function PATCH(
   }
 }
 
-// DELETE /api/materials/[id] - Archive material (soft delete)
+// DELETE /api/materials/[id] - Permanently delete material (hard delete)
+// Only works for archived materials with no dependencies
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -124,18 +130,37 @@ export async function DELETE(
 
     const { id } = await params;
 
-    await archiveMaterial(id, session.user.id);
+    // Server-side guard: check if deletion is allowed
+    const checkResult = await canDeleteMaterial(id);
+    
+    if (!checkResult.canDelete) {
+      return NextResponse.json(
+        { error: checkResult.reason || "Cannot delete material" },
+        { status: 400 }
+      );
+    }
 
-    return NextResponse.json({ success: true, message: "Material archived" });
+    // Perform hard delete
+    const result = await deleteMaterial(id, session.user.id);
+
+    return NextResponse.json({ 
+      success: true, 
+      message: "Material permanently deleted",
+      material: result 
+    });
   } catch (error) {
-    console.error("Error archiving material:", error);
+    console.error("Error deleting material:", error);
+
+    if (error instanceof Error) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
 
     if (error && typeof error === 'object' && 'code' in error && error.code === "P2025") {
       return NextResponse.json({ error: "Material not found" }, { status: 404 });
     }
 
     return NextResponse.json(
-      { error: "Failed to archive material" },
+      { error: "Failed to delete material" },
       { status: 500 }
     );
   }

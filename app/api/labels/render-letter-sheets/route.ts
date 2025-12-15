@@ -11,11 +11,12 @@ import {
   getBaseUrl,
   renderLabelsShared
 } from '@/lib/services/labelService';
+import { createPrintJob } from '@/lib/services/printJobService';
 import { handleApiError, AppError, ErrorCodes } from '@/lib/utils/errors';
 import { hasPermission } from '@/lib/auth/rbac';
-import { LabelEntityType } from '@prisma/client';
 
-const VALID_ENTITY_TYPES: LabelEntityType[] = ['PRODUCT', 'BATCH', 'INVENTORY'];
+const VALID_ENTITY_TYPES = ['PRODUCT', 'BATCH', 'INVENTORY'] as const;
+type EntityType = typeof VALID_ENTITY_TYPES[number];
 
 export async function POST(req: NextRequest) {
   try {
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { versionId, entityType, entityId, quantity = 1 } = body as {
       versionId?: string;
-      entityType: LabelEntityType;
+      entityType: EntityType;
       entityId: string;
       quantity: number;
     };
@@ -64,9 +65,10 @@ export async function POST(req: NextRequest) {
       resolvedVersionId = active.activeVersion.id;
     }
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/labels/render-letter-sheets/route.ts:POST',message:'Render letter sheets request',data:{versionIdProvided: !!versionId, resolvedVersionId, entityType, entityId, quantity: qty},timestamp:Date.now(),sessionId:'debug-session',runId:'sheet-run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
+    // Ensure we have a resolved version ID
+    if (!resolvedVersionId) {
+      throw new AppError(ErrorCodes.NOT_FOUND, 'No label version could be resolved');
+    }
 
     // Render labels in token mode (creates 1 token per physical label)
     const baseUrl = getBaseUrl();
@@ -82,9 +84,15 @@ export async function POST(req: NextRequest) {
 
     const { sheets, meta } = composeLetterSheetsFromLabelSvgs({ labelSvgs: rendered.svgs });
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/labels/render-letter-sheets/route.ts:POST',message:'Computed sheet layout',data:{resolvedVersionId, perSheet: meta.perSheet, columns: meta.columns, rows: meta.rows, rotationUsed: meta.rotationUsed, totalSheets: meta.totalSheets},timestamp:Date.now(),sessionId:'debug-session',runId:'sheet-run1',hypothesisId:'D'})}).catch(()=>{});
-    // #endregion
+    // Create print job record
+    const printJob = await createPrintJob({
+      entityType,
+      entityId,
+      versionId: resolvedVersionId,
+      quantity: qty,
+      sheets: meta.totalSheets,
+      userId: session.user.id
+    });
 
     return Response.json({
       sheets,
@@ -92,12 +100,10 @@ export async function POST(req: NextRequest) {
       columns: meta.columns,
       rows: meta.rows,
       rotationUsed: meta.rotationUsed,
-      totalSheets: meta.totalSheets
+      totalSheets: meta.totalSheets,
+      printJobId: printJob.id
     });
   } catch (error) {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/labels/render-letter-sheets/route.ts:POST',message:'Render letter sheets failed',data:{error: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? error.stack : undefined},timestamp:Date.now(),sessionId:'debug-session',runId:'sheet-run1',hypothesisId:'E'})}).catch(()=>{});
-    // #endregion
     return handleApiError(error);
   }
 }

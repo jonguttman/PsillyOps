@@ -1,6 +1,7 @@
 // Validation utilities using Zod
 
 import { z } from 'zod';
+import { MaterialCategory } from '@/lib/types/enums';
 
 // Common schemas
 export const idSchema = z.string().min(1, 'ID is required');
@@ -30,6 +31,10 @@ export const createMaterialSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   sku: z.string().min(1, 'SKU is required'),
   unitOfMeasure: z.string().min(1, 'Unit of measure is required'),
+  category: z
+    .string()
+    .min(1, 'Category is required')
+    .refine((v) => Object.values(MaterialCategory).includes(v as MaterialCategory), 'Invalid category'),
   currentStockQty: nonNegativeNumber.default(0),
   reorderPoint: nonNegativeNumber.default(0),
   reorderQuantity: nonNegativeNumber.default(0),

@@ -1,4 +1,5 @@
-import { PrismaClient, MaterialCategory } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
+import { MaterialCategory } from '../lib/types/enums';
 
 const prisma = new PrismaClient();
 
@@ -50,18 +51,18 @@ function parseCSV(csv: string): MaterialRow[] {
 
 function mapCategory(category: string): MaterialCategory {
   const categoryMap: Record<string, MaterialCategory> = {
-    'raw_mushroom': MaterialCategory.RAW_MUSHROOM,
-    'raw_botanical': MaterialCategory.RAW_BOTANICAL,
-    'active_ingredient': MaterialCategory.ACTIVE_INGREDIENT,
-    'excipient': MaterialCategory.EXCIPIENT,
-    'flavoring': MaterialCategory.FLAVORING,
-    'packaging': MaterialCategory.PACKAGING,
-    'label': MaterialCategory.LABEL,
-    'shipping': MaterialCategory.SHIPPING,
-    'other': MaterialCategory.OTHER
+    raw_mushroom: MaterialCategory.ACTIVE_INGREDIENT,
+    raw_botanical: MaterialCategory.ACTIVE_INGREDIENT,
+    active_ingredient: MaterialCategory.ACTIVE_INGREDIENT,
+    excipient: MaterialCategory.SECONDARY_INGREDIENT,
+    flavoring: MaterialCategory.SECONDARY_INGREDIENT,
+    packaging: MaterialCategory.PRIMARY_PACKAGING,
+    label: MaterialCategory.LABELS,
+    shipping: MaterialCategory.SHIPPING,
+    other: MaterialCategory.PRODUCTION_SUPPLIES,
   };
-  
-  return categoryMap[category.toLowerCase()] || MaterialCategory.OTHER;
+
+  return categoryMap[category.toLowerCase()] || MaterialCategory.PRODUCTION_SUPPLIES;
 }
 
 async function ensureStrainExists(shortCode: string): Promise<string> {

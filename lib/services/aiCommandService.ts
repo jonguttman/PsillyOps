@@ -22,6 +22,7 @@ import { generateInvoice, generateManifestPdf, getInvoiceByOrderId } from './inv
 import { interpretNaturalLanguageCommand, AIClientError } from './aiClient';
 import { ActivityEntity } from '@prisma/client';
 import { AICommandStatus } from '@/lib/types/enums';
+import { MaterialCategory } from '@/lib/types/enums';
 import { 
   applyMaterialCorrection, 
   applyProductCorrection, 
@@ -1835,6 +1836,7 @@ async function executeCreateMaterial(
     name: cmd.args.name,
     sku,
     unitOfMeasure: cmd.args.unit || 'GRAM',
+    category: MaterialCategory.PRODUCTION_SUPPLIES,
     description: cmd.args.description,
   }, userId || undefined);
 

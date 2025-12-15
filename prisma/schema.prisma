@@ -135,22 +135,16 @@ enum LabelEntityType {
   CUSTOM
 }
 
-enum MaterialCategory {
-  RAW_BOTANICAL
-  RAW_MUSHROOM
-  ACTIVE_INGREDIENT
-  EXCIPIENT
-  FLAVORING
-  PACKAGING
-  LABEL
-  SHIPPING
-  OTHER
-}
-
 enum QRTokenStatus {
   ACTIVE
   REVOKED
   EXPIRED
+}
+
+enum PrintJobStatus {
+  CREATED
+  PAPER_USED
+  VOIDED
 }
 
 enum InventoryAdjustmentType {
@@ -192,6 +186,7 @@ model User {
   aiDocumentImports         AIDocumentImport[]
   qrTokens                  QRToken[]
   qrRedirectRules           QRRedirectRule[]
+  printJobs                 PrintJob[]
   
   @@index([email])
   @@index([role])
@@ -318,7 +313,7 @@ model RawMaterial {
   name              String
   sku               String           @unique
   unitOfMeasure     String
-  category          MaterialCategory @default(OTHER)
+  category          String
   description       String?
   currentStockQty   Float            @default(0)
   reorderPoint      Float            @default(0)
@@ -328,6 +323,7 @@ model RawMaterial {
   shelfLifeDays     Int?
   expiryWarningDays Int?
   active            Boolean          @default(true)
+  archivedAt        DateTime?        // Soft delete timestamp
   preferredVendorId String?
   strainId          String?          // Optional reference to strain
   createdAt         DateTime         @default(now())
@@ -1016,5 +1012,28 @@ model QRRedirectRule {
   @@index([entityType, entityId])
   @@index([versionId])
   @@index([active])
+}
+
+model PrintJob {
+  id              String          @id @default(cuid())
+  status          PrintJobStatus  @default(CREATED)
+  sheets          Int
+  paperMaterialId String?
+  paperUsedAt     DateTime?
+  
+  // Context
+  entityType      LabelEntityType
+  entityId        String
+  versionId       String
+  quantity        Int             // Number of labels printed
+  
+  // Audit
+  createdById     String?
+  createdBy       User?           @relation(fields: [createdById], references: [id])
+  createdAt       DateTime        @default(now())
+  
+  @@index([entityType, entityId])
+  @@index([status])
+  @@index([createdAt])
 }
 

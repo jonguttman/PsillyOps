@@ -25,87 +25,105 @@ export default async function AdminDashboardPage() {
   }
 
   // Fetch all dashboard data in parallel
-  const [
-    lowStock,
-    recentManualAdjustments,
-    blockedOrders,
-    qcHoldBatches,
-    ordersWithShortages,
-    ordersAwaitingInvoice,
-    activeProductionOrders,
-    openRetailerOrders,
-    pendingPurchaseOrders,
-    awaitingInvoiceCount,
-    recentActivity,
-    openPurchaseOrders,
-    lastReceivedPO,
-  ] = await Promise.all([
-    // Supply watch: low stock materials
-    getLowStockMaterials(),
-    // Supply watch: manual adjustments (last 48h)
-    getRecentAdjustments({ hours: 48, adjustmentType: "MANUAL_CORRECTION" }),
-    // Blocked production orders
-    prisma.productionOrder.findMany({
-      where: { status: "BLOCKED" },
-      select: { id: true, orderNumber: true, product: { select: { name: true } } },
-    }),
-    // QC Hold batches
-    prisma.batch.findMany({
-      where: { qcStatus: "HOLD" },
-      select: { id: true, batchCode: true, product: { select: { name: true } } },
-    }),
-    // Orders with shortages
-    prisma.retailerOrder.findMany({
-      where: {
-        lineItems: { some: { shortageQuantity: { gt: 0 } } },
-        status: { notIn: ["CANCELLED", "SHIPPED"] },
-      },
-      select: { id: true, orderNumber: true, retailer: { select: { name: true } } },
-    }),
-    // Orders shipped but not invoiced
-    prisma.retailerOrder.findMany({
-      where: {
-        status: "SHIPPED",
-        invoices: { none: {} },
-      },
-      select: { id: true, orderNumber: true, retailer: { select: { name: true } } },
-    }),
-    // Active production orders count (PLANNED or IN_PROGRESS)
-    prisma.productionOrder.count({
-      where: { status: { in: ["PLANNED", "IN_PROGRESS"] } },
-    }),
-    // Open retailer orders count
-    prisma.retailerOrder.count({
-      where: { status: { in: ["SUBMITTED", "APPROVED", "IN_FULFILLMENT"] } },
-    }),
-    // Pending purchase orders count
-    prisma.purchaseOrder.count({
-      where: { status: { in: ["DRAFT", "SENT"] } },
-    }),
-    // Orders awaiting invoice count
-    prisma.retailerOrder.count({
-      where: {
-        status: "SHIPPED",
-        invoices: { none: {} },
-      },
-    }),
-    // Recent activity
-    prisma.activityLog.findMany({
-      take: 10,
-      orderBy: { createdAt: "desc" },
-      include: { user: { select: { name: true } } },
-    }),
-    // Open purchase orders (DRAFT, SENT, or PARTIALLY_RECEIVED)
-    prisma.purchaseOrder.count({
-      where: { status: { in: ["DRAFT", "SENT", "PARTIALLY_RECEIVED"] } },
-    }),
-    // Last received PO
-    prisma.purchaseOrder.findFirst({
-      where: { status: "RECEIVED" },
-      orderBy: { receivedAt: "desc" },
-      select: { receivedAt: true },
-    }),
-  ]);
+  let lowStock;
+  let recentManualAdjustments;
+  let blockedOrders;
+  let qcHoldBatches;
+  let ordersWithShortages;
+  let ordersAwaitingInvoice;
+  let activeProductionOrders;
+  let openRetailerOrders;
+  let pendingPurchaseOrders;
+  let awaitingInvoiceCount;
+  let recentActivity;
+  let openPurchaseOrders;
+  let lastReceivedPO;
+
+  try {
+    [
+      lowStock,
+      recentManualAdjustments,
+      blockedOrders,
+      qcHoldBatches,
+      ordersWithShortages,
+      ordersAwaitingInvoice,
+      activeProductionOrders,
+      openRetailerOrders,
+      pendingPurchaseOrders,
+      awaitingInvoiceCount,
+      recentActivity,
+      openPurchaseOrders,
+      lastReceivedPO,
+    ] = await Promise.all([
+      // Supply watch: low stock materials
+      getLowStockMaterials(),
+      // Supply watch: manual adjustments (last 48h)
+      getRecentAdjustments({ hours: 48, adjustmentType: "MANUAL_CORRECTION" }),
+      // Blocked production orders
+      prisma.productionOrder.findMany({
+        where: { status: "BLOCKED" },
+        select: { id: true, orderNumber: true, product: { select: { name: true } } },
+      }),
+      // QC Hold batches
+      prisma.batch.findMany({
+        where: { qcStatus: "HOLD" },
+        select: { id: true, batchCode: true, product: { select: { name: true } } },
+      }),
+      // Orders with shortages
+      prisma.retailerOrder.findMany({
+        where: {
+          lineItems: { some: { shortageQuantity: { gt: 0 } } },
+          status: { notIn: ["CANCELLED", "SHIPPED"] },
+        },
+        select: { id: true, orderNumber: true, retailer: { select: { name: true } } },
+      }),
+      // Orders shipped but not invoiced
+      prisma.retailerOrder.findMany({
+        where: {
+          status: "SHIPPED",
+          invoices: { none: {} },
+        },
+        select: { id: true, orderNumber: true, retailer: { select: { name: true } } },
+      }),
+      // Active production orders count (PLANNED or IN_PROGRESS)
+      prisma.productionOrder.count({
+        where: { status: { in: ["PLANNED", "IN_PROGRESS"] } },
+      }),
+      // Open retailer orders count
+      prisma.retailerOrder.count({
+        where: { status: { in: ["SUBMITTED", "APPROVED", "IN_FULFILLMENT"] } },
+      }),
+      // Pending purchase orders count
+      prisma.purchaseOrder.count({
+        where: { status: { in: ["DRAFT", "SENT"] } },
+      }),
+      // Orders awaiting invoice count
+      prisma.retailerOrder.count({
+        where: {
+          status: "SHIPPED",
+          invoices: { none: {} },
+        },
+      }),
+      // Recent activity
+      prisma.activityLog.findMany({
+        take: 10,
+        orderBy: { createdAt: "desc" },
+        include: { user: { select: { name: true } } },
+      }),
+      // Open purchase orders (DRAFT, SENT, or PARTIALLY_RECEIVED)
+      prisma.purchaseOrder.count({
+        where: { status: { in: ["DRAFT", "SENT", "PARTIALLY_RECEIVED"] } },
+      }),
+      // Last received PO
+      prisma.purchaseOrder.findFirst({
+        where: { status: "RECEIVED" },
+        orderBy: { receivedAt: "desc" },
+        select: { receivedAt: true },
+      }),
+    ]);
+  } catch (e: unknown) {
+    throw e;
+  }
 
   const lowStockMaterials = lowStock.materials;
 

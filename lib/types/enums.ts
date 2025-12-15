@@ -9,15 +9,25 @@ export enum UserRole {
 }
 
 export enum MaterialCategory {
-  RAW_BOTANICAL = 'RAW_BOTANICAL',
-  RAW_MUSHROOM = 'RAW_MUSHROOM',
-  ACTIVE_INGREDIENT = 'ACTIVE_INGREDIENT',
-  EXCIPIENT = 'EXCIPIENT',
-  FLAVORING = 'FLAVORING',
-  PACKAGING = 'PACKAGING',
-  LABEL = 'LABEL',
-  SHIPPING = 'SHIPPING',
-  OTHER = 'OTHER'
+  ACTIVE_INGREDIENT = 'Active Ingredient',
+  SECONDARY_INGREDIENT = 'Secondary Ingredient',
+
+  CAPSULES = 'Capsules',
+  STRAWS_STICKS = 'Straws / Sticks',
+  POWDERS_FILLERS = 'Powders & Fillers',
+
+  PRIMARY_PACKAGING = 'Primary Packaging',
+  SECONDARY_PACKAGING = 'Secondary Packaging',
+
+  SEALS_SECURITY = 'Seals & Security',
+
+  LABELS = 'Labels',
+  PAPER_PRINT = 'Paper & Print Materials',
+
+  SHIPPING = 'Shipping Materials',
+
+  PRODUCTION_SUPPLIES = 'Production Supplies',
+  EQUIPMENT = 'Equipment',
 }
 
 export enum OrderStatus {
@@ -102,5 +112,12 @@ export enum QRTokenStatus {
   ACTIVE = 'ACTIVE',
   REVOKED = 'REVOKED',
   EXPIRED = 'EXPIRED'
+}
+
+// Print Job Status values
+export enum PrintJobStatus {
+  CREATED = 'CREATED',
+  PAPER_USED = 'PAPER_USED',
+  VOIDED = 'VOIDED'
 }
 

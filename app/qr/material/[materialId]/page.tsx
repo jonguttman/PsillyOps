@@ -4,18 +4,6 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import QRCodeDisplay from "./QRCodeDisplay";
 
-// Category labels
-const CATEGORY_LABELS: Record<string, string> = {
-  RAW_BOTANICAL: "Raw Botanical",
-  ACTIVE_INGREDIENT: "Active Ingredient",
-  EXCIPIENT: "Excipient",
-  FLAVORING: "Flavoring",
-  PACKAGING: "Packaging",
-  LABEL: "Label",
-  SHIPPING: "Shipping",
-  OTHER: "Other"
-};
-
 export default async function MaterialQRPage({
   params
 }: {
@@ -90,7 +78,7 @@ export default async function MaterialQRPage({
               {material.sku}
             </span>
             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-500 text-white">
-              {CATEGORY_LABELS[material.category] || material.category}
+              {material.category}
             </span>
             {!material.active && (
               <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-500 text-white">

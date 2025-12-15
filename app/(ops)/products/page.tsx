@@ -26,7 +26,9 @@ export default async function ProductsPage({
       _count: {
         select: {
           inventory: true,
-          bom: true
+          bom: {
+            where: { active: true }
+          }
         }
       }
     }
