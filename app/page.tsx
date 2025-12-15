@@ -30,3 +30,4 @@ export default async function HomePage() {
   // fallback
   redirect("/login");
 }
+
