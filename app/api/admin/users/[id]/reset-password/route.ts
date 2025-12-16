@@ -6,11 +6,19 @@ import { auth } from '@/lib/auth/auth';
 import { handleApiError } from '@/lib/utils/errors';
 import { prisma } from '@/lib/db/prisma';
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(req: NextRequest) {
   try {
+    // Extract user ID from URL path (Next.js 15 compliant pattern)
+    const url = new URL(req.url);
+    const userId = url.pathname.split("/").at(-2);
+
+    if (!userId) {
+      return Response.json(
+        { code: 'BAD_REQUEST', message: 'Missing user ID in path' },
+        { status: 400 }
+      );
+    }
+
     // 1. Validate - Admin only
     const session = await auth();
     if (!session) {
@@ -26,8 +34,6 @@ export async function POST(
         { status: 403 }
       );
     }
-
-    const userId = params.id;
 
     // 2. Get user
     const user = await prisma.user.findUnique({
@@ -80,8 +86,8 @@ export async function POST(
     });
 
     // 6. Log action
-    const { logUserPasswordReset } = await import('@/lib/services/loggingService');
-    logUserPasswordReset({
+    const loggingModule = await import('@/lib/services/loggingService');
+    loggingModule.logUserPasswordReset({
       actorUserId: session.user.id,
       targetUserId: userId,
       targetEmail: user.email,
@@ -93,7 +99,7 @@ export async function POST(
     // 7. Return result
     return Response.json({
       message: 'Password reset successfully',
-      tempPassword: wasGenerated ? newPassword : undefined, // Only return if generated
+      tempPassword: wasGenerated ? newPassword : undefined,
       email: user.email,
       userName: user.name
     });

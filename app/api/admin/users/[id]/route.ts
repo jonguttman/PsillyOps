@@ -6,11 +6,19 @@ import { auth } from '@/lib/auth/auth';
 import { handleApiError } from '@/lib/utils/errors';
 import { prisma } from '@/lib/db/prisma';
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PATCH(req: NextRequest) {
   try {
+    // Extract user ID from URL path (Next.js 15 compliant pattern)
+    const url = new URL(req.url);
+    const userId = url.pathname.split("/").at(-2);
+
+    if (!userId) {
+      return Response.json(
+        { code: 'BAD_REQUEST', message: 'Missing user ID in path' },
+        { status: 400 }
+      );
+    }
+
     // 1. Validate - Admin only
     const session = await auth();
     if (!session) {
@@ -26,8 +34,6 @@ export async function PATCH(
         { status: 403 }
       );
     }
-
-    const userId = params.id;
 
     // 2. Get current user
     const currentUser = await prisma.user.findUnique({
@@ -84,10 +90,10 @@ export async function PATCH(
     });
 
     // 5. Log actions
-    const loggingService = await import('@/lib/services/loggingService');
+    const loggingModule = await import('@/lib/services/loggingService');
     
     if (role !== undefined && role !== currentUser.role) {
-      loggingService.logUserRoleChanged({
+      loggingModule.logUserRoleChanged({
         actorUserId: session.user.id,
         targetUserId: userId,
         targetEmail: currentUser.email,
@@ -98,13 +104,13 @@ export async function PATCH(
 
     if (active !== undefined && active !== currentUser.active) {
       if (active) {
-        loggingService.logUserReactivated({
+        loggingModule.logUserReactivated({
           actorUserId: session.user.id,
           targetUserId: userId,
           targetEmail: currentUser.email
         }).catch(err => console.error('Failed to log reactivation:', err));
       } else {
-        loggingService.logUserDeactivated({
+        loggingModule.logUserDeactivated({
           actorUserId: session.user.id,
           targetUserId: userId,
           targetEmail: currentUser.email
