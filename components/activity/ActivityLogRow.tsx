@@ -68,7 +68,7 @@ function formatTimestamp(date: Date): string {
 
 function getEntityDeepLink(activity: ActivityLogItem): { href: string; label: string } | null {
   // Prefer explicit tokenId from details (QR scans / revokes / etc)
-  const details = activity.details;
+  const details = activity.metadata;
   const tokenIdDirect = details && typeof details['tokenId'] === 'string' ? details['tokenId'] : undefined;
   const tokenObj = details && typeof details['token'] === 'object' && details['token'] ? details['token'] : null;
   const tokenIdNested =
@@ -190,14 +190,14 @@ export default function ActivityLogRow({ activity }: ActivityLogRowProps) {
   const isSystem = !activity.user;
   const userName = activity.user?.name || 'System';
   const hasDiff = activity.diff && Object.keys(activity.diff).length > 0;
-  const hasDetails = activity.details && Object.keys(activity.details).length > 0;
+  const hasDetails = activity.metadata && Object.keys(activity.metadata).length > 0;
   const hasExpandableContent = hasDiff || hasDetails || isAiCommand;
   const deepLink = getEntityDeepLink(activity);
   const cat = getCategory(activity);
   const CatIcon = categoryIcon(cat);
   const exact = formatTimestamp(new Date(activity.createdAt));
   const isInventoryAdjusted = activity.action === 'inventory_adjusted';
-  const details = activity.details;
+  const details = activity.metadata;
   const deltaQty =
     details && typeof details['deltaQty'] === 'number'
       ? details['deltaQty']

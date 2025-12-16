@@ -155,7 +155,7 @@ export async function createTemplate(params: CreateTemplateParams) {
     action: 'label_template_created',
     userId,
     summary: `Created label template "${name}" for ${entityType}`,
-    details: { name, entityType }
+    metadata: { name, entityType }
   });
   
   return template;
@@ -261,7 +261,7 @@ export async function createVersion(params: CreateVersionParams) {
     action: 'label_version_uploaded',
     userId,
     summary: `Uploaded version ${version} of label template "${template.name}"`,
-    details: {
+    metadata: {
       versionId: templateVersion.id,
       version,
       fileUrl,
@@ -304,7 +304,7 @@ export async function activateVersion(versionId: string, userId?: string) {
     action: 'label_version_activated',
     userId,
     summary: `Activated version ${version.version} of label template "${version.template.name}"`,
-    details: {
+    metadata: {
       versionId,
       version: version.version,
       templateName: version.template.name
@@ -338,7 +338,7 @@ export async function deactivateVersion(versionId: string, userId?: string) {
     action: 'label_version_deactivated',
     userId,
     summary: `Deactivated version ${version.version} of label template "${version.template.name}"`,
-    details: {
+    metadata: {
       versionId,
       version: version.version
     }
@@ -507,7 +507,7 @@ export async function updateVersionQrPosition(
       contentOffsetX: updated.contentOffsetX,
       contentOffsetY: updated.contentOffsetY
     },
-    details: {
+    metadata: {
       versionId,
       version: version.version,
       templateName: version.template.name
@@ -693,7 +693,7 @@ export async function logLabelPrinted(params: {
     action: 'labels_printed',
     userId,
     summary: `Printed ${quantity} label(s) for ${entityType} ${entityCode}`,
-    details: {
+    metadata: {
       versionId,
       version: version.version,
       templateName: version.template.name,

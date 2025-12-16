@@ -125,7 +125,7 @@ export async function GET(req: NextRequest) {
       });
 
       for (const log of scanLogs) {
-        const details = log.details as any;
+        const details = log.metadata as any;
         const tokenId = details?.tokenId;
         if (tokenId && tokenIds.includes(tokenId)) {
           if (!scanHistories[tokenId]) {

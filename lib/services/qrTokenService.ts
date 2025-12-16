@@ -178,7 +178,7 @@ export async function createTokenBatch(params: CreateTokenBatchParams) {
     action: 'qr_tokens_created',
     userId,
     summary: `Created ${quantity} QR token(s) for ${entityType} ${entityId}`,
-    details: {
+    metadata: {
       entityType,
       entityId,
       quantity,
@@ -317,7 +317,7 @@ export async function revokeToken(
     action: 'qr_token_revoked',
     userId,
     summary: `Revoked QR token for ${token.entityType} ${token.entityId}: ${reason}`,
-    details: {
+    metadata: {
       tokenId: token.id,
       entityType: token.entityType,
       entityId: token.entityId,
@@ -357,7 +357,7 @@ export async function revokeTokensByEntity(params: RevokeByEntityParams): Promis
       action: 'qr_tokens_bulk_revoked',
       userId,
       summary: `Bulk revoked ${result.count} QR token(s) for ${entityType} ${entityId}: ${reason}`,
-      details: {
+      metadata: {
         entityType,
         entityId,
         count: result.count,
@@ -503,7 +503,7 @@ export async function getRecentQRScans(limit: number = 20) {
   // Enrich with token and entity data
   const enrichedScans = await Promise.all(
     scans.map(async (scan) => {
-      const details = scan.details as any;
+      const details = scan.metadata as any;
       const tokenId = details?.tokenId;
       
       let token = null;
@@ -686,10 +686,10 @@ export async function getQRScanHistory(tokenId: string, range: '24h' | '7d' | '3
 
   // Filter to only scans for this specific token
   return scans.filter(scan => {
-    const details = scan.details as any;
+    const details = scan.metadata as any;
     return details?.tokenId === tokenId || details?.tokenValue === token.token;
   }).map(scan => {
-    const details = scan.details as any;
+    const details = scan.metadata as any;
     return {
       id: scan.id,
       timestamp: scan.createdAt,
@@ -720,7 +720,7 @@ export async function addQRNote(tokenId: string, message: string, userId: string
     action: 'qr_token_note_added',
     userId,
     summary: `Note added to token ${token.token.slice(0, 10)}...`,
-    details: {
+    metadata: {
       tokenId: token.id,
       tokenValue: token.token,
       entityType: token.entityType,
@@ -757,10 +757,10 @@ export async function getQRNotes(tokenId: string) {
 
   // Filter to notes for this specific token
   return notes.filter(note => {
-    const details = note.details as any;
+    const details = note.metadata as any;
     return details?.tokenId === tokenId;
   }).map(note => {
-    const details = note.details as any;
+    const details = note.metadata as any;
     return {
       id: note.id,
       timestamp: note.createdAt,

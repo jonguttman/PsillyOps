@@ -246,7 +246,7 @@ export async function reserveInventory(params: {
     summary: `Reserved ${quantity} ${itemName} - ${context}`,
     before: { quantityReserved: inventory.quantityReserved },
     after: { quantityReserved: inventory.quantityReserved + quantity },
-    details: { inventoryId, quantity, context, reference },
+    metadata: { inventoryId, quantity, context, reference },
     tags: ['reservation']
   });
 }
@@ -311,7 +311,7 @@ export async function releaseReservation(params: {
     summary: `Released reservation of ${quantity} ${itemName} - ${context}`,
     before: { quantityReserved: inventory.quantityReserved },
     after: { quantityReserved: inventory.quantityReserved - quantity },
-    details: { inventoryId, quantity, context, reference },
+    metadata: { inventoryId, quantity, context, reference },
     tags: ['reservation']
   });
 }
@@ -413,7 +413,7 @@ export async function consumeMaterial(params: {
       action: 'consumed',
       userId,
       summary: `Consumed ${totalConsumed} ${material.name} for production`,
-      details: {
+      metadata: {
         quantity: totalConsumed,
         productionOrderId,
         batchId,
@@ -518,7 +518,7 @@ export async function produceFinishedGoods(params: {
     action: 'produced',
     userId,
     summary: `Produced ${quantity} ${product.name} from batch ${batch.batchCode}`,
-    details: {
+    metadata: {
       productId,
       batchId,
       batchCode: batch.batchCode,
@@ -641,7 +641,7 @@ export async function moveInventory(params: {
         userName: user?.name || 'User',
         action: 'moved',
         entityName: `${quantity} ${itemName}`,
-        details: {
+        metadata: {
           from: inventory.location.name,
           to: toLocation.name,
           quantity,
@@ -652,7 +652,7 @@ export async function moveInventory(params: {
       after: {
         locationId: toLocationId
       },
-      details: {
+      metadata: {
         inventoryId,
         fromLocation: inventory.location.name,
         toLocation: toLocation.name,
@@ -744,14 +744,14 @@ export async function moveInventory(params: {
         userName: user?.name || 'User',
         action: 'moved',
         entityName: `${quantity} ${itemName}`,
-        details: {
+        metadata: {
           from: inventory.location.name,
           to: toLocation.name,
           quantity,
           reason
         }
       }),
-      details: {
+      metadata: {
         inventoryId,
         destinationInventoryId,
         fromLocation: inventory.location.name,
@@ -874,11 +874,11 @@ export async function receiveMaterials(params: {
       userName: user?.name || 'User',
       action: 'received',
       entityName: `${quantity} ${material.name}`,
-      details: {
+      metadata: {
         lotNumber
       }
     }),
-    details: {
+    metadata: {
       materialName: material.name,
       quantity,
       lotNumber,

@@ -257,7 +257,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<ImportRes
       action: 'products_imported',
       userId: session.user.id,
       summary: `Imported ${createdProducts.length} products from CSV`,
-      details: { 
+      metadata: { 
         count: createdProducts.length,
         products: createdProducts.slice(0, 10) // Log first 10 for reference
       },

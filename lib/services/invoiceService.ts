@@ -101,12 +101,12 @@ export async function generateInvoice(params: GenerateInvoiceParams): Promise<st
       userName: 'User',
       action: 'created',
       entityName: `invoice ${invoice.invoiceNo}`,
-      details: {
+      metadata: {
         orderNumber: order.orderNumber,
         retailer: order.retailer.name
       }
     }),
-    details: {
+    metadata: {
       invoiceNo: invoice.invoiceNo,
       orderNumber: order.orderNumber,
       retailerName: order.retailer.name,

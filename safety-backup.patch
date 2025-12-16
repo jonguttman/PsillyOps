@@ -1,0 +1,567 @@
+diff --git a/app/login/page.tsx b/app/login/page.tsx
+index c6e8828..c42b205 100644
+--- a/app/login/page.tsx
++++ b/app/login/page.tsx
+@@ -3,6 +3,7 @@
+ import { useState } from 'react';
+ import { signIn } from 'next-auth/react';
+ import { useRouter } from 'next/navigation';
++import Image from 'next/image';
+ 
+ export default function LoginPage() {
+   const [email, setEmail] = useState('');
+@@ -32,7 +33,7 @@ export default function LoginPage() {
+       router.push('/');
+       router.refresh();
+     } catch (err) {
+-      setError('An error occurred. Please try again.');
++      setError('Invalid email or password');
+     } finally {
+       setLoading(false);
+     }
+@@ -41,12 +42,25 @@ export default function LoginPage() {
+   return (
+     <div className="min-h-screen flex items-center justify-center bg-gray-50">
+       <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg shadow-md">
++        {/* Psilly Branding */}
++        <div className="flex justify-center mb-4">
++          <Image
++            src="/PsillyMark-2026.svg"
++            alt="PsillyOps"
++            width={40}
++            height={40}
++            className="opacity-90"
++            priority
++          />
++        </div>
++
++        {/* System Identity */}
+         <div>
+           <h1 className="text-3xl font-bold text-center text-gray-900">
+             PsillyOps
+           </h1>
+           <p className="mt-2 text-center text-sm text-gray-600">
+-            Inventory Management System
++            Internal Operations & Inventory System
+           </p>
+         </div>
+ 
+@@ -98,19 +112,22 @@ export default function LoginPage() {
+             disabled={loading}
+             className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+           >
+-            {loading ? 'Signing in...' : 'Sign in'}
++            {loading ? 'Signing in...' : 'Authorized Sign In'}
+           </button>
+-
+-          <div className="mt-4 text-xs text-gray-500">
+-            <p className="font-semibold mb-1">Test Accounts:</p>
+-            <p>Admin: admin@psillyops.com / password123</p>
+-            <p>Production: john@psillyops.com / password123</p>
+-            <p>Warehouse: mike@psillyops.com / password123</p>
+-            <p>Rep: sarah@psillyops.com / password123</p>
+-          </div>
+         </form>
++
++        {/* Legal Warning */}
++        <div className="mt-6 rounded-md border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
++          <p className="font-semibold uppercase tracking-wide">
++            Authorized Access Only
++          </p>
++          <p className="mt-1 leading-relaxed">
++            This system is restricted to authorized PsillyOps personnel.
++            Unauthorized access, use, or modification is prohibited and may be
++            monitored and prosecuted.
++          </p>
++        </div>
+       </div>
+     </div>
+   );
+ }
+-
+diff --git a/components/layout/SidebarNav.tsx b/components/layout/SidebarNav.tsx
+index d8bb560..83ec920 100644
+--- a/components/layout/SidebarNav.tsx
++++ b/components/layout/SidebarNav.tsx
+@@ -19,6 +19,8 @@ import {
+   Building2,
+   Activity,
+   HelpCircle,
++  Shield,
++  Users,
+   LucideIcon
+ } from 'lucide-react';
+ 
+@@ -97,6 +99,8 @@ export function SidebarNav({ userRole }: SidebarNavProps) {
+   // SYSTEM section - Governance
+   const systemItems: NavItem[] = [
+     { href: '/ops/activity', label: 'Activity', icon: Activity },
++    ...(userRole === 'ADMIN' ? [{ href: '/ops/security', label: 'Security', icon: Shield }] : []),
++    ...(userRole === 'ADMIN' ? [{ href: '/ops/users', label: 'Users', icon: Users }] : []),
+     { href: '/ops/strains', label: 'Strains', icon: Dna },
+     { href: '/ops/vendors', label: 'Vendors', icon: Building2 },
+     { href: '/ops/help', label: 'Help', icon: HelpCircle },
+diff --git a/lib/auth/auth.ts b/lib/auth/auth.ts
+index 7371200..5608b06 100644
+--- a/lib/auth/auth.ts
++++ b/lib/auth/auth.ts
+@@ -6,6 +6,19 @@ import Credentials from 'next-auth/providers/credentials';
+ import { prisma } from '@/lib/db/prisma';
+ import { compare } from 'bcryptjs';
+ import { UserRole } from '@prisma/client';
++import { 
++  logAuthLoginSuccess, 
++  logAuthLoginFailure,
++  logAuthSessionCreated 
++} from '@/lib/services/loggingService';
++
++// Auth failure codes for structured logging
++export type AuthFailureCode =
++  | "MISSING_CREDENTIALS"
++  | "USER_NOT_FOUND"
++  | "ACCOUNT_INACTIVE"
++  | "INVALID_PASSWORD"
++  | "SYSTEM_ERROR";
+ 
+ export const { handlers, signIn, signOut, auth } = NextAuth({
+   adapter: PrismaAdapter(prisma) as any,
+@@ -36,6 +49,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
+             console.log('[AUTH] ❌ FAILED: Missing credentials');
+             console.log('[AUTH]    - Email missing:', !credentials?.email);
+             console.log('[AUTH]    - Password missing:', !credentials?.password);
++            
++            // Log failure (async without await to avoid blocking)
++            logAuthLoginFailure({
++              email: credentials?.email as string | undefined,
++              reason: 'Missing credentials',
++              metadata: { reasonCode: 'MISSING_CREDENTIALS' }
++            }).catch(err => console.error('[AUTH] Failed to log login failure:', err));
++            
+             return null;
+           }
+ 
+@@ -63,12 +84,29 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
+             console.log('[AUTH]    - Password hash length:', user.password?.length || 0);
+           } else {
+             console.log('[AUTH] ❌ FAILED: No user found with email:', credentials.email);
++            
++            // Log failure (async without await)
++            logAuthLoginFailure({
++              email: credentials.email as string,
++              reason: 'User not found',
++              metadata: { reasonCode: 'USER_NOT_FOUND' }
++            }).catch(err => console.error('[AUTH] Failed to log login failure:', err));
++            
+             return null;
+           }
+ 
+           // Step 3: Check if user is active
+           if (!user.active) {
+             console.log('[AUTH] ❌ FAILED: User exists but is not active');
++            
++            // Log failure (async without await)
++            logAuthLoginFailure({
++              userId: user.id,
++              email: user.email,
++              reason: 'Account inactive',
++              metadata: { reasonCode: 'ACCOUNT_INACTIVE' }
++            }).catch(err => console.error('[AUTH] Failed to log login failure:', err));
++            
+             return null;
+           }
+ 
+@@ -88,6 +126,15 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
+ 
+           if (!passwordMatch) {
+             console.log('[AUTH] ❌ FAILED: Password does not match');
++            
++            // Log failure (async without await)
++            logAuthLoginFailure({
++              userId: user.id,
++              email: user.email,
++              reason: 'Invalid password',
++              metadata: { reasonCode: 'INVALID_PASSWORD' }
++            }).catch(err => console.error('[AUTH] Failed to log login failure:', err));
++            
+             return null;
+           }
+ 
+@@ -99,6 +146,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
+           console.log('[AUTH] Returning user object for:', user.email);
+           console.log('[AUTH] ========================================');
+ 
++          // Log success (async without await)
++          logAuthLoginSuccess({
++            userId: user.id,
++            email: user.email
++          }).catch(err => console.error('[AUTH] Failed to log login success:', err));
++
+           return {
+             id: user.id,
+             email: user.email,
+@@ -112,6 +165,17 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
+           console.log('[AUTH] Error message:', error instanceof Error ? error.message : String(error));
+           console.log('[AUTH] Error stack:', error instanceof Error ? error.stack : 'N/A');
+           console.log('[AUTH] ========================================');
++          
++          // Log failure (async without await)
++          logAuthLoginFailure({
++            email: credentials?.email as string | undefined,
++            reason: 'System error',
++            metadata: {
++              reasonCode: 'SYSTEM_ERROR',
++              error: error instanceof Error ? error.message : String(error)
++            }
++          }).catch(err => console.error('[AUTH] Failed to log login failure:', err));
++          
+           return null;
+         }
+       }
+@@ -119,12 +183,29 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
+   ],
+   callbacks: {
+     async jwt({ token, user }) {
+-      if (user) {
++      if (user && !token.sessionLogged) {
+         console.log('[AUTH] JWT callback - adding user data to token');
+         console.log('[AUTH]    - User ID:', user.id);
+         console.log('[AUTH]    - User role:', (user as any).role);
+         token.id = user.id;
+         token.role = (user as any).role;
++        token.sessionLogged = true; // Mark as logged to prevent duplicates
++        
++        // Log session creation (async without await)
++        // This fires once when the JWT is first created after successful login
++        logAuthSessionCreated({
++          userId: user.id,
++          email: user.email || undefined,
++          metadata: {
++            role: (user as any).role
++          }
++        }).catch(err => console.error('[AUTH] Failed to log session creation:', err));
++        
++        // Update lastLoginAt (async without await)
++        prisma.user.update({
++          where: { id: user.id },
++          data: { lastLoginAt: new Date() }
++        }).catch(err => console.error('[AUTH] Failed to update lastLoginAt:', err));
+       }
+       return token;
+     },
+@@ -161,5 +242,6 @@ declare module '@auth/core/jwt' {
+   interface JWT {
+     id: string;
+     role: UserRole;
++    sessionLogged?: boolean;
+   }
+ }
+diff --git a/lib/services/loggingService.ts b/lib/services/loggingService.ts
+index c3ad79c..c9b1291 100644
+--- a/lib/services/loggingService.ts
++++ b/lib/services/loggingService.ts
+@@ -5,14 +5,17 @@ import { prisma } from '@/lib/db/prisma';
+ import { ActivityEntity } from '@prisma/client';
+ 
+ export interface LogActionParams {
+-  entityType: ActivityEntity;
+-  entityId: string;
++  entityType?: ActivityEntity;
++  entityId?: string;
+   action: string;
+   userId?: string;
++  ipAddress?: string;
++  userAgent?: string;
+   summary: string;
+   before?: Record<string, any>;
+   after?: Record<string, any>;
+   details?: any;
++  metadata?: any;
+   tags?: string[];
+ }
+ 
+@@ -36,10 +39,13 @@ export async function logAction({
+   entityId,
+   action,
+   userId,
++  ipAddress,
++  userAgent,
+   summary,
+   before,
+   after,
+   details,
++  metadata,
+   tags = []
+ }: LogActionParams) {
+   // Calculate field-level diff
+@@ -59,7 +65,7 @@ export async function logAction({
+   }
+ 
+   // Auto-generate tags based on action and diff
+-  const autoTags = generateAutoTags(action, diff, details);
++  const autoTags = generateAutoTags(action, diff, details || metadata);
+   const allTags = [...new Set([...tags, ...autoTags])];
+ 
+   // Validate userId exists before creating log entry to avoid FK constraint violation
+@@ -83,9 +89,11 @@ export async function logAction({
+       entityId,
+       action,
+       userId: validUserId,
++      ipAddress,
++      userAgent,
+       summary,
+       diff: Object.keys(diff).length > 0 ? diff : undefined,
+-      details: details ? JSON.parse(JSON.stringify(details)) : undefined,
++      metadata: metadata ? JSON.parse(JSON.stringify(metadata)) : (details ? JSON.parse(JSON.stringify(details)) : undefined),
+       tags: allTags
+     }
+   });
+@@ -314,4 +322,198 @@ export function generateSummary(params: {
+   return `${userName} ${action} ${entityName}`;
+ }
+ 
++/**
++ * Auth-specific logging helpers
++ * These ensure auth events are logged consistently with proper metadata
++ */
++
++export interface AuthLogParams {
++  userId?: string;
++  email?: string;
++  ipAddress?: string;
++  userAgent?: string;
++  metadata?: Record<string, any>;
++}
++
++/**
++ * Log successful login
++ */
++export async function logAuthLoginSuccess(params: AuthLogParams) {
++  await logAction({
++    action: 'AUTH_LOGIN_SUCCESS',
++    userId: params.userId,
++    ipAddress: params.ipAddress,
++    userAgent: params.userAgent,
++    summary: `User ${params.email || params.userId || 'unknown'} logged in successfully`,
++    metadata: {
++      email: params.email,
++      ...params.metadata
++    },
++    tags: ['auth', 'login', 'success']
++  });
++}
++
++/**
++ * Log failed login attempt
++ */
++export async function logAuthLoginFailure(params: AuthLogParams & { reason?: string }) {
++  await logAction({
++    action: 'AUTH_LOGIN_FAILURE',
++    ipAddress: params.ipAddress,
++    userAgent: params.userAgent,
++    summary: `Login attempt failed for ${params.email || 'unknown'}${params.reason ? `: ${params.reason}` : ''}`,
++    metadata: {
++      email: params.email,
++      reason: params.reason,
++      ...params.metadata
++    },
++    tags: ['auth', 'login', 'failure', 'security']
++  });
++}
++
++/**
++ * Log logout
++ */
++export async function logAuthLogout(params: AuthLogParams) {
++  await logAction({
++    action: 'AUTH_LOGOUT',
++    userId: params.userId,
++    ipAddress: params.ipAddress,
++    userAgent: params.userAgent,
++    summary: `User ${params.email || params.userId || 'unknown'} logged out`,
++    metadata: {
++      email: params.email,
++      ...params.metadata
++    },
++    tags: ['auth', 'logout']
++  });
++}
++
++/**
++ * Log session created (JWT issued)
++ */
++export async function logAuthSessionCreated(params: AuthLogParams) {
++  await logAction({
++    action: 'AUTH_SESSION_CREATED',
++    userId: params.userId,
++    ipAddress: params.ipAddress,
++    userAgent: params.userAgent,
++    summary: `Session created for ${params.email || params.userId || 'unknown'}`,
++    metadata: {
++      email: params.email,
++      ...params.metadata
++    },
++    tags: ['auth', 'session']
++  });
++}
++
++/**
++ * User Management Logging Helpers (Phase 2)
++ */
++
++export interface UserManagementLogParams {
++  actorUserId: string;
++  targetUserId: string;
++  targetEmail?: string;
++  metadata?: Record<string, any>;
++}
++
++/**
++ * Log user creation
++ */
++export async function logUserCreated(params: UserManagementLogParams & { role: string }) {
++  await logAction({
++    action: 'USER_CREATED',
++    userId: params.actorUserId,
++    entityType: 'SYSTEM',
++    entityId: params.targetUserId,
++    summary: `Admin created user ${params.targetEmail || params.targetUserId} with role ${params.role}`,
++    metadata: {
++      targetUserId: params.targetUserId,
++      targetEmail: params.targetEmail,
++      role: params.role,
++      ...params.metadata
++    },
++    tags: ['user_management', 'created', 'admin_action']
++  });
++}
++
++/**
++ * Log role change
++ */
++export async function logUserRoleChanged(params: UserManagementLogParams & { oldRole: string; newRole: string }) {
++  await logAction({
++    action: 'USER_ROLE_CHANGED',
++    userId: params.actorUserId,
++    entityType: 'SYSTEM',
++    entityId: params.targetUserId,
++    summary: `Admin changed ${params.targetEmail || params.targetUserId} role from ${params.oldRole} to ${params.newRole}`,
++    metadata: {
++      targetUserId: params.targetUserId,
++      targetEmail: params.targetEmail,
++      oldRole: params.oldRole,
++      newRole: params.newRole,
++      ...params.metadata
++    },
++    tags: ['user_management', 'role_change', 'admin_action']
++  });
++}
++
++/**
++ * Log user deactivation
++ */
++export async function logUserDeactivated(params: UserManagementLogParams) {
++  await logAction({
++    action: 'USER_DEACTIVATED',
++    userId: params.actorUserId,
++    entityType: 'SYSTEM',
++    entityId: params.targetUserId,
++    summary: `Admin deactivated user ${params.targetEmail || params.targetUserId}`,
++    metadata: {
++      targetUserId: params.targetUserId,
++      targetEmail: params.targetEmail,
++      ...params.metadata
++    },
++    tags: ['user_management', 'deactivated', 'admin_action', 'security']
++  });
++}
++
++/**
++ * Log user reactivation
++ */
++export async function logUserReactivated(params: UserManagementLogParams) {
++  await logAction({
++    action: 'USER_REACTIVATED',
++    userId: params.actorUserId,
++    entityType: 'SYSTEM',
++    entityId: params.targetUserId,
++    summary: `Admin reactivated user ${params.targetEmail || params.targetUserId}`,
++    metadata: {
++      targetUserId: params.targetUserId,
++      targetEmail: params.targetEmail,
++      ...params.metadata
++    },
++    tags: ['user_management', 'reactivated', 'admin_action']
++  });
++}
++
++/**
++ * Log password reset
++ */
++export async function logUserPasswordReset(params: UserManagementLogParams) {
++  await logAction({
++    action: 'USER_PASSWORD_RESET',
++    userId: params.actorUserId,
++    entityType: 'SYSTEM',
++    entityId: params.targetUserId,
++    summary: `Admin reset password for ${params.targetEmail || params.targetUserId}`,
++    metadata: {
++      targetUserId: params.targetUserId,
++      targetEmail: params.targetEmail,
++      ...params.metadata
++    },
++    tags: ['user_management', 'password_reset', 'admin_action', 'security']
++  });
++}
++
+ 
+diff --git a/package.json b/package.json
+index c976748..f34f166 100644
+--- a/package.json
++++ b/package.json
+@@ -34,6 +34,7 @@
+   },
+   "devDependencies": {
+     "@types/bcryptjs": "^2.4.6",
++    "@types/better-sqlite3": "^7.6.13",
+     "@types/node": "^22.10.2",
+     "@types/pdfkit": "^0.17.4",
+     "@types/qrcode": "^1.5.5",
+diff --git a/prisma/schema.prisma b/prisma/schema.prisma
+index 665f394..3d24ae3 100644
+--- a/prisma/schema.prisma
++++ b/prisma/schema.prisma
+@@ -169,6 +169,10 @@ model User {
+   createdAt     DateTime @default(now())
+   updatedAt     DateTime @updatedAt
+   
++  // Phase 2 additions
++  lastLoginAt   DateTime?
++  passwordSetAt DateTime?
++  
+   // Relations
+   createdOrders             RetailerOrder[]    @relation("OrderCreator")
+   approvedOrders            RetailerOrder[]    @relation("OrderApprover")
+@@ -647,16 +651,19 @@ model PurchaseOrderLineItem {
+ }
+ 
+ model ActivityLog {
+-  id          String         @id @default(cuid())
+-  entityType  ActivityEntity
+-  entityId    String
++  id          String          @id @default(cuid())
++  entityType  ActivityEntity?
++  entityId    String?
+   action      String
+   userId      String?
++  ipAddress   String?
++  userAgent   String?
+   summary     String
+   diff        Json?
+   details     Json?
++  metadata    Json?          // Renamed from details for clarity
+   tags        Json?
+-  createdAt   DateTime       @default(now())
++  createdAt   DateTime        @default(now())
+   
+   user        User?  @relation(fields: [userId], references: [id])
+   

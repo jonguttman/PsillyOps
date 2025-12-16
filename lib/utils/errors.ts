@@ -13,7 +13,7 @@ export class AppError extends Error {
   constructor(code: string, message: string, details?: any) {
     super(message);
     this.code = code;
-    this.details = details;
+    this.metadata = details;
     this.name = 'AppError';
     Error.captureStackTrace(this, this.constructor);
   }
@@ -22,7 +22,7 @@ export class AppError extends Error {
     return {
       code: this.code,
       message: this.message,
-      details: this.details
+      details: this.metadata
     };
   }
 }

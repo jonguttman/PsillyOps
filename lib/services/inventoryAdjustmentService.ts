@@ -168,7 +168,7 @@ export async function createInventoryAdjustment(params: CreateInventoryAdjustmen
       summary,
       before: { quantityOnHand: beforeQty },
       after: { quantityOnHand: afterQty },
-      details: {
+      metadata: {
         inventoryId,
         itemName: name,
         deltaQty,

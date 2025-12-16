@@ -234,7 +234,7 @@ export async function createStrain(data: StrainData, userId?: string) {
     action: 'strain_created',
     userId,
     summary: `Created strain "${strain.name}" (${strain.shortCode})`,
-    details: { strainId: strain.id, name: strain.name, shortCode: strain.shortCode },
+    metadata: { strainId: strain.id, name: strain.name, shortCode: strain.shortCode },
     tags: ['strain', 'created']
   });
 
@@ -299,7 +299,7 @@ export async function updateStrain(
     summary: `Updated strain "${strain.name}"`,
     before: { name: existing.name, shortCode: existing.shortCode },
     after: { name: strain.name, shortCode: strain.shortCode },
-    details: { strainId: strain.id },
+    metadata: { strainId: strain.id },
     tags: ['strain', 'updated']
   });
 
@@ -349,7 +349,7 @@ export async function archiveStrain(id: string, userId?: string, force = false) 
     action: 'strain_archived',
     userId,
     summary: `Archived strain "${strain.name}"${force ? ' (forced)' : ''}`,
-    details: { strainId: strain.id, force },
+    metadata: { strainId: strain.id, force },
     tags: ['strain', 'archived']
   });
 

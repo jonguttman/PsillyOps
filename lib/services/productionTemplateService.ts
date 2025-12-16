@@ -131,7 +131,7 @@ export async function createProductionTemplate(params: {
     action: 'template_created',
     userId,
     summary: `${user?.name || 'User'} created production template "${name}" for ${product.name}`,
-    details: {
+    metadata: {
       templateId: template.id,
       name,
       productName: product.name,
@@ -206,7 +206,7 @@ export async function updateProductionTemplate(
     summary: `${user?.name || 'User'} updated production template "${template.name}"`,
     before,
     after: updates,
-    details: {
+    metadata: {
       templateId: id,
       productName: template.product.name
     },
@@ -242,7 +242,7 @@ export async function archiveProductionTemplate(id: string, userId: string): Pro
     summary: `${user?.name || 'User'} archived production template "${template.name}"`,
     before: { active: true },
     after: { active: false },
-    details: {
+    metadata: {
       templateId: id,
       templateName: template.name,
       productName: template.product.name

@@ -294,12 +294,12 @@ export async function createProductionOrder(params: {
       userName: user?.name || 'User',
       action: 'created',
       entityName: `production order ${orderNumber}`,
-      details: {
+      metadata: {
         product: product.name,
         quantity: quantityToMake
       }
     }),
-    details: {
+    metadata: {
       orderNumber,
       productId,
       productName: product.name,
@@ -366,7 +366,7 @@ export async function startProductionOrder(
       status: ProductionStatus.IN_PROGRESS,
       startedAt: new Date()
     },
-    details: {
+    metadata: {
       orderNumber: order.orderNumber,
       productName: order.product.name
     },
@@ -417,7 +417,7 @@ export async function blockProductionOrder(
     summary: `${user?.name || 'User'} blocked production order ${order.orderNumber}: ${reason}`,
     before,
     after: { status: ProductionStatus.BLOCKED },
-    details: {
+    metadata: {
       orderNumber: order.orderNumber,
       productName: order.product.name,
       reason
@@ -487,7 +487,7 @@ export async function completeProductionOrder(
       userName: user?.name || 'User',
       action: 'completed',
       entityName: `production order ${order.orderNumber}`,
-      details: {
+      metadata: {
         quantity: totalProduced
       }
     }),
@@ -496,7 +496,7 @@ export async function completeProductionOrder(
       status: ProductionStatus.COMPLETED,
       completedAt: new Date()
     },
-    details: {
+    metadata: {
       orderNumber: order.orderNumber,
       productName: order.product.name,
       quantityToMake: order.quantityToMake,
@@ -602,7 +602,7 @@ export async function calculateMaterialRequirements(orderId: string, userId?: st
     action: 'material_requirements_calculated',
     userId: userId || undefined,
     summary: `Recalculated material requirements for production order ${order.orderNumber || order.id}`,
-    details: {
+    metadata: {
       orderNumber: order.orderNumber,
       productId: order.productId,
       quantityToMake: order.quantityToMake,
@@ -697,7 +697,7 @@ export async function issueMaterials(
     action: 'materials_issued',
     userId,
     summary: `${user?.name || 'User'} issued materials to ${order.orderNumber}`,
-    details: {
+    metadata: {
       orderNumber: order.orderNumber,
       issuedMaterials
     },
@@ -779,7 +779,7 @@ export async function setBatchQCStatus(
     summary: `${user?.name || 'User'} set QC status to ${qcStatus} for batch ${batch.batchCode}`,
     before,
     after: { qcStatus, notes },
-    details: {
+    metadata: {
       batchCode: batch.batchCode,
       productName: batch.product.name,
       previousQCStatus: batch.qcStatus,
@@ -843,7 +843,7 @@ export async function addLaborEntry(params: {
     action: 'labor_logged',
     userId: loggedByUserId,
     summary: `${loggedBy?.name || 'User'} logged ${minutes} minutes of labor for ${worker.name} on batch ${batch.batchCode}`,
-    details: {
+    metadata: {
       batchCode: batch.batchCode,
       productName: batch.product.name,
       workerName: worker.name,
@@ -986,12 +986,12 @@ export async function createBatch(params: {
       userName: user?.name || 'System',
       action: 'created',
       entityName: `batch ${batchCode}`,
-      details: {
+      metadata: {
         product: product.name,
         quantity: plannedQuantity
       }
     }),
-    details: {
+    metadata: {
       productId,
       productName: product.name,
       plannedQuantity,
@@ -1072,7 +1072,7 @@ export async function updateBatch(
     }),
     before,
     after: updates,
-    details: {
+    metadata: {
       batchCode: batch.batchCode,
       productName: batch.product.name
     },
@@ -1119,13 +1119,13 @@ export async function updateBatchStatus(
       userName: user?.name || 'User',
       action: 'updated',
       entityName: `batch ${batch.batchCode}`,
-      details: {
+      metadata: {
         status: status
       }
     }),
     before,
     after: { status, notes: notes ?? null },
-    details: {
+    metadata: {
       previousStatus: batch.status,
       newStatus: status
     }
@@ -1178,7 +1178,7 @@ export async function assignMakers(
     after: {
       makers: makerIds
     },
-    details: {
+    metadata: {
       makerNames: makers.map(m => m.name)
     },
     tags: ['assignment']
@@ -1307,7 +1307,7 @@ export async function completeBatch(params: {
       userName: user?.name || 'User',
       action: 'completed',
       entityName: `batch ${batch.batchCode}`,
-      details: {
+      metadata: {
         quantity: actualQuantity,
         location: location.name
       }
@@ -1322,7 +1322,7 @@ export async function completeBatch(params: {
       productionDate: productionDate || new Date(),
       qcStatus
     },
-    details: {
+    metadata: {
       productName: batch.product.name,
       actualQuantity,
       actualYield,
@@ -1381,7 +1381,7 @@ async function updateProductionOrderProgress(productionOrderId: string): Promise
       summary: `Production order ${productionOrder.orderNumber} status changed to ${newStatus}`,
       before: { status: productionOrder.status },
       after: { status: newStatus },
-      details: {
+      metadata: {
         totalCompleted,
         quantityToMake: productionOrder.quantityToMake
       },

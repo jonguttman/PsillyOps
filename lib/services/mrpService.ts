@@ -133,12 +133,12 @@ export async function createProductionOrdersForShortages(
         userName: 'System',
         action: 'created',
         entityName: `production order ${productionOrder.orderNumber}`,
-        details: {
+        metadata: {
           product: product.name,
           quantity: shortage.quantity
         }
       }),
-      details: {
+      metadata: {
         productId: shortage.productId,
         productName: product.name,
         quantityToMake: shortage.quantity,
@@ -156,7 +156,7 @@ export async function createProductionOrdersForShortages(
         action: 'material_shortage_detected',
         userId,
         summary: `Material shortages detected for production order ${productionOrder.orderNumber}`,
-        details: {
+        metadata: {
           shortages: materialRequirements.filter(m => m.quantityShortage > 0)
         },
         tags: ['shortage', 'risk', 'system']
@@ -236,12 +236,12 @@ export async function createPurchaseOrdersForMaterialShortages(
         userName: 'System',
         action: 'created',
         entityName: `purchase order ${purchaseOrder.poNumber}`,
-        details: {
+        metadata: {
           vendor: vendor.name,
           itemCount: items.length
         }
       }),
-      details: {
+      metadata: {
         vendorId,
         vendorName: vendor.name,
         lineItems: purchaseOrder.lineItems.map(li => ({
@@ -309,7 +309,7 @@ export async function checkReorderPoints(userId: string): Promise<{
         action: 'reorder_point_triggered',
         userId,
         summary: `Product ${product.name} below reorder point`,
-        details: {
+        metadata: {
           availableStock,
           reorderPoint: product.reorderPoint,
           suggestedQuantity: quantityToMake
@@ -356,7 +356,7 @@ export async function checkReorderPoints(userId: string): Promise<{
         action: 'reorder_point_triggered',
         userId,
         summary: `Material ${material.name} below reorder point`,
-        details: {
+        metadata: {
           availableStock,
           reorderPoint: material.reorderPoint,
           shortage

@@ -78,7 +78,7 @@ export async function createPrintJob(params: {
     action: 'print_job_created',
     userId,
     summary: `Created print job: ${quantity} labels on ${sheets} sheet(s)`,
-    details: {
+    metadata: {
       entityType,
       entityId,
       quantity,
@@ -216,7 +216,7 @@ export async function markPaperUsed(
     action: 'print_job_paper_used',
     userId,
     summary: `Paper used: ${actualSheetsUsed} sheet(s) for ${printJob.quantity} labels`,
-    details: {
+    metadata: {
       printJobId,
       materialId: printJob.paperMaterialId,
       materialName: material.name,

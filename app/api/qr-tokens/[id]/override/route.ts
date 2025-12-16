@@ -86,7 +86,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       summary: `Set redirect override on token ${token.token.slice(0, 10)}... to ${redirectUrl}`,
       before: { redirectUrl: previousUrl },
       after: { redirectUrl },
-      details: {
+      metadata: {
         tokenId: token.id,
         tokenValue: token.token,
         entityType: token.entityType,
@@ -167,7 +167,7 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
       summary: `Cleared redirect override from token ${token.token.slice(0, 10)}...`,
       before: { redirectUrl: previousUrl },
       after: { redirectUrl: null },
-      details: {
+      metadata: {
         tokenId: token.id,
         tokenValue: token.token,
         entityType: token.entityType,

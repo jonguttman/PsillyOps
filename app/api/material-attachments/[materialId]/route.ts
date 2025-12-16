@@ -90,7 +90,7 @@ export async function POST(
       action: "attachment_added",
       userId: session.user.id,
       summary: `Added attachment "${fileName}" to ${material.name}`,
-      details: {
+      metadata: {
         fileName,
         fileType: fileType || "OTHER"
       },

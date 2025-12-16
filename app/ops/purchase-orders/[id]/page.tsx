@@ -94,7 +94,7 @@ export default async function PurchaseOrderDetailPage({ params }: PageProps) {
     summary: log.summary,
     createdAt: log.createdAt.toISOString(),
     user: log.user,
-    details: log.details as Record<string, any> | null,
+    details: log.metadata as Record<string, any> | null,
   }));
 
   const canEdit = ['ADMIN', 'WAREHOUSE'].includes(session.user.role);

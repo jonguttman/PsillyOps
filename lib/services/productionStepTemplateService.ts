@@ -81,7 +81,7 @@ export async function createProductStepTemplate(params: {
     action: 'production_step_template_created',
     userId,
     summary: `Created production step template "${created.label}" for "${product.name}"`,
-    details: {
+    metadata: {
       stepId: created.id,
       stepKey: created.key,
       stepLabel: created.label,
@@ -129,7 +129,7 @@ export async function updateProductStepTemplate(params: {
     summary: `Updated production step template "${updated.label}"`,
     before: { label: existing.label, required: existing.required },
     after: { label: updated.label, required: updated.required },
-    details: { stepId: updated.id, stepKey: updated.key, order: updated.order },
+    metadata: { stepId: updated.id, stepKey: updated.key, order: updated.order },
     tags: ['production', 'template', 'update'],
   });
 
@@ -179,7 +179,7 @@ export async function reorderProductStepTemplates(params: {
     action: 'production_step_template_reordered',
     userId,
     summary: `Reordered production step templates`,
-    details: {
+    metadata: {
       before,
       after: orderedStepIds.map((id, idx) => ({ id, order: idx + 1 })),
     },
@@ -244,7 +244,7 @@ export async function deleteProductStepTemplate(params: {
     action: 'production_step_template_deleted',
     userId,
     summary: `Deleted production step template "${step.label}" from "${product?.name || 'product'}"`,
-    details: { stepId: step.id, stepKey: step.key, stepLabel: step.label, order: step.order },
+    metadata: { stepId: step.id, stepKey: step.key, stepLabel: step.label, order: step.order },
     tags: ['production', 'template', 'delete'],
   });
 

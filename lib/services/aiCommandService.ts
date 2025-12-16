@@ -253,7 +253,7 @@ export type AICommandInterpretation =
 export type AICommandExecutionResult = {
   success: boolean;
   message: string;
-  details?: any;
+  metadata?: any; // Phase 1: Renamed from 'details'
 };
 
 // ========================================
@@ -1211,7 +1211,7 @@ export async function executeInterpretedCommand(
         result = {
           success: true,
           message: 'Navigation command prepared (no data was created)',
-          details: {
+          metadata: {
             type: 'NAVIGATION',
             destination: '/ops/strains/new',
             prefill: { name: interpreted.args.name },
@@ -1222,7 +1222,7 @@ export async function executeInterpretedCommand(
         result = {
           success: true,
           message: 'Navigation command prepared (no data was created)',
-          details: {
+          metadata: {
             type: 'NAVIGATION',
             destination: '/ops/materials/new',
             prefill: {
@@ -1261,7 +1261,7 @@ export async function executeInterpretedCommand(
       action: 'ai_command_executed',
       userId: userId || undefined,
       summary: `AI command ${interpreted.command} executed successfully`,
-      details: {
+      metadata: {
         command: interpreted,
         result,
       },
@@ -1290,7 +1290,7 @@ export async function executeInterpretedCommand(
       action: 'ai_command_failed',
       userId: userId || undefined,
       summary: `AI command ${interpreted.command} failed: ${error.message}`,
-      details: {
+      metadata: {
         command: interpreted,
         error: error.message,
       },
@@ -1300,7 +1300,7 @@ export async function executeInterpretedCommand(
     return {
       success: false,
       message: error.message || 'Command execution failed',
-      details: { error: error.message }
+      metadata: { error: error.message }
     };
   }
 }
@@ -1699,7 +1699,7 @@ async function executeReceiveMaterial(
   return {
     success: true,
     message: `Received ${cmd.args.quantity} ${cmd.resolved?.materialName || cmd.args.materialRef} to ${cmd.resolved?.locationName || 'inventory'}`,
-    details: { inventoryId }
+    metadata: { inventoryId }
   };
 }
 
@@ -1718,7 +1718,7 @@ async function executeMoveInventory(
   return {
     success: true,
     message: `Moved ${cmd.args.quantity} to ${cmd.resolved?.toLocationName || cmd.args.toLocationRef}`,
-    details: {}
+    metadata: {}
   };
 }
 
@@ -1737,7 +1737,7 @@ async function executeAdjustInventory(
     return {
       success: true,
       message: `Inventory already at target quantity (${cmd.args.targetQuantity})`,
-      details: { noChangeNeeded: true }
+      metadata: { noChangeNeeded: true }
     };
   }
 
@@ -1755,7 +1755,7 @@ async function executeAdjustInventory(
   return {
     success: true,
     message: `Inventory ${direction} by ${Math.abs(delta)}${targetInfo}: ${cmd.args.reason}`,
-    details: { delta, targetQuantity: cmd.args.targetQuantity }
+    metadata: { delta, targetQuantity: cmd.args.targetQuantity }
   };
 }
 
@@ -1775,7 +1775,7 @@ async function executeCreateRetailerOrder(
   return {
     success: true,
     message: `Created order for ${cmd.resolved?.retailerName || cmd.args.retailerRef} with ${cmd.resolved!.items!.length} item(s)`,
-    details: { orderId }
+    metadata: { orderId }
   };
 }
 
@@ -1821,7 +1821,7 @@ async function executeCompleteBatch(
   return {
     success: true,
     message: `Completed batch ${cmd.resolved?.batchCode || cmd.args.batchRef} with yield of ${cmd.args.yieldQuantity}`,
-    details: { batchId: cmd.resolved!.batchId }
+    metadata: { batchId: cmd.resolved!.batchId }
   };
 }
 
@@ -1843,7 +1843,7 @@ async function executeCreateMaterial(
   return {
     success: true,
     message: `Created material "${cmd.args.name}" with SKU ${sku}`,
-    details: { materialId: material.id, sku }
+    metadata: { materialId: material.id, sku }
   };
 }
 
@@ -1859,7 +1859,7 @@ async function executeGenerateInvoice(
     return {
       success: true,
       message: `Invoice ${existingInvoice.invoiceNo} already exists for order ${cmd.resolved?.orderNumber}`,
-      details: { invoiceId: existingInvoice.id, invoiceNo: existingInvoice.invoiceNo }
+      metadata: { invoiceId: existingInvoice.id, invoiceNo: existingInvoice.invoiceNo }
     };
   }
 
@@ -1875,7 +1875,7 @@ async function executeGenerateInvoice(
   return {
     success: true,
     message: `Generated invoice ${invoice?.invoiceNo || invoiceId} for order ${cmd.resolved?.orderNumber || orderId}`,
-    details: { 
+    metadata: { 
       invoiceId, 
       invoiceNo: invoice?.invoiceNo,
       orderNumber: cmd.resolved?.orderNumber,
@@ -1896,7 +1896,7 @@ async function executeGenerateManifest(
   return {
     success: true,
     message: `Packing slip ready for order ${cmd.resolved?.orderNumber}`,
-    details: { 
+    metadata: { 
       orderId,
       orderNumber: cmd.resolved?.orderNumber,
       retailerName: cmd.resolved?.retailerName,

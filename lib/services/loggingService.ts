@@ -290,29 +290,29 @@ export function generateSummary(params: {
   userName?: string;
   action: string;
   entityName: string;
-  details?: Record<string, any>;
+  metadata?: Record<string, any>;
 }): string {
-  const { userName = 'System', action, entityName, details } = params;
+  const { userName = 'System', action, entityName, metadata } = params;
   
   // Common patterns
-  const patterns: Record<string, (n: string, e: string, d?: any) => string> = {
+  const patterns: Record<string, (n: string, e: string, m?: any) => string> = {
     created: (n, e) => `${n} created ${e}`,
     updated: (n, e) => `${n} updated ${e}`,
     deleted: (n, e) => `${n} deleted ${e}`,
-    moved: (n, e, d) => `${n} moved ${d?.quantity || ''} ${e} from ${d?.from} to ${d?.to}`,
-    allocated: (n, e, d) => `${n} allocated ${d?.quantity || ''} ${e} to order ${d?.orderNumber || ''}`,
+    moved: (n, e, m) => `${n} moved ${m?.quantity || ''} ${e} from ${m?.from} to ${m?.to}`,
+    allocated: (n, e, m) => `${n} allocated ${m?.quantity || ''} ${e} to order ${m?.orderNumber || ''}`,
     completed: (n, e) => `${n} completed ${e}`,
     submitted: (n, e) => `${n} submitted ${e}`,
-    shipped: (n, e, d) => `${n} shipped ${e}${d?.trackingNumber ? ` (${d.trackingNumber})` : ''}`,
-    received: (n, e, d) => `${n} received ${d?.quantity || ''} ${e}`,
-    adjusted: (n, e, d) => `${n} adjusted ${e} by ${d?.delta || ''}${d?.reason ? ` - ${d.reason}` : ''}`,
+    shipped: (n, e, m) => `${n} shipped ${e}${m?.trackingNumber ? ` (${m.trackingNumber})` : ''}`,
+    received: (n, e, m) => `${n} received ${m?.quantity || ''} ${e}`,
+    adjusted: (n, e, m) => `${n} adjusted ${e} by ${m?.delta || ''}${m?.reason ? ` - ${m.reason}` : ''}`,
   };
   
   const lowerAction = action.toLowerCase();
   
   for (const [key, generator] of Object.entries(patterns)) {
     if (lowerAction.includes(key)) {
-      return generator(userName, entityName, details);
+      return generator(userName, entityName, metadata);
     }
   }
   
@@ -416,6 +416,98 @@ export async function logUserPasswordReset(params: UserManagementLogParams) {
       ...params.metadata
     },
     tags: ['user_management', 'password_reset', 'admin_action', 'security']
+  });
+}
+
+/**
+ * Auth Logging Helpers (Phase 1)
+ */
+
+export interface AuthLogParams {
+  userId?: string;
+  email?: string;
+  ipAddress?: string;
+  userAgent?: string;
+  metadata?: Record<string, any>;
+}
+
+export type AuthFailureCode =
+  | "MISSING_CREDENTIALS"
+  | "USER_NOT_FOUND"
+  | "ACCOUNT_INACTIVE"
+  | "INVALID_PASSWORD"
+  | "SYSTEM_ERROR";
+
+/**
+ * Log successful login
+ */
+export async function logAuthLoginSuccess(params: AuthLogParams) {
+  await logAction({
+    action: 'AUTH_LOGIN_SUCCESS',
+    userId: params.userId,
+    ipAddress: params.ipAddress,
+    userAgent: params.userAgent,
+    summary: `Successful login${params.email ? `: ${params.email}` : ''}`,
+    metadata: {
+      email: params.email,
+      ...params.metadata
+    },
+    tags: ['auth', 'login', 'success']
+  });
+}
+
+/**
+ * Log failed login attempt
+ */
+export async function logAuthLoginFailure(params: AuthLogParams & { reason?: string; reasonCode?: AuthFailureCode }) {
+  await logAction({
+    action: 'AUTH_LOGIN_FAILURE',
+    ipAddress: params.ipAddress,
+    userAgent: params.userAgent,
+    summary: `Failed login attempt${params.email ? ` for ${params.email}` : ''}${params.reason ? `: ${params.reason}` : ''}`,
+    metadata: {
+      email: params.email,
+      reason: params.reason,
+      reasonCode: params.reasonCode,
+      ...params.metadata
+    },
+    tags: ['auth', 'login', 'failure', 'security']
+  });
+}
+
+/**
+ * Log user logout
+ */
+export async function logAuthLogout(params: AuthLogParams) {
+  await logAction({
+    action: 'AUTH_LOGOUT',
+    userId: params.userId,
+    ipAddress: params.ipAddress,
+    userAgent: params.userAgent,
+    summary: `User logged out${params.email ? `: ${params.email}` : ''}`,
+    metadata: {
+      email: params.email,
+      ...params.metadata
+    },
+    tags: ['auth', 'logout']
+  });
+}
+
+/**
+ * Log session creation
+ */
+export async function logAuthSessionCreated(params: AuthLogParams) {
+  await logAction({
+    action: 'AUTH_SESSION_CREATED',
+    userId: params.userId,
+    ipAddress: params.ipAddress,
+    userAgent: params.userAgent,
+    summary: `Session created${params.email ? ` for ${params.email}` : ''}`,
+    metadata: {
+      email: params.email,
+      ...params.metadata
+    },
+    tags: ['auth', 'session']
   });
 }
 

@@ -89,7 +89,7 @@ export async function createWorkCenter(params: {
     action: 'created',
     userId,
     summary: `${user?.name || 'User'} created work center ${name}`,
-    details: { name, description },
+    metadata: { name, description },
     tags: ['created']
   });
 

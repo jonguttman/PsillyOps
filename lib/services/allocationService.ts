@@ -84,12 +84,12 @@ export async function allocateOrder(
       userName: order.createdBy.name,
       action: 'allocated',
       entityName: `order ${order.orderNumber}`,
-      details: {
+      metadata: {
         totalShortages,
         retailer: order.retailer.name
       }
     }),
-    details: {
+    metadata: {
       lineAllocations,
       totalShortages
     },
@@ -224,7 +224,7 @@ export async function releaseAllocations(
     action: 'allocations_released',
     userId,
     summary: `Allocations released for order ${order.orderNumber}`,
-    details: { orderNumber: order.orderNumber }
+    metadata: { orderNumber: order.orderNumber }
   });
 }
 
@@ -284,7 +284,7 @@ export async function fulfillAllocations(
             quantityOnHand: inventory.quantityOnHand - allocation.quantity,
             quantityReserved: inventory.quantityReserved - allocation.quantity
           },
-          details: {
+          metadata: {
             inventoryId: allocation.inventoryId,
             quantity: allocation.quantity
           }
@@ -300,7 +300,7 @@ export async function fulfillAllocations(
     action: 'fulfilled',
     userId,
     summary: `Order ${order.orderNumber} fulfilled`,
-    details: { orderNumber: order.orderNumber }
+    metadata: { orderNumber: order.orderNumber }
   });
 }
 

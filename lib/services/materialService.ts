@@ -305,7 +305,7 @@ export async function recordCostChange(
     action: 'cost_update',
     userId,
     summary: `Recorded new cost $${price.toFixed(2)} for ${material.name}${vendorName ? ` from ${vendorName}` : ''}`,
-    details: {
+    metadata: {
       price,
       source,
       vendorId,
@@ -619,7 +619,7 @@ export async function deleteMaterial(materialId: string, userId?: string) {
     action: 'material_deleted',
     userId,
     summary: `Permanently deleted material ${material.name}`,
-    details: { materialSnapshot },
+    metadata: { materialSnapshot },
     tags: ['deleted', 'material', 'permanent']
   });
 
@@ -707,7 +707,7 @@ export async function upsertMaterialVendor(
     action: 'vendor_relationship_updated',
     userId,
     summary: `Updated vendor relationship: ${material.name} with ${vendor.name}`,
-    details: {
+    metadata: {
       vendorId: data.vendorId,
       vendorName: vendor.name,
       price: data.lastPrice,

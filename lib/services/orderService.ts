@@ -71,11 +71,11 @@ export async function createOrder(params: CreateOrderParams): Promise<string> {
       userName: order.createdBy.name,
       action: 'created',
       entityName: `order ${order.orderNumber}`,
-      details: {
+      metadata: {
         retailer: retailer.name
       }
     }),
-    details: {
+    metadata: {
       retailerName: retailer.name,
       lineItems: order.lineItems.map(li => ({
         productName: li.product.name,
@@ -219,11 +219,11 @@ export async function submitOrder(orderId: string, userId: string): Promise<{
       userName: 'User',
       action: 'submitted',
       entityName: `order ${order.orderNumber}`,
-      details: {
+      metadata: {
         shortages: shortages.length
       }
     }),
-    details: {
+    metadata: {
       shortages,
       productionOrdersCreated: productionOrdersCreated.length,
       purchaseOrdersCreated: purchaseOrdersCreated.length
@@ -332,13 +332,13 @@ export async function shipOrder(params: {
       userName: user?.name || 'User',
       action: 'shipped',
       entityName: `order ${order.orderNumber}`,
-      details: {
+      metadata: {
         trackingNumber
       }
     }),
     before: { status: order.status },
     after: { status: OrderStatus.SHIPPED, trackingNumber },
-    details: {
+    metadata: {
       trackingNumber
     }
   });

@@ -136,9 +136,9 @@ export async function createPurchaseOrder(
     summary: generateSummary({
       action: 'created',
       entityName: `purchase order ${poNumber}`,
-      details: { vendor: vendor.name, itemCount: input.lineItems.length },
+      metadata: { vendor: vendor.name, itemCount: input.lineItems.length },
     }),
-    details: {
+    metadata: {
       poNumber,
       vendorId: input.vendorId,
       vendorName: vendor.name,
@@ -282,7 +282,7 @@ export async function submitPurchaseOrder(
     summary: generateSummary({
       action: 'submitted',
       entityName: `purchase order ${existing.poNumber}`,
-      details: { vendor: existing.vendor.name },
+      metadata: { vendor: existing.vendor.name },
     }),
     before: { status: PurchaseOrderStatus.DRAFT },
     after: { status: PurchaseOrderStatus.SENT },
@@ -423,9 +423,9 @@ export async function receivePurchaseOrderItems(
     summary: generateSummary({
       action: 'received',
       entityName: `${items.length} item(s) from ${existing.poNumber}`,
-      details: { vendor: existing.vendor.name },
+      metadata: { vendor: existing.vendor.name },
     }),
-    details: {
+    metadata: {
       poNumber: existing.poNumber,
       vendorName: existing.vendor.name,
       receipts: receiptDetails,
@@ -479,11 +479,11 @@ export async function cancelPurchaseOrder(
     summary: generateSummary({
       action: 'cancelled',
       entityName: `purchase order ${existing.poNumber}`,
-      details: { reason },
+      metadata: { reason },
     }),
     before: { status: existing.status },
     after: { status: PurchaseOrderStatus.CANCELLED },
-    details: { reason },
+    metadata: { reason },
     tags: ['status_change', 'cancelled'],
   });
 }

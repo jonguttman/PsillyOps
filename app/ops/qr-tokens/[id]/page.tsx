@@ -42,7 +42,7 @@ async function addNote(formData: FormData) {
     action: 'qr_token_note_added',
     userId: session.user.id,
     summary: `Note added to QR token: ${note.substring(0, 50)}${note.length > 50 ? '...' : ''}`,
-    details: {
+    metadata: {
       tokenId,
       entityType: token.entityType,
       entityId: token.entityId,
@@ -89,7 +89,7 @@ export default async function QRTokenDetailPage({
 
   // Filter to only scans for this specific token
   const filteredScanHistory = scanHistory.filter((scan) => {
-    const details = scan.details as any;
+    const details = scan.metadata as any;
     return details?.tokenId === token.id;
   }).slice(0, 50);
 
@@ -333,7 +333,7 @@ export default async function QRTokenDetailPage({
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredScanHistory.map((scan) => {
-                  const details = scan.details as any;
+                  const details = scan.metadata as any;
                   return (
                     <tr key={scan.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3 text-sm text-gray-900">
@@ -395,7 +395,7 @@ export default async function QRTokenDetailPage({
         ) : (
           <div className="space-y-4">
             {notes.map((note) => {
-              const details = note.details as any;
+              const details = note.metadata as any;
               return (
                 <div key={note.id} className="border-l-4 border-blue-200 pl-4 py-2">
                   <p className="text-sm text-gray-900">{details?.note || note.summary}</p>

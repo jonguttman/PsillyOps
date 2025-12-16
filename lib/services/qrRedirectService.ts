@@ -239,7 +239,7 @@ export async function createRedirectRule(
     action: 'qr_redirect_rule_created',
     userId,
     summary: `Created QR redirect rule: ${hasEntityScope ? `${entityType} ${entityId}` : `version ${versionId}`} → ${redirectUrl}`,
-    details: {
+    metadata: {
       ruleId: rule.id,
       scope: hasEntityScope ? 'entity' : 'version',
       entityType: rule.entityType,
@@ -294,7 +294,7 @@ export async function deactivateRedirectRule(
     action: 'qr_redirect_rule_deactivated',
     userId,
     summary: `Deactivated QR redirect rule: ${rule.entityType ? `${rule.entityType} ${rule.entityId}` : `version ${rule.versionId}`}`,
-    details: {
+    metadata: {
       ruleId: rule.id,
       scope: rule.entityType ? 'entity' : 'version',
       entityType: rule.entityType,

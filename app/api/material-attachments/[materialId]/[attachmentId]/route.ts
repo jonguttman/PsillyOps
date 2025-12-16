@@ -51,7 +51,7 @@ export async function DELETE(
       action: "attachment_removed",
       userId: session.user.id,
       summary: `Removed attachment "${attachment.fileName}" from ${attachment.material.name}`,
-      details: {
+      metadata: {
         fileName: attachment.fileName,
         fileType: attachment.fileType
       },

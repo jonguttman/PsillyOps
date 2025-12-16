@@ -130,7 +130,7 @@ export async function DELETE(
       action: 'label_version_deleted',
       userId: session.user.id,
       summary: `Deleted label version ${version.version}`,
-      details: {
+      metadata: {
         templateId: version.templateId,
         version: version.version
       }

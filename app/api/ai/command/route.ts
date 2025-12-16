@@ -179,7 +179,7 @@ export async function POST(req: NextRequest) {
         action: 'ai_propose_run_edit',
         userId: session.user.id,
         summary: `AI proposed run edits`,
-        details: { operations: runEditProposal.operations },
+        metadata: { operations: runEditProposal.operations },
         tags: ['ai', 'production', 'proposal'],
       });
 
@@ -227,7 +227,7 @@ export async function POST(req: NextRequest) {
           action: 'ai_navigate_entity',
           userId: session.user.id,
           summary: `AI prepared navigation to existing ${entity}: ${existing.name}`,
-          details: { entity, destination, existing },
+          metadata: { entity, destination, existing },
           tags: ['ai', 'navigation', 'prepare'],
         });
 
@@ -281,7 +281,7 @@ export async function POST(req: NextRequest) {
         action: 'ai_propose_create_entity',
         userId: session.user.id,
         summary: `AI prepared create ${entity}${proposedName ? `: ${proposedName}` : ''}`,
-        details: { entity, prefill },
+        metadata: { entity, prefill },
         tags: ['ai_command', 'proposal'],
       });
 
@@ -343,7 +343,7 @@ export async function POST(req: NextRequest) {
         action: 'ai_propose_create_production_run',
         userId: session.user.id,
         summary: `AI prepared a production run: ${productName}${suggestedQuantity ? ` × ${suggestedQuantity}` : ''}`,
-        details: { productId, productName, productSku, suggestedQuantity },
+        metadata: { productId, productName, productSku, suggestedQuantity },
         tags: ['ai_command', 'proposal'],
       });
 
@@ -382,7 +382,7 @@ export async function POST(req: NextRequest) {
         action: 'ai_navigate_entity',
         userId: session.user.id,
         summary: `AI prepared navigation to ${summaryLabel}`,
-        details: {
+        metadata: {
           command: resolvedCommand.command,
           destination,
           args: resolvedCommand.args,
@@ -425,7 +425,7 @@ export async function POST(req: NextRequest) {
         action: 'ai_navigate_add_entity',
         userId: session.user.id,
         summary: `AI prepared add ${isStrain ? 'strain' : 'material'} form`,
-        details: {
+        metadata: {
           entityType: isStrain ? 'Strain' : 'Material',
           name: resolvedCommand.args?.name,
           destination,
@@ -602,7 +602,7 @@ async function confirmProposedCreate(
       action: 'ai_propose_run_edit_confirmed',
       userId,
       summary: 'AI run edit applied (confirmed)',
-      details: { runId, operations: operationsRaw },
+      metadata: { runId, operations: operationsRaw },
       tags: ['ai', 'production', 'confirmed'],
     });
 
@@ -659,7 +659,7 @@ async function confirmProposedCreate(
       action: 'ai_navigate_entity',
       userId,
       summary: `AI prepared navigation to existing ${entity}: ${existing.name}`,
-      details: { entity, destination, existing },
+      metadata: { entity, destination, existing },
       tags: ['ai', 'navigation', 'prepare'],
     });
 
@@ -698,7 +698,7 @@ async function confirmProposedCreate(
         action: 'ai_navigate_entity',
         userId,
         summary: `AI prepared navigation to existing strain: ${dup.name}`,
-        details: { entity, destination, existing: dup },
+        metadata: { entity, destination, existing: dup },
         tags: ['ai', 'navigation', 'prepare'],
       });
       return Response.json({ success: true, logId, type: 'NAVIGATION', destination, message: 'Strain already exists — opening it.' });
@@ -733,7 +733,7 @@ async function confirmProposedCreate(
       action: 'ai_create_entity_confirmed',
       userId,
       summary: `AI created strain (confirmed): ${created.name}`,
-      details: { entity, before: null, after: created },
+      metadata: { entity, before: null, after: created },
       tags: ['ai', 'create', 'confirmed'],
     });
 
@@ -782,7 +782,7 @@ async function confirmProposedCreate(
     action: 'ai_create_entity_confirmed',
     userId,
     summary: `AI created material (confirmed): ${created.name}`,
-    details: { entity, before: null, after: created },
+    metadata: { entity, before: null, after: created },
     tags: ['ai', 'create', 'confirmed'],
   });
 

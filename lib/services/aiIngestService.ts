@@ -122,7 +122,7 @@ export async function createDocumentImport(
     action: 'ai_document_created',
     userId: userId || undefined,
     summary: `Document import created (${sourceType})`,
-    details: {
+    metadata: {
       sourceType,
       originalName,
       commandCount: aiResult?.commands?.length || 0,
@@ -301,7 +301,7 @@ export async function applyDocumentImport(
     action: 'ai_document_applied',
     userId: userId || undefined,
     summary: `Document import applied: ${appliedCommands}/${commands.length} commands successful`,
-    details: {
+    metadata: {
       documentType: aiResult?.type,
       appliedCommands,
       failedCommands,
@@ -363,7 +363,7 @@ export async function rejectDocumentImport(
     action: 'ai_document_rejected',
     userId: userId || undefined,
     summary: `Document import rejected${reason ? ': ' + reason : ''}`,
-    details: {
+    metadata: {
       reason,
       sourceType: updated.sourceType,
     },
@@ -506,7 +506,7 @@ export async function addCommandToImport(
     action: 'ai_document_command_added',
     userId: userId || undefined,
     summary: `Manual command added to document import: ${command.command}`,
-    details: { command },
+    metadata: { command },
     tags: ['ai_ingest', 'document', 'manual'],
   });
 
@@ -554,7 +554,7 @@ export async function removeCommandFromImport(
     action: 'ai_document_command_removed',
     userId: userId || undefined,
     summary: `Command removed from document import: ${removed?.command}`,
-    details: { removedCommand: removed, commandIndex },
+    metadata: { removedCommand: removed, commandIndex },
     tags: ['ai_ingest', 'document', 'manual'],
   });
 

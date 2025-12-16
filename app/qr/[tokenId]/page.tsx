@@ -89,7 +89,7 @@ export default async function QRTokenResolverPage({ params }: Props) {
         entityId: productionRun.id,
         action: 'qr_scanned_production_run',
         summary: `QR scanned: Production run for ${productionRun.product.name} × ${productionRun.quantity}`,
-        details: {
+        metadata: {
           runStatus: productionRun.status,
           currentStep: current
             ? {
@@ -113,7 +113,7 @@ export default async function QRTokenResolverPage({ params }: Props) {
         entityId: result.entityId,
         action: 'qr_token_scanned',
         summary: `QR token scanned for ${result.entityType} ${result.entityId} → ${resolutionType} resolution`,
-        details: {
+        metadata: {
           tokenId: result.token?.id,
           entityType: result.entityType,
           entityId: result.entityId,

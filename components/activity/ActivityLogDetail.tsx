@@ -58,7 +58,7 @@ function entityHref(entityType: ActivityEntity, entityId: string) {
 
 function extractRelatedLinks(activity: ActivityLogItem) {
   const links: { label: string; href: string }[] = [];
-  const details = activity.details;
+  const details = activity.metadata;
 
   // relatedEntityType/Id (common for adjustments)
   const relType = getString(details, 'relatedEntityType');
@@ -131,7 +131,7 @@ export default function ActivityLogDetail({ activity }: { activity: ActivityLogI
 
   const related = extractRelatedLinks(activity);
   const hasDiff = activity.diff && Object.keys(activity.diff).length > 0;
-  const details = activity.details && Object.keys(activity.details).length > 0 ? activity.details : null;
+  const details = activity.metadata && Object.keys(activity.metadata).length > 0 ? activity.metadata : null;
 
   const noteLike: unknown =
     (details ? details['notes'] : undefined) ??

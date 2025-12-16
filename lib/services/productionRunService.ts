@@ -197,7 +197,7 @@ export async function createProductionRun(params: {
     action: 'production_run_created',
     userId,
     summary: `Production run created: ${product.name} × ${quantity} (${stepCount} steps)`,
-    details: {
+    metadata: {
       productId: product.id,
       productName: product.name,
       productSku: product.sku,
@@ -334,7 +334,7 @@ export async function startStep(stepId: string, userId?: string, userRole?: stri
     summary: `Production step started: ${result.stepLabel}`,
     before: { status: result.fromStatus },
     after: { status: result.toStatus },
-    details: {
+    metadata: {
       stepKey: result.stepKey,
       stepLabel: result.stepLabel,
       fromStatus: result.fromStatus,
@@ -453,7 +453,7 @@ export async function stopStep(stepId: string, userId?: string, userRole?: strin
     summary: `Production step stopped: ${result.stepLabel}`,
     before: { status: result.fromStatus },
     after: { status: result.toStatus },
-    details: {
+    metadata: {
       stepKey: result.stepKey,
       stepLabel: result.stepLabel,
       fromStatus: result.fromStatus,
@@ -589,7 +589,7 @@ export async function completeStep(stepId: string, userId?: string, userRole?: s
     summary: `Production step completed: ${result.stepLabel}`,
     before: { status: result.fromStatus },
     after: { status: result.toStatus },
-    details: {
+    metadata: {
       stepKey: result.stepKey,
       stepLabel: result.stepLabel,
       fromStatus: result.fromStatus,
@@ -713,7 +713,7 @@ export async function skipStep(stepId: string, reason: string, userId?: string, 
     summary: `Production step skipped: ${result.stepLabel}${result.skipReason ? ` — ${result.skipReason}` : ''}`,
     before: { status: result.fromStatus },
     after: { status: result.toStatus },
-    details: {
+    metadata: {
       stepKey: result.stepKey,
       stepLabel: result.stepLabel,
       fromStatus: result.fromStatus,
@@ -807,7 +807,7 @@ export async function addAdhocRunStep(params: {
     action: 'production_run_steps_modified',
     userId,
     summary: `Added step "${cleanLabel}" to production run`,
-    details: { operation: 'add', before, after },
+    metadata: { operation: 'add', before, after },
     tags: ['production', 'run', 'edit'],
   });
 
@@ -860,7 +860,7 @@ export async function updateRunStepOverride(params: {
     action: 'production_run_steps_modified',
     userId,
     summary: `Updated production run step`,
-    details: { operation: 'update', before, after, stepId },
+    metadata: { operation: 'update', before, after, stepId },
     tags: ['production', 'run', 'edit'],
   });
 
@@ -917,7 +917,7 @@ export async function deleteRunStep(params: { stepId: string; userId?: string })
     action: 'production_run_steps_modified',
     userId,
     summary: `Removed step "${step.label}" from production run`,
-    details: { operation: 'delete', before, after, stepId },
+    metadata: { operation: 'delete', before, after, stepId },
     tags: ['production', 'run', 'edit'],
   });
 
@@ -968,7 +968,7 @@ export async function reorderRunSteps(params: { runId: string; orderedStepIds: s
     action: 'production_run_steps_modified',
     userId,
     summary: `Reordered production run steps`,
-    details: { operation: 'reorder', before, after },
+    metadata: { operation: 'reorder', before, after },
     tags: ['production', 'run', 'edit'],
   });
 
@@ -1006,7 +1006,7 @@ export async function claimRunStep(stepId: string, userId: string, userRole?: st
     action: 'production_step_assigned',
     userId,
     summary: `Step claimed: ${step.label}`,
-    details: { stepId, assignedToUserId: userId },
+    metadata: { stepId, assignedToUserId: userId },
     tags: ['production', 'step', 'assign'],
   });
 
@@ -1044,7 +1044,7 @@ export async function adminAssignRunStep(params: {
     summary: `Step reassigned: ${before.label}`,
     before: { assignedToUserId: before.assignedToUserId },
     after: { assignedToUserId },
-    details: { stepId, assignedToUserId },
+    metadata: { stepId, assignedToUserId },
     tags: ['production', 'step', 'assign'],
   });
 
