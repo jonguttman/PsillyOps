@@ -26,7 +26,7 @@ export interface ActivityLogItem {
   action: string;
   summary: string;
   diff: Record<string, [unknown, unknown]> | null;
-  details: Record<string, unknown> | null;
+  metadata: Record<string, unknown> | null; // Phase 1: Renamed from 'details'
   tags: string[] | null;
   createdAt: string;
   user: {
