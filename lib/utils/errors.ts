@@ -8,12 +8,12 @@ export interface ApiError {
 
 export class AppError extends Error {
   code: string;
-  details?: any;
+  metadata?: any; // Phase 1: Renamed from 'details'
 
-  constructor(code: string, message: string, details?: any) {
+  constructor(code: string, message: string, metadata?: any) {
     super(message);
     this.code = code;
-    this.metadata = details;
+    this.metadata = metadata;
     this.name = 'AppError';
     Error.captureStackTrace(this, this.constructor);
   }
@@ -22,7 +22,7 @@ export class AppError extends Error {
     return {
       code: this.code,
       message: this.message,
-      details: this.metadata
+      details: this.metadata // Keep 'details' in API response for backward compatibility
     };
   }
 }
