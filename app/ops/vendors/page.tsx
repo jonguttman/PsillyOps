@@ -37,7 +37,7 @@ export default async function VendorsPage() {
           </p>
         </div>
         <Link
-          href="/vendors/new"
+          href="/ops/vendors/new"
           className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
         >
           New Vendor
@@ -76,7 +76,7 @@ export default async function VendorsPage() {
               <tr>
                 <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
                   No vendors found.{" "}
-                  <Link href="/vendors/new" className="text-blue-600 hover:text-blue-900">
+                  <Link href="/ops/vendors/new" className="text-blue-600 hover:text-blue-900">
                     Add your first vendor
                   </Link>
                 </td>

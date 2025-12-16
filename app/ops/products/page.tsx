@@ -163,7 +163,7 @@ export default async function ProductsPage({
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <Link
-                      href={`/products/${product.id}`}
+                      href={`/ops/products/${product.id}`}
                       className="text-blue-600 hover:text-blue-900"
                     >
                       View

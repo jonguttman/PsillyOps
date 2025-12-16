@@ -338,7 +338,7 @@ export default async function MaterialVendorsPage({
         ) : allVendors.length === 0 ? (
           <div className="text-sm text-gray-500">
             <p>No vendors exist yet.</p>
-            <Link href="/vendors/new" className="text-blue-600 hover:text-blue-900">
+            <Link href="/ops/vendors/new" className="text-blue-600 hover:text-blue-900">
               Create your first vendor &rarr;
             </Link>
           </div>
