@@ -41,12 +41,21 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg shadow-md">
+        {/* Psilly Branding */}
+        <div className="flex justify-center mb-4">
+          <img
+            src="/PsillyMark-2026.svg"
+            alt="PsillyOps"
+            className="h-10 opacity-90"
+          />
+        </div>
+
         <div>
           <h1 className="text-3xl font-bold text-center text-gray-900">
             PsillyOps
           </h1>
-          <p className="mt-2 text-center text-sm text-gray-600">
-            Inventory Management System
+          <p className="mt-2 text-center text-sm text-muted-foreground">
+            Internal Operations & Inventory System
           </p>
         </div>
 
@@ -98,17 +107,21 @@ export default function LoginPage() {
             disabled={loading}
             className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? 'Signing in...' : 'Sign in'}
+            {loading ? 'Signing in...' : 'Authorized Sign In'}
           </button>
-
-          <div className="mt-4 text-xs text-gray-500">
-            <p className="font-semibold mb-1">Test Accounts:</p>
-            <p>Admin: admin@psillyops.com / password123</p>
-            <p>Production: john@psillyops.com / password123</p>
-            <p>Warehouse: mike@psillyops.com / password123</p>
-            <p>Rep: sarah@psillyops.com / password123</p>
-          </div>
         </form>
+
+        {/* Legal Warning */}
+        <div className="mt-6 rounded-md border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
+          <p className="font-semibold uppercase tracking-wide">
+            Authorized Access Only
+          </p>
+          <p className="mt-1">
+            This system is restricted to authorized PsillyOps personnel.
+            Unauthorized access, use, or modification is prohibited and may be
+            monitored and prosecuted.
+          </p>
+        </div>
       </div>
     </div>
   );
