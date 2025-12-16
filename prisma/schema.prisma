@@ -2,7 +2,7 @@
 // This schema defines all 14+ core entities for the inventory management system
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
