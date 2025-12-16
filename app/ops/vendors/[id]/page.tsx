@@ -32,8 +32,8 @@ async function updateVendor(formData: FormData) {
     }
   });
 
-  revalidatePath(`/vendors/${id}`);
-  redirect(`/vendors/${id}`);
+  revalidatePath(`/ops/vendors/${id}`);
+  redirect(`/ops/vendors/${id}`);
 }
 
 async function archiveVendor(formData: FormData) {
@@ -43,7 +43,7 @@ async function archiveVendor(formData: FormData) {
     where: { id },
     data: { active: false }
   });
-  revalidatePath("/vendors");
+  revalidatePath("/ops/vendors");
   redirect("/ops/vendors");
 }
 

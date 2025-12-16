@@ -76,8 +76,8 @@ async function updateMaterial(formData: FormData) {
     }
   });
 
-  revalidatePath(`/materials/${id}`);
-  redirect(`/materials/${id}`);
+  revalidatePath(`/ops/materials/${id}`);
+  redirect(`/ops/materials/${id}`);
 }
 
 async function archiveMaterial(formData: FormData) {
@@ -90,7 +90,7 @@ async function archiveMaterial(formData: FormData) {
       archivedAt: new Date()
     }
   });
-  revalidatePath("/materials");
+  revalidatePath("/ops/materials");
   redirect("/ops/materials");
 }
 
@@ -111,7 +111,7 @@ async function deleteMaterial(formData: FormData) {
     throw new Error(error.error || 'Failed to delete material');
   }
 
-  revalidatePath("/materials");
+  revalidatePath("/ops/materials");
   redirect("/ops/materials");
 }
 

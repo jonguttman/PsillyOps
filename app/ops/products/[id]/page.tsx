@@ -78,8 +78,8 @@ async function updateProduct(formData: FormData) {
     });
   }
 
-  revalidatePath(`/products/${id}`);
-  redirect(`/products/${id}`);
+  revalidatePath(`/ops/products/${id}`);
+  redirect(`/ops/products/${id}`);
 }
 
 async function archiveProduct(formData: FormData) {
@@ -92,7 +92,7 @@ async function archiveProduct(formData: FormData) {
     data: { active: false },
   });
 
-  revalidatePath("/products");
+  revalidatePath("/ops/products");
   redirect("/ops/products");
 }
 
