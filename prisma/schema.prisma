@@ -164,10 +164,14 @@ model User {
   name          String
   email         String   @unique
   password      String
-  role          UserRole
+  role          UserRole @default(REP)
   active        Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  
+  // Phase 2: User Management fields
+  lastLoginAt   DateTime?
+  passwordSetAt DateTime?
   
   // Relations
   createdOrders             RetailerOrder[]    @relation("OrderCreator")
@@ -648,13 +652,15 @@ model PurchaseOrderLineItem {
 
 model ActivityLog {
   id          String         @id @default(cuid())
-  entityType  ActivityEntity
-  entityId    String
+  entityType  ActivityEntity? // Phase 1: Made nullable for auth logs
+  entityId    String?         // Phase 1: Made nullable for auth logs
   action      String
   userId      String?
+  ipAddress   String?         // Phase 1: Added for auth tracking
+  userAgent   String?         // Phase 1: Added for auth tracking
   summary     String
   diff        Json?
-  details     Json?
+  metadata    Json?           // Phase 1: Renamed from 'details'
   tags        Json?
   createdAt   DateTime       @default(now())
   
