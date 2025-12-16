@@ -74,7 +74,7 @@ export default async function MaterialsPage({
         </div>
         <div className="flex gap-3 items-center">
           <Link
-            href={`/materials?showArchived=${includeArchived ? "false" : "true"}`}
+            href={`/ops/materials?showArchived=${includeArchived ? "false" : "true"}`}
             className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
           >
             {includeArchived ? "Hide Archived" : "Show Archived"}
@@ -196,7 +196,7 @@ export default async function MaterialsPage({
                   </td>
                   <td className="px-4 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <Link
-                      href={`/materials/${material.id}`}
+                      href={`/ops/materials/${material.id}`}
                       className="text-blue-600 hover:text-blue-900"
                     >
                       View
