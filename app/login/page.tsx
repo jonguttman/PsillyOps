@@ -23,12 +23,14 @@ export default function LoginPage() {
         redirect: false
       });
 
-      if (result?.error) {
+      if (!result || result.error) {
         setError('Invalid email or password');
-      } else {
-        router.push('/');
-        router.refresh();
+        return;
       }
+
+      // Successful login — redirect to root which handles role-based routing
+      router.push('/');
+      router.refresh();
     } catch (err) {
       setError('An error occurred. Please try again.');
     } finally {
@@ -111,6 +113,4 @@ export default function LoginPage() {
     </div>
   );
 }
-
-
 
