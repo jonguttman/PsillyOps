@@ -42,7 +42,7 @@ export default async function MyWorkPage() {
           <h1 className="text-2xl font-bold text-gray-900">My Work</h1>
           <p className="mt-1 text-sm text-gray-600">Steps assigned to you.</p>
         </div>
-        <Link href="/production-runs" className="text-sm text-gray-600 hover:text-gray-900">
+        <Link href="/ops/production-runs" className="text-sm text-gray-600 hover:text-gray-900">
           ← Production Runs
         </Link>
       </div>

@@ -546,7 +546,7 @@ export default async function MaterialDetailPage({
               {material.bomUsage.map(bom => (
                 <tr key={bom.id}>
                   <td className="py-2 text-sm">
-                    <Link href={`/products/${bom.productId}`} className="text-blue-600 hover:text-blue-900">{bom.product.name}</Link>
+                    <Link href={`/ops/products/${bom.productId}`} className="text-blue-600 hover:text-blue-900">{bom.product.name}</Link>
                   </td>
                   <td className="py-2 text-sm text-gray-900 text-right">{bom.quantityPerUnit} {material.unitOfMeasure}</td>
                 </tr>

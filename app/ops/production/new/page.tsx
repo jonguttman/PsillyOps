@@ -76,7 +76,7 @@ export default async function NewProductionOrderPage() {
           </p>
         </div>
         <Link
-          href="/production"
+          href="/ops/production"
           className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900"
         >
           &larr; Back
@@ -202,7 +202,7 @@ export default async function NewProductionOrderPage() {
           {/* Actions */}
           <div className="flex justify-end gap-3">
             <Link
-              href="/production"
+              href="/ops/production"
               className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
             >
               Cancel

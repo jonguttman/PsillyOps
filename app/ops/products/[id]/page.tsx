@@ -432,7 +432,7 @@ export default async function ProductDetailPage({
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-medium text-gray-900">Bill of Materials</h2>
           <Link
-            href={`/products/${id}/bom`}
+            href={`/ops/products/${id}/bom`}
             className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
           >
             Edit BOM

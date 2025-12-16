@@ -133,7 +133,7 @@ export default async function VendorDetailPage({
             </Link>
           )}
           <Link
-            href="/vendors"
+            href="/ops/vendors"
             className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900"
           >
             &larr; Back

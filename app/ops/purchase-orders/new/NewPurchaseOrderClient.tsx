@@ -165,7 +165,7 @@ export default function NewPurchaseOrderClient({ vendors, materials }: Props) {
       {/* Header */}
       <div className="flex items-center gap-4 mb-6">
         <Link
-          href="/purchase-orders"
+          href="/ops/purchase-orders"
           className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
         >
           <ArrowLeft className="w-5 h-5" />
@@ -385,7 +385,7 @@ export default function NewPurchaseOrderClient({ vendors, materials }: Props) {
         {/* Actions */}
         <div className="flex items-center justify-end gap-3">
           <Link
-            href="/purchase-orders"
+            href="/ops/purchase-orders"
             className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
           >
             Cancel

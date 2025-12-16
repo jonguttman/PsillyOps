@@ -166,7 +166,7 @@ export default async function ProductionOrderDetailPage({
             </form>
           )}
           <Link
-            href="/production"
+            href="/ops/production"
             className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900"
           >
             &larr; Back

@@ -226,7 +226,7 @@ export default function PurchaseOrderDetailClient({
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-4">
           <Link
-            href="/purchase-orders"
+            href="/ops/purchase-orders"
             className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
