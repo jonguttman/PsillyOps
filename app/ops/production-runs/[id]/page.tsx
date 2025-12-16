@@ -15,7 +15,7 @@ export default async function ProductionRunDetailPage({
   if (!session || !session.user) redirect('/login');
 
   if (!['ADMIN', 'PRODUCTION', 'WAREHOUSE', 'REP'].includes(session.user.role)) {
-    redirect('/dashboard');
+    redirect('/ops/dashboard');
   }
 
   const { id } = await params;
@@ -67,7 +67,7 @@ export default async function ProductionRunDetailPage({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <Link href="/dashboard" className="text-sm text-gray-600 hover:text-gray-900">
+        <Link href="/ops/dashboard" className="text-sm text-gray-600 hover:text-gray-900">
           ← Back
         </Link>
       </div>

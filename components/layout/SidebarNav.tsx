@@ -59,47 +59,47 @@ export function SidebarNav({ userRole }: SidebarNavProps) {
   const pathname = usePathname();
 
   const isActive = (href: string) => {
-    if (href === '/dashboard') {
-      return pathname === '/dashboard' || pathname === '/';
+    if (href === '/ops/dashboard') {
+      return pathname === '/ops/dashboard' || pathname === '/ops' || pathname === '/';
     }
     return pathname.startsWith(href);
   };
 
   // OPS section - Physical operations
   const opsItems: NavItem[] = [
-    { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { href: '/scan', label: 'Scan QR', icon: ScanLine },
-    { href: '/products', label: 'Products', icon: Package },
-    { href: '/materials', label: 'Materials', icon: Boxes },
-    { href: '/inventory', label: 'Inventory', icon: Warehouse },
-    { href: '/production', label: 'Production', icon: Factory },
-    { href: '/production-runs', label: 'Production Runs', icon: ListChecks },
-    { href: '/production-runs/my-work', label: 'My Work', icon: ListChecks },
-    { href: '/orders', label: 'Orders', icon: ShoppingCart },
-    { href: '/purchase-orders', label: 'Purchasing', icon: FileText },
+    { href: '/ops/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { href: '/ops/scan', label: 'Scan QR', icon: ScanLine },
+    { href: '/ops/products', label: 'Products', icon: Package },
+    { href: '/ops/materials', label: 'Materials', icon: Boxes },
+    { href: '/ops/inventory', label: 'Inventory', icon: Warehouse },
+    { href: '/ops/production', label: 'Production', icon: Factory },
+    { href: '/ops/production-runs', label: 'Production Runs', icon: ListChecks },
+    { href: '/ops/production-runs/my-work', label: 'My Work', icon: ListChecks },
+    { href: '/ops/orders', label: 'Orders', icon: ShoppingCart },
+    { href: '/ops/purchase-orders', label: 'Purchasing', icon: FileText },
   ];
 
   // LABELS section - Label templates
   const labelsItems: NavItem[] = [
-    { href: '/labels', label: 'Templates', icon: Tags },
+    { href: '/ops/labels', label: 'Templates', icon: Tags },
   ];
 
   // QR section - Identity & traceability
   const qrItems: NavItem[] = [
-    ...(userRole === 'ADMIN' ? [{ href: '/qr-redirects', label: 'Redirect Rules', icon: QrCode }] : []),
+    ...(userRole === 'ADMIN' ? [{ href: '/ops/qr-redirects', label: 'Redirect Rules', icon: QrCode }] : []),
   ];
 
   // Mobile tools - lightweight pages for phone workflows
   const mobileItems: NavItem[] = [
-    { href: '/m/scan', label: 'Scan (mobile)', icon: ScanLine },
+    { href: '/ops/m/scan', label: 'Scan (mobile)', icon: ScanLine },
   ];
 
   // SYSTEM section - Governance
   const systemItems: NavItem[] = [
-    { href: '/activity', label: 'Activity', icon: Activity },
-    { href: '/strains', label: 'Strains', icon: Dna },
-    { href: '/vendors', label: 'Vendors', icon: Building2 },
-    { href: '/help', label: 'Help', icon: HelpCircle },
+    { href: '/ops/activity', label: 'Activity', icon: Activity },
+    { href: '/ops/strains', label: 'Strains', icon: Dna },
+    { href: '/ops/vendors', label: 'Vendors', icon: Building2 },
+    { href: '/ops/help', label: 'Help', icon: HelpCircle },
   ];
 
   return (

@@ -80,7 +80,7 @@ export default async function MaterialsPage({
             {includeArchived ? "Hide Archived" : "Show Archived"}
           </Link>
           <Link
-            href="/materials/new"
+            href="/ops/materials/new"
             className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
           >
             New Material
@@ -123,7 +123,7 @@ export default async function MaterialsPage({
               <tr>
                 <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
                   No materials found.{" "}
-                  <Link href="/materials/new" className="text-blue-600 hover:text-blue-900">
+                  <Link href="/ops/materials/new" className="text-blue-600 hover:text-blue-900">
                     Create your first material
                   </Link>
                 </td>

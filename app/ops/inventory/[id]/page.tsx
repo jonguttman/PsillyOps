@@ -109,7 +109,7 @@ export default async function InventoryDetailPage({
         </div>
         <div className="flex gap-2">
           <Link
-            href="/inventory"
+            href="/ops/inventory"
             className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900"
           >
             &larr; Back to Inventory

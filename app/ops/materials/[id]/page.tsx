@@ -91,7 +91,7 @@ async function archiveMaterial(formData: FormData) {
     }
   });
   revalidatePath("/materials");
-  redirect("/materials");
+  redirect("/ops/materials");
 }
 
 async function deleteMaterial(formData: FormData) {
@@ -112,7 +112,7 @@ async function deleteMaterial(formData: FormData) {
   }
 
   revalidatePath("/materials");
-  redirect("/materials");
+  redirect("/ops/materials");
 }
 
 async function setPreferredVendor(formData: FormData) {
@@ -300,7 +300,7 @@ export default async function MaterialDetailPage({
             </Link>
           </TooltipWrapper>
           <Link
-            href="/materials"
+            href="/ops/materials"
             className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900"
           >
             &larr; Back

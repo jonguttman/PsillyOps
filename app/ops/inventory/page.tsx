@@ -146,7 +146,7 @@ export default async function InventoryPage({
           </button>
           {(params.search || params.type || params.locationId || params.status) && (
             <Link
-              href="/inventory"
+              href="/ops/inventory"
               className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
             >
               Clear

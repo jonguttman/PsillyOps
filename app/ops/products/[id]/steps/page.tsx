@@ -13,7 +13,7 @@ export default async function ProductStepsPage({
   if (!session || !session.user) redirect('/login');
 
   if (session.user.role === 'REP') {
-    redirect('/dashboard');
+    redirect('/ops/dashboard');
   }
 
   const { id: productId } = await params;

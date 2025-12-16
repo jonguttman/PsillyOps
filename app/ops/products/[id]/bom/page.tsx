@@ -132,7 +132,7 @@ export default async function BOMEditorPage({
           </p>
         </div>
         <Link
-          href={`/products/${id}`}
+          href={`/ops/products/${id}`}
           className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900"
         >
           &larr; Back to Product
@@ -245,7 +245,7 @@ export default async function BOMEditorPage({
           <div className="text-sm text-gray-500">
             <p>No raw materials exist yet.</p>
             <Link
-              href="/materials/new"
+              href="/ops/materials/new"
               className="text-blue-600 hover:text-blue-900"
             >
               Create your first material &rarr;

@@ -64,7 +64,7 @@ export default async function NewStrainPage({
 
   // Only ADMIN can manage strains
   if (session.user.role !== 'ADMIN') {
-    redirect('/dashboard');
+    redirect('/ops/dashboard');
   }
 
   const params = (await searchParams) || {};
@@ -108,7 +108,7 @@ export default async function NewStrainPage({
           <h1 className="text-2xl font-bold text-gray-900">New Strain</h1>
           <p className="mt-1 text-sm text-gray-600">Add a new strain to the lookup table</p>
         </div>
-        <Link href="/strains" className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900">
+        <Link href="/ops/strains" className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900">
           &larr; Back to Strains
         </Link>
       </div>
@@ -182,7 +182,7 @@ export default async function NewStrainPage({
 
           <div className="flex justify-end gap-3 pt-4 border-t">
             <Link
-              href="/strains"
+              href="/ops/strains"
               className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
             >
               Cancel

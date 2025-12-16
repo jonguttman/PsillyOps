@@ -76,7 +76,7 @@ export default async function StrainsPage({
 
   // Only ADMIN can manage strains
   if (session.user.role !== 'ADMIN') {
-    redirect('/dashboard');
+    redirect('/ops/dashboard');
   }
 
   const params = await searchParams;
@@ -132,7 +132,7 @@ export default async function StrainsPage({
         </div>
         <div className="flex items-center gap-3">
           <Link
-            href="/strains/new"
+            href="/ops/strains/new"
             className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
           >
             New Strain

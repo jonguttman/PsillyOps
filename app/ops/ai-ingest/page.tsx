@@ -16,7 +16,7 @@ export default async function AiIngestPage() {
   const canView = hasPermission(session.user.role, 'ai', 'view');
 
   if (!canView) {
-    redirect('/dashboard');
+    redirect('/ops/dashboard');
   }
 
   // Fetch initial document imports

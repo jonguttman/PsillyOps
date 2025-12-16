@@ -98,7 +98,7 @@ export default async function OrderDetailPage({
           </p>
         </div>
         <Link
-          href="/orders"
+          href="/ops/orders"
           className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900"
         >
           &larr; Back to Orders

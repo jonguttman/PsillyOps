@@ -44,7 +44,7 @@ async function archiveVendor(formData: FormData) {
     data: { active: false }
   });
   revalidatePath("/vendors");
-  redirect("/vendors");
+  redirect("/ops/vendors");
 }
 
 export default async function VendorDetailPage({

@@ -194,7 +194,7 @@ export default function DashboardAiInput({ userRole }: DashboardAiInputProps) {
       const name = (result.prefill as Record<string, unknown>)['name'];
       if (typeof name === 'string') params.set('prefill', JSON.stringify({ name }));
       params.set('aiToast', '1');
-      router.push(`/strains/new?${params.toString()}`);
+      router.push(`/ops/strains/new?${params.toString()}`);
       reset();
       return;
     }
@@ -258,7 +258,7 @@ export default function DashboardAiInput({ userRole }: DashboardAiInputProps) {
       if (!response.ok) throw new Error(data.message || 'Failed to create production run');
 
       if (data?.runId) {
-        router.push(`/production-runs/${data.runId}?aiRunCreated=1&productId=${result.product.id}`);
+        router.push(`/ops/production-runs/${data.runId}?aiRunCreated=1&productId=${result.product.id}`);
         reset();
         return;
       }

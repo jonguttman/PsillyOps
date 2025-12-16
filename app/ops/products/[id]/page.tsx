@@ -93,7 +93,7 @@ async function archiveProduct(formData: FormData) {
   });
 
   revalidatePath("/products");
-  redirect("/products");
+  redirect("/ops/products");
 }
 
 export default async function ProductDetailPage({
@@ -214,7 +214,7 @@ export default async function ProductDetailPage({
             </Link>
           )}
           <Link
-            href="/products"
+            href="/ops/products"
             className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900"
           >
             &larr; Back to Products

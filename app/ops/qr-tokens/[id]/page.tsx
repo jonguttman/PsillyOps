@@ -66,7 +66,7 @@ export default async function QRTokenDetailPage({
   }
 
   if (session.user.role !== 'ADMIN') {
-    redirect('/dashboard');
+    redirect('/ops/dashboard');
   }
 
   const { id } = await params;

@@ -8,7 +8,7 @@ export default async function MyWorkPage() {
   if (!session || !session.user) redirect('/login');
 
   if (!['ADMIN', 'PRODUCTION', 'WAREHOUSE', 'REP'].includes(session.user.role)) {
-    redirect('/dashboard');
+    redirect('/ops/dashboard');
   }
 
   const steps = await prisma.productionRunStep.findMany({

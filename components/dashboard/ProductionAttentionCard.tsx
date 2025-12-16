@@ -88,7 +88,7 @@ export default function ProductionAttentionCard() {
         <div className="p-5">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Link
-              href="/production-runs"
+              href="/ops/production-runs"
               className="rounded-md border border-gray-200 p-3 hover:bg-gray-50"
               title="View production runs"
             >
@@ -100,7 +100,7 @@ export default function ProductionAttentionCard() {
             </Link>
 
             <Link
-              href="/production-runs"
+              href="/ops/production-runs"
               className="rounded-md border border-gray-200 p-3 hover:bg-gray-50"
               title="Runs with required steps skipped"
             >
@@ -112,7 +112,7 @@ export default function ProductionAttentionCard() {
             </Link>
 
             <Link
-              href="/production-runs"
+              href="/ops/production-runs"
               className="rounded-md border border-gray-200 p-3 hover:bg-gray-50"
               title="Runs with stalled in-progress steps"
             >
@@ -124,7 +124,7 @@ export default function ProductionAttentionCard() {
             </Link>
 
             <Link
-              href="/production-runs"
+              href="/ops/production-runs"
               className="rounded-md border border-gray-200 p-3 hover:bg-gray-50"
               title="Runs that appear blocked"
             >

@@ -1213,7 +1213,7 @@ export async function executeInterpretedCommand(
           message: 'Navigation command prepared (no data was created)',
           details: {
             type: 'NAVIGATION',
-            destination: '/strains/new',
+            destination: '/ops/strains/new',
             prefill: { name: interpreted.args.name },
           },
         };
@@ -1224,7 +1224,7 @@ export async function executeInterpretedCommand(
           message: 'Navigation command prepared (no data was created)',
           details: {
             type: 'NAVIGATION',
-            destination: '/materials/new',
+            destination: '/ops/materials/new',
             prefill: {
               name: interpreted.args.name,
               categoryHint: interpreted.args.categoryHint,

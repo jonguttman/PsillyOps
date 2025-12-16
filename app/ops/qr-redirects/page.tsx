@@ -40,7 +40,7 @@ export default async function QRRedirectsPage({
 
   // Only ADMIN can manage redirect rules
   if (session.user.role !== 'ADMIN') {
-    redirect('/dashboard');
+    redirect('/ops/dashboard');
   }
 
   const params = await searchParams;

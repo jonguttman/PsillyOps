@@ -4,5 +4,5 @@ export const dynamic = "force-dynamic";
 import { redirect } from "next/navigation";
 
 export default function OpsIndexPage() {
-  redirect("/dashboard");
+  redirect("/ops/dashboard");
 }

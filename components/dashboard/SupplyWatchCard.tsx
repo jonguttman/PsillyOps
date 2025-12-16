@@ -61,7 +61,7 @@ export default function SupplyWatchCard({
           </div>
           {hasIssues ? (
             <Link
-              href="/materials"
+              href="/ops/materials"
               className="text-xs font-medium text-blue-600 hover:text-blue-800"
             >
               View
@@ -102,7 +102,7 @@ export default function SupplyWatchCard({
             </span>
           </div>
           <Link
-            href="/purchase-orders"
+            href="/ops/purchase-orders"
             className="text-xs font-medium text-blue-600 hover:text-blue-800"
           >
             {hasOpenPOs ? 'View' : 'Create'}

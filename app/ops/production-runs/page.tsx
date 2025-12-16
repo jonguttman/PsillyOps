@@ -9,7 +9,7 @@ export default async function ProductionRunsPage() {
   if (!session || !session.user) redirect('/login');
 
   if (!['ADMIN', 'PRODUCTION', 'WAREHOUSE', 'REP'].includes(session.user.role)) {
-    redirect('/dashboard');
+    redirect('/ops/dashboard');
   }
 
   const runs = await prisma.productionRun.findMany({

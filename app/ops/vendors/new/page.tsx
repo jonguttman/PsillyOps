@@ -31,7 +31,7 @@ async function createVendor(formData: FormData) {
   });
 
   revalidatePath("/vendors");
-  redirect("/vendors");
+  redirect("/ops/vendors");
 }
 
 export default async function NewVendorPage() {

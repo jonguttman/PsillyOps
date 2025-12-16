@@ -16,7 +16,7 @@ export default async function StrainDetailPage({
 
   // Only ADMIN can manage strains
   if (session.user.role !== 'ADMIN') {
-    redirect('/dashboard');
+    redirect('/ops/dashboard');
   }
 
   const { id } = await params;
@@ -31,7 +31,7 @@ export default async function StrainDetailPage({
             Short code: <span className="font-semibold">{strain.shortCode}</span>
           </p>
         </div>
-        <Link href="/strains" className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900">
+        <Link href="/ops/strains" className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900">
           &larr; Back to Strains
         </Link>
       </div>

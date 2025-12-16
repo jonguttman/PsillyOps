@@ -12,7 +12,7 @@ export default async function NewPurchaseOrderPage() {
 
   // Only ADMIN and WAREHOUSE can create POs
   if (!['ADMIN', 'WAREHOUSE'].includes(session.user.role)) {
-    redirect("/purchase-orders");
+    redirect("/ops/purchase-orders");
   }
 
   // Fetch vendors and materials for dropdowns

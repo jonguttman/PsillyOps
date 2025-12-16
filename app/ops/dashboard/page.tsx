@@ -19,9 +19,9 @@ export default async function AdminDashboardPage() {
     redirect("/login");
   }
 
-  // Not an admin → send to home
+  // Not an admin → send to dashboard root (or login fallback)
   if (session.user.role !== "ADMIN") {
-    redirect("/");
+    redirect("/ops/dashboard");
   }
 
   // Fetch all dashboard data in parallel

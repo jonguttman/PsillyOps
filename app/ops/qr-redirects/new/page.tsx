@@ -64,7 +64,7 @@ async function createRule(formData: FormData) {
   );
 
   revalidatePath('/qr-redirects');
-  redirect('/qr-redirects');
+  redirect('/ops/qr-redirects');
 }
 
 export default async function CreateRedirectRulePage() {
@@ -75,7 +75,7 @@ export default async function CreateRedirectRulePage() {
   }
 
   if (session.user.role !== 'ADMIN') {
-    redirect('/dashboard');
+    redirect('/ops/dashboard');
   }
 
   // Fetch available entities for selection

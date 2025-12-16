@@ -51,7 +51,7 @@ export default async function ProductsPage({
           </p>
         </div>
         <Link
-          href="/products/new"
+          href="/ops/products/new"
           className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
         >
           New Product
@@ -86,7 +86,7 @@ export default async function ProductsPage({
             </button>
             {strainFilter && (
               <Link
-                href="/products"
+                href="/ops/products"
                 className="text-sm text-blue-600 hover:text-blue-800"
               >
                 Clear

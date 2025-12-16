@@ -76,7 +76,7 @@ export default function AlertsPanel({
               </span>
             </div>
             <Link
-              href="/materials"
+              href="/ops/materials"
               className="text-xs font-medium text-blue-600 hover:text-blue-800"
             >
               View
@@ -94,7 +94,7 @@ export default function AlertsPanel({
               </span>
             </div>
             <Link
-              href="/production"
+              href="/ops/production"
               className="text-xs font-medium text-blue-600 hover:text-blue-800"
             >
               View
@@ -112,7 +112,7 @@ export default function AlertsPanel({
               </span>
             </div>
             <Link
-              href="/batches"
+              href="/ops/batches"
               className="text-xs font-medium text-blue-600 hover:text-blue-800"
             >
               View
@@ -130,7 +130,7 @@ export default function AlertsPanel({
               </span>
             </div>
             <Link
-              href="/orders"
+              href="/ops/orders"
               className="text-xs font-medium text-blue-600 hover:text-blue-800"
             >
               View
@@ -148,7 +148,7 @@ export default function AlertsPanel({
               </span>
             </div>
             <Link
-              href="/orders"
+              href="/ops/orders"
               className="text-xs font-medium text-blue-600 hover:text-blue-800"
             >
               View

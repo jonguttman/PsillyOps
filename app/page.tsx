@@ -16,18 +16,19 @@ export default async function HomePage() {
   }
 
   if (role === "WAREHOUSE") {
-    redirect("/inventory");
+    redirect("/ops/inventory");
   }
 
   if (role === "PRODUCTION") {
-    redirect("/production");
+    redirect("/ops/production");
   }
 
   if (role === "ADMIN") {
-    redirect("/dashboard");
+    redirect("/ops/dashboard");
   }
 
   // fallback
   redirect("/login");
 }
+
 
