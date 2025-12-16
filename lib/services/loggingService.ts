@@ -5,14 +5,16 @@ import { prisma } from '@/lib/db/prisma';
 import { ActivityEntity } from '@prisma/client';
 
 export interface LogActionParams {
-  entityType: ActivityEntity;
-  entityId: string;
+  entityType?: ActivityEntity; // Phase 1: Made nullable for auth logs
+  entityId?: string;            // Phase 1: Made nullable for auth logs
   action: string;
   userId?: string;
+  ipAddress?: string;           // Phase 1: Added for security tracking
+  userAgent?: string;           // Phase 1: Added for security tracking
   summary: string;
   before?: Record<string, any>;
   after?: Record<string, any>;
-  details?: any;
+  metadata?: any;               // Phase 1: Renamed from 'details'
   tags?: string[];
 }
 
@@ -36,10 +38,12 @@ export async function logAction({
   entityId,
   action,
   userId,
+  ipAddress,
+  userAgent,
   summary,
   before,
   after,
-  details,
+  metadata,
   tags = []
 }: LogActionParams) {
   // Calculate field-level diff
@@ -59,7 +63,7 @@ export async function logAction({
   }
 
   // Auto-generate tags based on action and diff
-  const autoTags = generateAutoTags(action, diff, details);
+  const autoTags = generateAutoTags(action, diff, metadata);
   const allTags = [...new Set([...tags, ...autoTags])];
 
   // Validate userId exists before creating log entry to avoid FK constraint violation
@@ -83,9 +87,11 @@ export async function logAction({
       entityId,
       action,
       userId: validUserId,
+      ipAddress,
+      userAgent,
       summary,
       diff: Object.keys(diff).length > 0 ? diff : undefined,
-      details: details ? JSON.parse(JSON.stringify(details)) : undefined,
+      metadata: metadata ? JSON.parse(JSON.stringify(metadata)) : undefined,
       tags: allTags
     }
   });
@@ -314,4 +320,102 @@ export function generateSummary(params: {
   return `${userName} ${action} ${entityName}`;
 }
 
+/**
+ * User Management Logging Helpers (Phase 2)
+ */
+
+export interface UserManagementLogParams {
+  actorUserId: string;
+  targetUserId: string;
+  targetEmail?: string;
+  metadata?: Record<string, any>;
+}
+
+/**
+ * Log user creation
+ */
+export async function logUserCreated(params: UserManagementLogParams & { role: string }) {
+  await logAction({
+    action: 'USER_CREATED',
+    userId: params.actorUserId,
+    summary: `Admin created user ${params.targetEmail || params.targetUserId} with role ${params.role}`,
+    metadata: {
+      targetUserId: params.targetUserId,
+      targetEmail: params.targetEmail,
+      role: params.role,
+      ...params.metadata
+    },
+    tags: ['user_management', 'created', 'admin_action']
+  });
+}
+
+/**
+ * Log role change
+ */
+export async function logUserRoleChanged(params: UserManagementLogParams & { oldRole: string; newRole: string }) {
+  await logAction({
+    action: 'USER_ROLE_CHANGED',
+    userId: params.actorUserId,
+    summary: `Admin changed ${params.targetEmail || params.targetUserId} role from ${params.oldRole} to ${params.newRole}`,
+    metadata: {
+      targetUserId: params.targetUserId,
+      targetEmail: params.targetEmail,
+      oldRole: params.oldRole,
+      newRole: params.newRole,
+      ...params.metadata
+    },
+    tags: ['user_management', 'role_change', 'admin_action']
+  });
+}
+
+/**
+ * Log user deactivation
+ */
+export async function logUserDeactivated(params: UserManagementLogParams) {
+  await logAction({
+    action: 'USER_DEACTIVATED',
+    userId: params.actorUserId,
+    summary: `Admin deactivated user ${params.targetEmail || params.targetUserId}`,
+    metadata: {
+      targetUserId: params.targetUserId,
+      targetEmail: params.targetEmail,
+      ...params.metadata
+    },
+    tags: ['user_management', 'deactivated', 'admin_action', 'security']
+  });
+}
+
+/**
+ * Log user reactivation
+ */
+export async function logUserReactivated(params: UserManagementLogParams) {
+  await logAction({
+    action: 'USER_REACTIVATED',
+    userId: params.actorUserId,
+    summary: `Admin reactivated user ${params.targetEmail || params.targetUserId}`,
+    metadata: {
+      targetUserId: params.targetUserId,
+      targetEmail: params.targetEmail,
+      ...params.metadata
+    },
+    tags: ['user_management', 'reactivated', 'admin_action']
+  });
+}
+
+/**
+ * Log password reset
+ */
+export async function logUserPasswordReset(params: UserManagementLogParams) {
+  await logAction({
+    action: 'USER_PASSWORD_RESET',
+    userId: params.actorUserId,
+    summary: `Admin reset password for ${params.targetEmail || params.targetUserId}`,
+    metadata: {
+      targetUserId: params.targetUserId,
+      targetEmail: params.targetEmail,
+      ...params.metadata
+    },
+    tags: ['user_management', 'password_reset', 'admin_action', 'security']
+  });
+}
 
