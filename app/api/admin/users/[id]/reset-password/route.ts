@@ -10,7 +10,9 @@ export async function POST(req: NextRequest) {
   try {
     // Extract user ID from URL path (Next.js 15 compliant pattern)
     const url = new URL(req.url);
-    const userId = url.pathname.split("/").at(-2);
+    const segments = url.pathname.split("/").filter(Boolean);
+    // For /api/admin/users/[id]/reset-password, the ID is at index 3 (second to last)
+    const userId = segments[segments.length - 2];
 
     if (!userId) {
       return Response.json(

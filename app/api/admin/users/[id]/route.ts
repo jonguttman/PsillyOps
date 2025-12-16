@@ -10,7 +10,8 @@ export async function PATCH(req: NextRequest) {
   try {
     // Extract user ID from URL path (Next.js 15 compliant pattern)
     const url = new URL(req.url);
-    const userId = url.pathname.split("/").at(-2);
+    const segments = url.pathname.split("/").filter(Boolean);
+    const userId = segments[segments.length - 1]; // Last segment is the ID
 
     if (!userId) {
       return Response.json(
