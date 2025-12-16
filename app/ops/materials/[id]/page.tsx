@@ -418,7 +418,7 @@ export default async function MaterialDetailPage({
       <div className="bg-white shadow rounded-lg p-6">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-medium text-gray-900">Vendor Relationships</h2>
-          <Link href={`/materials/${id}/vendors`} className="text-sm text-blue-600 hover:text-blue-900">
+          <Link href={`/ops/materials/${id}/vendors`} className="text-sm text-blue-600 hover:text-blue-900">
             Manage Vendors &rarr;
           </Link>
         </div>
@@ -458,7 +458,7 @@ export default async function MaterialDetailPage({
             </tbody>
           </table>
         ) : (
-          <p className="text-sm text-gray-500">No vendors assigned. <Link href={`/materials/${id}/vendors`} className="text-blue-600 hover:text-blue-900">Add vendors</Link></p>
+          <p className="text-sm text-gray-500">No vendors assigned. <Link href={`/ops/materials/${id}/vendors`} className="text-blue-600 hover:text-blue-900">Add vendors</Link></p>
         )}
       </div>
 
