@@ -73,6 +73,9 @@ export default async function InventoryPage({
     return { text: formatDate(expiryDate), color: 'text-gray-500' };
   };
 
+  const userRole = session.user.role;
+  const canAddInitial = userRole === 'ADMIN' || userRole === 'WAREHOUSE';
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -83,6 +86,14 @@ export default async function InventoryPage({
             View and manage stock across all locations
           </p>
         </div>
+        {canAddInitial && (
+          <Link
+            href="/ops/inventory/initial-setup"
+            className="inline-flex items-center px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100"
+          >
+            Add Initial Inventory
+          </Link>
+        )}
       </div>
 
       {/* Filters */}
