@@ -229,8 +229,11 @@ export default function InitialInventoryClient({ materials, products, locations 
                   <select
                     value={entry.type}
                     onChange={(e) => {
-                      updateEntry(entry.id, 'type', e.target.value);
-                      updateEntry(entry.id, 'entityId', ''); // Reset selection
+                      const newType = e.target.value as 'MATERIAL' | 'PRODUCT';
+                      // Update both type and entityId in a single state update to avoid stale closure
+                      setEntries(entries.map(item => 
+                        item.id === entry.id ? { ...item, type: newType, entityId: '' } : item
+                      ));
                     }}
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     disabled={submitting}
