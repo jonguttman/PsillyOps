@@ -1294,11 +1294,50 @@ export interface LabelMetadata {
   widthIn: number;
   heightIn: number;
   elements: PlaceableElement[];
+  /**
+   * Pixels per inch derived from SVG viewBox and physical dimensions.
+   * Use this for accurate design-space <-> print-space conversion.
+   * If viewBox is non-uniform, pxPerInchY may differ from pxPerInchX.
+   */
+  pxPerInchX: number;
+  pxPerInchY: number;
 }
 
 export interface LabelPreviewResult {
   svg: string;
   meta: LabelMetadata;
+}
+
+/**
+ * Compute pxPerInch from SVG viewBox and physical dimensions.
+ * This is the SINGLE SOURCE OF TRUTH for design-space <-> print-space conversion.
+ */
+function computePxPerInch(svgContent: string, widthIn: number, heightIn: number): { pxPerInchX: number; pxPerInchY: number } {
+  const viewBox = extractViewBox(svgContent);
+  
+  let vbWidth: number;
+  let vbHeight: number;
+  
+  if (viewBox) {
+    const parts = viewBox.split(/\s+/).map(parseFloat);
+    if (parts.length >= 4) {
+      vbWidth = parts[2];
+      vbHeight = parts[3];
+    } else {
+      // Fallback: assume 96 DPI
+      vbWidth = widthIn * 96;
+      vbHeight = heightIn * 96;
+    }
+  } else {
+    // No viewBox: assume 96 DPI
+    vbWidth = widthIn * 96;
+    vbHeight = heightIn * 96;
+  }
+
+  return {
+    pxPerInchX: vbWidth / widthIn,
+    pxPerInchY: vbHeight / heightIn
+  };
 }
 
 /**
@@ -1329,11 +1368,14 @@ export async function getLabelMetadata(versionId: string): Promise<LabelMetadata
   }
 
   const elements = getElementsOrDefault(version.elements as PlaceableElement[] | null, svgContent);
+  const { pxPerInchX, pxPerInchY } = computePxPerInch(svgContent, widthIn, heightIn);
 
   return {
     widthIn,
     heightIn,
-    elements
+    elements,
+    pxPerInchX,
+    pxPerInchY
   };
 }
 
@@ -1396,6 +1438,9 @@ export async function renderLabelPreviewWithMeta(
   // Get elements: override > stored > default
   const elements = overrides?.elements ?? getElementsOrDefault(version.elements as PlaceableElement[] | null, svgContent);
 
+  // Compute pxPerInch from the final SVG (after any size override)
+  const { pxPerInchX, pxPerInchY } = computePxPerInch(svgContent, finalWidthIn, finalHeightIn);
+
   // Generate placeholder QR for preview
   const placeholderQrSvg = await generateQrSvgFromUrl('https://psillyops.app/preview');
   
@@ -1407,7 +1452,9 @@ export async function renderLabelPreviewWithMeta(
     meta: {
       widthIn: finalWidthIn,
       heightIn: finalHeightIn,
-      elements
+      elements,
+      pxPerInchX,
+      pxPerInchY
     }
   };
 }

@@ -1,8 +1,19 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import ElementOverlay from './ElementOverlay';
-import type { PlaceableElement, Rotation } from '@/lib/types/placement';
+import SvgInteractionLayer from './SvgInteractionLayer';
+import type { PlaceableElement, Rotation, Placement } from '@/lib/types/placement';
+
+/**
+ * LABEL PREVIEW BUTTON
+ * 
+ * Phase 2: SVG-native interaction with proper zoom handling.
+ * 
+ * KEY FIX: Stage wrapper with rootContainer for Moveable alignment.
+ * - Single stage div wraps SVG preview and interaction layer
+ * - Zoom is applied via CSS transform on the stage
+ * - Moveable receives zoom prop and rootContainer ref
+ */
 
 interface LabelPreviewButtonProps {
   versionId: string;
@@ -16,6 +27,22 @@ interface LabelMetadata {
   widthIn: number;
   heightIn: number;
   elements: PlaceableElement[];
+  pxPerInchX: number;
+  pxPerInchY: number;
+}
+
+/**
+ * Extract viewBox dimensions from SVG string
+ */
+function extractViewBox(svg: string): { width: number; height: number } | null {
+  const match = svg.match(/viewBox=["']([^"']+)["']/i);
+  if (!match) return null;
+  
+  const parts = match[1].split(/\s+/).map(parseFloat);
+  if (parts.length >= 4) {
+    return { width: parts[2], height: parts[3] };
+  }
+  return null;
 }
 
 export default function LabelPreviewButton({ 
@@ -43,6 +70,9 @@ export default function LabelPreviewButton({
   // Label metadata from preview API
   const [labelMeta, setLabelMeta] = useState<LabelMetadata | null>(null);
   
+  // ViewBox dimensions (extracted from SVG)
+  const [viewBox, setViewBox] = useState<{ width: number; height: number } | null>(null);
+  
   // Elements state (unified placement model)
   const [elements, setElements] = useState<PlaceableElement[]>(initialElements);
   const [savedElements, setSavedElements] = useState<PlaceableElement[]>(initialElements);
@@ -50,9 +80,8 @@ export default function LabelPreviewButton({
   
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
-  // Container ref for overlay positioning
-  const previewContainerRef = useRef<HTMLDivElement>(null);
-  const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 0 });
+  // Stage ref for Moveable rootContainer
+  const stageRef = useRef<HTMLDivElement>(null);
 
   // Track if values have changed from saved values
   useEffect(() => {
@@ -60,28 +89,12 @@ export default function LabelPreviewButton({
     setHasUnsavedChanges(elementsChanged);
   }, [elements, savedElements]);
 
-  // Measure container dimensions for overlay
+  // Extract viewBox when SVG content changes
   useEffect(() => {
-    if (!previewContainerRef.current || !svgContent) return;
-    
-    const updateDimensions = () => {
-      if (previewContainerRef.current) {
-        const svg = previewContainerRef.current.querySelector('svg');
-        if (svg) {
-          const rect = svg.getBoundingClientRect();
-          setContainerDimensions({ width: rect.width, height: rect.height });
-        }
-      }
-    };
-    
-    updateDimensions();
-    
-    const resizeObserver = new ResizeObserver(updateDimensions);
-    if (previewContainerRef.current) {
-      resizeObserver.observe(previewContainerRef.current);
+    if (svgContent) {
+      const vb = extractViewBox(svgContent);
+      setViewBox(vb);
     }
-    
-    return () => resizeObserver.disconnect();
   }, [svgContent]);
 
   // Select first element when elements change
@@ -196,8 +209,9 @@ export default function LabelPreviewButton({
     loadPreview();
   };
 
-  // Handle element changes from overlay
-  const handleElementChange = useCallback((id: string, updates: Partial<PlaceableElement['placement']>) => {
+  // Handle element changes from SvgInteractionLayer
+  // Values come in as INCHES (converted by the layer)
+  const handleElementChange = useCallback((id: string, updates: Partial<Placement>) => {
     setElements(prev => prev.map(el => {
       if (el.id !== id) return el;
       const isQr = el.type === 'QR';
@@ -210,7 +224,7 @@ export default function LabelPreviewButton({
     }));
   }, []);
 
-  // Handle rotation change
+  // Handle rotation change from sidebar buttons
   const handleRotate = useCallback((rotation: Rotation) => {
     if (!selectedElementId) return;
     setElements(prev => prev.map(el => {
@@ -285,6 +299,24 @@ export default function LabelPreviewButton({
       return () => clearTimeout(timer);
     }
   }, [svgContent, labelMeta, handleFitToWindow]);
+
+  // Compute viewBox position for display
+  const getViewBoxDisplay = () => {
+    if (!selectedElement || !viewBox || !labelMeta) return null;
+    
+    const vbPerInchX = viewBox.width / labelMeta.widthIn;
+    const vbPerInchY = viewBox.height / labelMeta.heightIn;
+    
+    return {
+      x: (selectedElement.placement.xIn * vbPerInchX).toFixed(1),
+      y: (selectedElement.placement.yIn * vbPerInchY).toFixed(1),
+      width: (selectedElement.placement.widthIn * vbPerInchX).toFixed(1),
+      height: (selectedElement.placement.heightIn * vbPerInchY).toFixed(1),
+      rotation: selectedElement.placement.rotation
+    };
+  };
+  
+  const vbDisplay = getViewBoxDisplay();
 
   return (
     <>
@@ -447,15 +479,33 @@ export default function LabelPreviewButton({
                     
                     {selectedElement && (
                       <div className="space-y-2">
-                        {/* Position */}
+                        {/* Position in INCHES */}
                         <div className="text-xs text-gray-400">
-                          Position: {selectedElement.placement.xIn.toFixed(2)}, {selectedElement.placement.yIn.toFixed(2)}
+                          <span className="text-gray-500">Position: </span>
+                          {selectedElement.placement.xIn.toFixed(3)}, {selectedElement.placement.yIn.toFixed(3)} in
                         </div>
                         
-                        {/* Size */}
+                        {/* Size in INCHES */}
                         <div className="text-xs text-gray-400">
-                          Size: {selectedElement.placement.widthIn.toFixed(2)} × {selectedElement.placement.heightIn.toFixed(2)}in
+                          <span className="text-gray-500">Size: </span>
+                          {selectedElement.placement.widthIn.toFixed(3)} × {selectedElement.placement.heightIn.toFixed(3)} in
                         </div>
+                        
+                        {/* Rotation */}
+                        <div className="text-xs text-gray-400">
+                          <span className="text-gray-500">Rotation: </span>
+                          {selectedElement.placement.rotation}°
+                        </div>
+                        
+                        {/* ViewBox units (debug display) */}
+                        {vbDisplay && (
+                          <div className="mt-2 pt-2 border-t border-gray-700">
+                            <div className="text-xs text-gray-500 mb-1">ViewBox Units:</div>
+                            <div className="text-xs font-mono text-green-400">
+                              {vbDisplay.x}, {vbDisplay.y} ({vbDisplay.width}×{vbDisplay.height})
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -489,6 +539,11 @@ export default function LabelPreviewButton({
                       <p className="text-xs text-gray-400">
                         {labelMeta.widthIn.toFixed(2)} × {labelMeta.heightIn.toFixed(2)} in
                       </p>
+                      {viewBox && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          ViewBox: {viewBox.width.toFixed(0)} × {viewBox.height.toFixed(0)}
+                        </p>
+                      )}
                     </div>
                   )}
 
@@ -517,11 +572,11 @@ export default function LabelPreviewButton({
                     )}
                   </div>
 
-                  {/* Info */}
+                  {/* Instructions */}
                   <div className="text-xs text-gray-500 p-2 bg-gray-900/50 rounded">
-                    <p>💡 Drag elements to move</p>
+                    <p>💡 Drag to move</p>
                     <p className="mt-1">↘ Drag corner to resize</p>
-                    <p className="mt-1">🔄 Use rotation buttons above</p>
+                    <p className="mt-1">🔄 Use rotation handle or buttons</p>
                   </div>
                 </div>
               )}
@@ -549,39 +604,42 @@ export default function LabelPreviewButton({
                   <p className="text-sm text-gray-400">{error}</p>
                 </div>
               ) : svgContent ? (
-                <div 
-                  className="relative p-10"
-                  style={{ 
-                    transform: `scale(${zoom / 100})`,
-                    transformOrigin: 'center center',
-                  }}
-                >
-                  {/* SVG Preview with Element Overlay */}
+                <div className="p-10">
+                  {/* 
+                    STAGE WRAPPER - Critical for Moveable alignment
+                    - position: relative (for absolute positioning of overlay)
+                    - Uses actual width/height for zoom (NOT CSS transform scale)
+                    - This ensures SVG renders at full resolution at any zoom level
+                    - This div is the rootContainer for Moveable
+                  */}
                   <div 
-                    ref={previewContainerRef}
+                    ref={stageRef}
                     className="relative bg-white rounded-lg shadow-2xl"
                     style={{
-                      width: labelMeta ? `${labelMeta.widthIn}in` : 'auto',
-                      height: labelMeta ? `${labelMeta.heightIn}in` : 'auto',
+                      // Use actual dimensions for zoom - NOT transform scale
+                      // This ensures SVG renders at full resolution (no blurriness)
+                      width: labelMeta ? `${labelMeta.widthIn * (zoom / 100)}in` : 'auto',
+                      height: labelMeta ? `${labelMeta.heightIn * (zoom / 100)}in` : 'auto',
                     }}
                   >
+                    {/* Base SVG (with QR injected by server) */}
                     <div 
                       dangerouslySetInnerHTML={{ __html: svgContent }}
                       className="w-full h-full [&>svg]:w-full [&>svg]:h-full"
                     />
                     
-                    {/* Element Overlay - only for single label mode */}
-                    {previewMode === 'single' && labelMeta && containerDimensions.width > 0 && (
-                      <ElementOverlay
-                        elements={elements}
-                        selectedId={selectedElementId}
+                    {/* SVG Interaction Layer - only for single label mode */}
+                    {previewMode === 'single' && labelMeta && viewBox && (
+                      <SvgInteractionLayer
+                        element={selectedElement}
+                        viewBoxWidth={viewBox.width}
+                        viewBoxHeight={viewBox.height}
                         labelWidthIn={labelMeta.widthIn}
                         labelHeightIn={labelMeta.heightIn}
-                        containerWidth={containerDimensions.width}
-                        containerHeight={containerDimensions.height}
                         onElementChange={handleElementChange}
-                        onSelect={setSelectedElementId}
-                        zoomScale={zoom / 100}
+                        disabled={false}
+                        zoom={zoom / 100}
+                        stageRef={stageRef}
                       />
                     )}
                   </div>

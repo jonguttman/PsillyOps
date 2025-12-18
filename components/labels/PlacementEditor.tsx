@@ -146,6 +146,10 @@ interface PlacementEditorProps {
   containerWidth: number;
   containerHeight: number;
   
+  // Pixels per inch from SVG viewBox (server-provided)
+  pxPerInchX: number;
+  pxPerInchY: number;
+  
   // Callbacks
   onElementsChange: (elements: PlaceableElement[]) => void;
   onSave: () => Promise<void>;
@@ -168,6 +172,8 @@ export default function PlacementEditor({
   previewSvg,
   containerWidth,
   containerHeight,
+  pxPerInchX,
+  pxPerInchY,
   onElementsChange,
   onSave,
   isSaving = false,
@@ -255,6 +261,8 @@ export default function PlacementEditor({
             labelHeightIn={labelHeightIn}
             containerWidth={containerWidth}
             containerHeight={containerHeight}
+            pxPerInchX={pxPerInchX}
+            pxPerInchY={pxPerInchY}
             onElementChange={handleElementChange}
             onSelect={handleSelect}
             disabled={disabled}
