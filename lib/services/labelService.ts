@@ -871,7 +871,16 @@ function injectElements(
       // Extract viewBox from QR SVG for proper scaling
       const qrVbMatch = qrSvgContent.match(/\bviewBox="0 0 ([0-9.]+) ([0-9.]+)"/i);
       const qrVbSize = qrVbMatch ? parseFloat(qrVbMatch[1]) : 0;
-      const qrInner = stripOuterSvg(qrSvgContent);
+      let qrInner = stripOuterSvg(qrSvgContent);
+      
+      // Handle transparent background: remove white background from QR
+      const showBackground = el.background !== 'transparent';
+      if (!showBackground) {
+        // Remove the white background rect from QR SVG (first path with fill="#FFFFFF")
+        qrInner = qrInner.replace(/<path[^>]*fill="#FFFFFF"[^>]*\/?>/i, '');
+        qrInner = qrInner.replace(/<rect[^>]*fill="#FFFFFF"[^>]*\/?>/i, '');
+        qrInner = qrInner.replace(/<rect[^>]*fill="white"[^>]*\/?>/i, '');
+      }
 
       injectedContent += `
   <g ${rotateAttr}>
@@ -886,6 +895,9 @@ function injectElements(
       const textSizeVb = el.barcode.textSizeIn * pxPerInchX;
       const textGapVb = el.barcode.textGapIn * pxPerInchX;
       const textY = barHeightVb + textGapVb + textSizeVb * 0.85;
+      
+      // Handle transparent background
+      const showBackground = el.background !== 'transparent';
       
       // EAN-13 structure: 95 modules total
       const totalModules = 95;
@@ -924,10 +936,15 @@ function injectElements(
       const rightGroupX = barsStartX + (3 + 42 + 5 + 21) * moduleWidth;
       const letterSpacing = moduleWidth * 1.2;
       
+      // Background rect only if not transparent
+      const bgRect = showBackground 
+        ? `<rect x="0" y="0" width="${w.toFixed(3)}" height="${h.toFixed(3)}" fill="${el.barcode.backgroundColor}"/>`
+        : '';
+      
       injectedContent += `
   <g ${rotateAttr}>
     <svg x="${x.toFixed(3)}" y="${y.toFixed(3)}" width="${w.toFixed(3)}" height="${h.toFixed(3)}" viewBox="0 0 ${w.toFixed(3)} ${h.toFixed(3)}">
-      <rect x="0" y="0" width="${w.toFixed(3)}" height="${h.toFixed(3)}" fill="${el.barcode.backgroundColor}"/>
+      ${bgRect}
       ${barsContent}
       <text x="${firstDigitX.toFixed(3)}" y="${textY.toFixed(3)}" text-anchor="middle" font-family="'OCR-B', 'Courier New', monospace" font-size="${textSizeVb.toFixed(3)}" fill="#000">${firstDigit}</text>
       <text x="${leftGroupX.toFixed(3)}" y="${textY.toFixed(3)}" text-anchor="middle" font-family="'OCR-B', 'Courier New', monospace" font-size="${textSizeVb.toFixed(3)}" letter-spacing="${letterSpacing.toFixed(3)}" fill="#000">${leftGroup}</text>

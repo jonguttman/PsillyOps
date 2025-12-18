@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import SvgInteractionLayer from './SvgInteractionLayer';
-import type { PlaceableElement, Rotation, Placement } from '@/lib/types/placement';
+import type { PlaceableElement, Rotation, Placement, BackgroundStyle } from '@/lib/types/placement';
 import { calculateBarcodeHeight, createDefaultBarcodeElement } from '@/lib/types/placement';
 
 /**
@@ -304,6 +304,15 @@ export default function LabelPreviewButton({
           barHeightIn: newBarHeightIn,
         }
       };
+    }));
+  }, [selectedElementId]);
+
+  // Handle background style change for any element
+  const handleBackgroundChange = useCallback((background: BackgroundStyle) => {
+    if (!selectedElementId) return;
+    setElements(prev => prev.map(el => {
+      if (el.id !== selectedElementId) return el;
+      return { ...el, background };
     }));
   }, [selectedElementId]);
 
@@ -639,6 +648,35 @@ export default function LabelPreviewButton({
                             {rot === 0 ? '0°' : rot === 90 ? '+90°' : rot === 180 ? '180°' : '-90°'}
                           </button>
                         ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Background Toggle - All elements */}
+                  {selectedElement && (
+                    <div className="bg-gray-750 rounded-lg p-3">
+                      <label className="text-xs font-medium text-gray-300 block mb-2">Background</label>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => handleBackgroundChange('white')}
+                          className={`flex-1 px-2 py-1.5 text-xs font-medium rounded transition-colors ${
+                            (selectedElement.background ?? 'white') === 'white'
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                          }`}
+                        >
+                          White
+                        </button>
+                        <button
+                          onClick={() => handleBackgroundChange('transparent')}
+                          className={`flex-1 px-2 py-1.5 text-xs font-medium rounded transition-colors ${
+                            selectedElement.background === 'transparent'
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                          }`}
+                        >
+                          Transparent
+                        </button>
                       </div>
                     </div>
                   )}

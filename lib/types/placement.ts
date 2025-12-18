@@ -64,6 +64,13 @@ export interface BarcodeOptions {
 export type ElementType = 'QR' | 'BARCODE';
 
 /**
+ * Background style for placeable elements.
+ * - 'white': renders a white background rect behind the element
+ * - 'transparent': no background rect (element floats on label)
+ */
+export type BackgroundStyle = 'white' | 'transparent';
+
+/**
  * A placeable element on a label.
  * 
  * QR elements:
@@ -79,6 +86,7 @@ export interface PlaceableElement {
   id: string;
   type: ElementType;
   placement: Placement;
+  background?: BackgroundStyle; // Default: 'white'
   barcode?: BarcodeOptions;
 }
 
