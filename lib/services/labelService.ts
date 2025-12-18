@@ -879,8 +879,62 @@ function injectElements(
       ${qrInner}
     </svg>
   </g>`;
+    } else if (el.type === 'BARCODE' && el.barcode) {
+      // Phase 3: BARCODE injection (editor preview only)
+      // Generates EAN-13 placeholder barcode visualization
+      const barHeightVb = el.barcode.barHeightIn * pxPerInchX;
+      const textSizeVb = el.barcode.textSizeIn * pxPerInchX;
+      const textGapVb = el.barcode.textGapIn * pxPerInchX;
+      const textY = barHeightVb + textGapVb + textSizeVb * 0.85;
+      
+      // EAN-13 structure: 95 modules total
+      const totalModules = 95;
+      const moduleWidth = w * 0.85 / totalModules;
+      const barsStartX = w * 0.1; // 10% left margin for first digit
+      
+      // Simplified EAN-13 pattern for visual representation
+      const pattern = '101' + // Start guard
+        '0001101001100101001101110100011011000' + // Left 6 digits (simplified)
+        '1' + // Part of left
+        '01010' + // Center guard
+        '1110010110011011011001000010101110010011' + // Right 6 digits (simplified)
+        '10' + // Part of right
+        '101'; // End guard
+      
+      let barsContent = '';
+      let barX = barsStartX;
+      for (let i = 0; i < Math.min(pattern.length, totalModules); i++) {
+        if (pattern[i] === '1') {
+          // Guard bars extend below text line
+          const isGuard = i < 3 || i >= 92 || (i >= 45 && i < 50);
+          const barHeight = isGuard ? barHeightVb + textGapVb : barHeightVb;
+          barsContent += `<rect x="${barX.toFixed(3)}" y="0" width="${moduleWidth.toFixed(3)}" height="${barHeight.toFixed(3)}" fill="#000"/>`;
+        }
+        barX += moduleWidth;
+      }
+      
+      // EAN-13 number display: X XXXXXX XXXXXX (first digit outside, then 6+6)
+      const placeholderCode = '1234567890913';
+      const firstDigit = placeholderCode[0];
+      const leftGroup = placeholderCode.slice(1, 7);
+      const rightGroup = placeholderCode.slice(7, 13);
+      
+      const firstDigitX = barsStartX - textSizeVb * 0.6;
+      const leftGroupX = barsStartX + (3 + 21) * moduleWidth;
+      const rightGroupX = barsStartX + (3 + 42 + 5 + 21) * moduleWidth;
+      const letterSpacing = moduleWidth * 1.2;
+      
+      injectedContent += `
+  <g ${rotateAttr}>
+    <svg x="${x.toFixed(3)}" y="${y.toFixed(3)}" width="${w.toFixed(3)}" height="${h.toFixed(3)}" viewBox="0 0 ${w.toFixed(3)} ${h.toFixed(3)}">
+      <rect x="0" y="0" width="${w.toFixed(3)}" height="${h.toFixed(3)}" fill="${el.barcode.backgroundColor}"/>
+      ${barsContent}
+      <text x="${firstDigitX.toFixed(3)}" y="${textY.toFixed(3)}" text-anchor="middle" font-family="'OCR-B', 'Courier New', monospace" font-size="${textSizeVb.toFixed(3)}" fill="#000">${firstDigit}</text>
+      <text x="${leftGroupX.toFixed(3)}" y="${textY.toFixed(3)}" text-anchor="middle" font-family="'OCR-B', 'Courier New', monospace" font-size="${textSizeVb.toFixed(3)}" letter-spacing="${letterSpacing.toFixed(3)}" fill="#000">${leftGroup}</text>
+      <text x="${rightGroupX.toFixed(3)}" y="${textY.toFixed(3)}" text-anchor="middle" font-family="'OCR-B', 'Courier New', monospace" font-size="${textSizeVb.toFixed(3)}" letter-spacing="${letterSpacing.toFixed(3)}" fill="#000">${rightGroup}</text>
+    </svg>
+  </g>`;
     }
-    // BARCODE injection will be added in Phase 2
   }
 
   // Insert before closing </svg> tag

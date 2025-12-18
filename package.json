@@ -16,6 +16,7 @@
     "@auth/prisma-adapter": "^2.7.4",
     "@prisma/client": "^6.1.0",
     "bcryptjs": "^2.4.3",
+    "bwip-js": "^4.8.0",
     "date-fns": "^4.1.0",
     "html5-qrcode": "^2.3.8",
     "lucide-react": "^0.561.0",

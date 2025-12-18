@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import SvgInteractionLayer from './SvgInteractionLayer';
 import type { PlaceableElement, Rotation, Placement } from '@/lib/types/placement';
+import { calculateBarcodeHeight, createDefaultBarcodeElement } from '@/lib/types/placement';
 
 /**
  * LABEL PREVIEW BUTTON
@@ -117,7 +118,37 @@ export default function LabelPreviewButton({
         const version = await response.json();
         
         // Load elements from version
-        const loadedElements = version.elements || [];
+        let loadedElements: PlaceableElement[] = version.elements || [];
+        
+        // Migrate any legacy UPC_A barcodes to EAN_13
+        loadedElements = loadedElements.map(el => {
+          if (el.type === 'BARCODE' && el.barcode && (el.barcode.format as string) === 'UPC_A') {
+            return {
+              ...el,
+              barcode: {
+                ...el.barcode,
+                format: 'EAN_13' as const
+              }
+            };
+          }
+          return el;
+        });
+        
+        // Auto-create BARCODE element if none exists
+        // Templates are assumed to NOT contain real barcode graphics
+        const hasBarcode = loadedElements.some(el => el.type === 'BARCODE');
+        if (!hasBarcode) {
+          // Create default barcode at sensible position (center-left area)
+          // Position: roughly center-left of a typical label
+          const defaultBarcode = createDefaultBarcodeElement(
+            0.15,  // xIn: 0.15" from left edge
+            0.4,   // yIn: 0.4" from top (below typical header area)
+            0.8,   // widthIn: 0.8" wide
+            0.4    // barHeightIn: 0.4" bar height
+          );
+          loadedElements = [...loadedElements, defaultBarcode];
+        }
+        
         setElements(loadedElements);
         setSavedElements(loadedElements);
         
@@ -175,9 +206,20 @@ export default function LabelPreviewButton({
       
       // If no elements loaded yet, use the ones from metadata
       if (elements.length === 0 && meta.elements.length > 0) {
-        setElements(meta.elements);
-        setSavedElements(meta.elements);
-        setSelectedElementId(meta.elements[0].id);
+        let loadedElements = [...meta.elements];
+        
+        // Auto-create BARCODE element if none exists
+        const hasBarcode = loadedElements.some(el => el.type === 'BARCODE');
+        if (!hasBarcode) {
+          const defaultBarcode = createDefaultBarcodeElement(
+            0.15, 0.4, 0.8, 0.4
+          );
+          loadedElements = [...loadedElements, defaultBarcode];
+        }
+        
+        setElements(loadedElements);
+        setSavedElements(loadedElements);
+        setSelectedElementId(loadedElements[0].id);
       }
 
       if (previewMode === 'sheet' && data.sheetMeta) {
@@ -215,14 +257,55 @@ export default function LabelPreviewButton({
     setElements(prev => prev.map(el => {
       if (el.id !== id) return el;
       const isQr = el.type === 'QR';
+      const isBarcode = el.type === 'BARCODE';
       const newPlacement = { ...el.placement, ...updates };
+      
       // Enforce QR square constraint
       if (isQr && updates.widthIn !== undefined) {
         newPlacement.heightIn = updates.widthIn;
       }
+      
+      // Barcode: when width changes, recalculate height based on bar height
+      if (isBarcode && updates.widthIn !== undefined && el.barcode) {
+        newPlacement.heightIn = calculateBarcodeHeight(updates.widthIn, el.barcode.barHeightIn);
+        // Also update text size and gap proportionally
+        return {
+          ...el,
+          placement: newPlacement,
+          barcode: {
+            ...el.barcode,
+            textSizeIn: updates.widthIn * 0.08,
+            textGapIn: updates.widthIn * 0.03,
+          }
+        };
+      }
+      
       return { ...el, placement: newPlacement };
     }));
   }, []);
+
+  // Handle bar height change for barcode elements
+  const handleBarHeightChange = useCallback((newBarHeightIn: number) => {
+    if (!selectedElementId) return;
+    setElements(prev => prev.map(el => {
+      if (el.id !== selectedElementId || el.type !== 'BARCODE' || !el.barcode) return el;
+      
+      // Recalculate total height based on new bar height
+      const newHeightIn = calculateBarcodeHeight(el.placement.widthIn, newBarHeightIn);
+      
+      return {
+        ...el,
+        placement: {
+          ...el.placement,
+          heightIn: newHeightIn,
+        },
+        barcode: {
+          ...el.barcode,
+          barHeightIn: newBarHeightIn,
+        }
+      };
+    }));
+  }, [selectedElementId]);
 
   // Handle rotation change from sidebar buttons
   const handleRotate = useCallback((rotation: Rotation) => {
@@ -264,6 +347,12 @@ export default function LabelPreviewButton({
 
   // Get selected element
   const selectedElement = elements.find(el => el.id === selectedElementId) || null;
+  
+  // #region agent log - Hypothesis A,B,D: Log selected element info
+  if (typeof window !== 'undefined' && elements.length > 0) {
+    fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'LabelPreviewButton.tsx:selectedElement',message:'Current selection state',data:{selectedElementId,selectedElementType:selectedElement?.type,allElementIds:elements.map(e=>e.id),allElementTypes:elements.map(e=>e.type)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,B,D'})}).catch(()=>{});
+  }
+  // #endregion
 
   // State for sidebar collapse
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -464,6 +553,28 @@ export default function LabelPreviewButton({
 
               {!sidebarCollapsed && (
                 <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                  {/* Element Selector - switch between QR and BARCODE */}
+                  {elements.length > 1 && (
+                    <div className="bg-gray-750 rounded-lg p-3">
+                      <label className="text-xs font-medium text-gray-300 block mb-2">Select Element</label>
+                      <div className="flex gap-1">
+                        {elements.map((el) => (
+                          <button
+                            key={el.id}
+                            onClick={() => setSelectedElementId(el.id)}
+                            className={`flex-1 px-2 py-1.5 text-xs font-medium rounded transition-colors ${
+                              selectedElementId === el.id
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                            }`}
+                          >
+                            {el.type}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Element Info */}
                   <div className="bg-gray-750 rounded-lg p-3">
                     <div className="flex items-center justify-between mb-2">
@@ -515,7 +626,7 @@ export default function LabelPreviewButton({
                     <div className="bg-gray-750 rounded-lg p-3">
                       <label className="text-xs font-medium text-gray-300 block mb-2">Rotation</label>
                       <div className="flex gap-1">
-                        {([0, 90, -90] as Rotation[]).map((rot) => (
+                        {([0, 90, 180, -90] as Rotation[]).map((rot) => (
                           <button
                             key={rot}
                             onClick={() => handleRotate(rot)}
@@ -525,10 +636,48 @@ export default function LabelPreviewButton({
                                 : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                             }`}
                           >
-                            {rot === 0 ? '0°' : rot === 90 ? '+90°' : '-90°'}
+                            {rot === 0 ? '0°' : rot === 90 ? '+90°' : rot === 180 ? '180°' : '-90°'}
                           </button>
                         ))}
                       </div>
+                    </div>
+                  )}
+
+                  {/* Bar Height Control - BARCODE only */}
+                  {selectedElement?.type === 'BARCODE' && selectedElement.barcode && (
+                    <div className="bg-gray-750 rounded-lg p-3">
+                      <label className="text-xs font-medium text-gray-300 block mb-2">
+                        Bar Height
+                        <span className="ml-2 font-mono text-blue-400">
+                          {selectedElement.barcode.barHeightIn.toFixed(2)}in
+                        </span>
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleBarHeightChange(Math.max(0.05, selectedElement.barcode!.barHeightIn - 0.05))}
+                          className="w-8 h-8 flex items-center justify-center bg-gray-700 text-gray-300 hover:bg-gray-600 rounded"
+                        >
+                          −
+                        </button>
+                        <input
+                          type="range"
+                          min="0.05"
+                          max="0.5"
+                          step="0.01"
+                          value={selectedElement.barcode.barHeightIn}
+                          onChange={(e) => handleBarHeightChange(parseFloat(e.target.value))}
+                          className="flex-1 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                        />
+                        <button
+                          onClick={() => handleBarHeightChange(Math.min(0.5, selectedElement.barcode!.barHeightIn + 0.05))}
+                          className="w-8 h-8 flex items-center justify-center bg-gray-700 text-gray-300 hover:bg-gray-600 rounded"
+                        >
+                          +
+                        </button>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-2">
+                        Adjusts bar height only. Digit size scales with width.
+                      </p>
                     </div>
                   )}
 

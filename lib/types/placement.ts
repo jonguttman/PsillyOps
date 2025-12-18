@@ -12,10 +12,14 @@
  */
 
 /**
- * Allowed rotation values.
+ * Allowed rotation values for persistence.
+ * 
+ * Phase 3: Free rotation is allowed during editing, but on save
+ * the value snaps to one of these allowed values.
+ * 
  * Rotation is VISUAL ONLY - it does not change placement coordinates.
  */
-export type Rotation = 0 | 90 | -90;
+export type Rotation = 0 | 90 | -90 | 180;
 
 /**
  * Physical placement of an element on a label.
@@ -40,14 +44,14 @@ export interface Placement {
  * These are semantic properties that affect how the barcode looks,
  * but do NOT affect the bounding box geometry.
  * 
- * - format: barcode symbology (UPC_A for now)
+ * - format: barcode symbology (EAN_13)
  * - barHeightIn: height of the black bars only
  * - textSizeIn: font size for human-readable text
  * - textGapIn: gap between bars and text
  * - backgroundColor: background color behind bars only (not text)
  */
 export interface BarcodeOptions {
-  format: 'UPC_A';
+  format: 'EAN_13';
   barHeightIn: number;
   textSizeIn: number;
   textGapIn: number;
@@ -82,7 +86,24 @@ export interface PlaceableElement {
  * Validate that a rotation value is allowed.
  */
 export function isValidRotation(value: number): value is Rotation {
-  return value === 0 || value === 90 || value === -90;
+  return value === 0 || value === 90 || value === -90 || value === 180;
+}
+
+/**
+ * Snap a free rotation angle to the nearest allowed rotation value.
+ * Used when committing rotation from handle-based free rotation.
+ */
+export function snapToAllowedRotation(angle: number): Rotation {
+  // Normalize to -180 to 180 range
+  let r = angle % 360;
+  if (r > 180) r -= 360;
+  if (r < -180) r += 360;
+  
+  // Find nearest snap point
+  if (r >= -45 && r < 45) return 0;
+  if (r >= 45 && r < 135) return 90;
+  if (r >= -135 && r < -45) return -90;
+  return 180;
 }
 
 /**
@@ -101,13 +122,7 @@ export function validateElement(
     return `Invalid rotation: ${placement.rotation}. Must be 0, 90, or -90.`;
   }
 
-  // Check bounds
-  if (placement.xIn < 0) {
-    return `xIn must be >= 0, got ${placement.xIn}`;
-  }
-  if (placement.yIn < 0) {
-    return `yIn must be >= 0, got ${placement.yIn}`;
-  }
+  // Check size bounds (must have positive dimensions)
   if (placement.widthIn <= 0) {
     return `widthIn must be > 0, got ${placement.widthIn}`;
   }
@@ -115,13 +130,9 @@ export function validateElement(
     return `heightIn must be > 0, got ${placement.heightIn}`;
   }
 
-  // Check element fits within label
-  if (placement.xIn + placement.widthIn > labelWidthIn) {
-    return `Element extends beyond label right edge: ${placement.xIn} + ${placement.widthIn} > ${labelWidthIn}`;
-  }
-  if (placement.yIn + placement.heightIn > labelHeightIn) {
-    return `Element extends beyond label bottom edge: ${placement.yIn} + ${placement.heightIn} > ${labelHeightIn}`;
-  }
+  // NOTE: We intentionally do NOT validate that elements fit within label bounds.
+  // Users should be free to place elements anywhere, including partially off the label.
+  // The renderer will clip or handle overflow as appropriate.
 
   // QR must be square
   if (type === 'QR' && Math.abs(placement.widthIn - placement.heightIn) > 0.001) {
@@ -133,8 +144,9 @@ export function validateElement(
     if (!barcode) {
       return 'BARCODE elements must have barcode options';
     }
-    if (barcode.format !== 'UPC_A') {
-      return `Invalid barcode format: ${barcode.format}. Only UPC_A is supported.`;
+    // Accept both EAN_13 and legacy UPC_A (will be migrated on load)
+    if (barcode.format !== 'EAN_13' && barcode.format !== 'UPC_A') {
+      return `Invalid barcode format: ${barcode.format}. Only EAN_13 is supported.`;
     }
     if (barcode.barHeightIn <= 0) {
       return `barHeightIn must be > 0, got ${barcode.barHeightIn}`;
@@ -188,6 +200,102 @@ export function createDefaultQrElement(
       widthIn: sizeIn,
       heightIn: sizeIn,
       rotation: 0,
+    },
+  };
+}
+
+/**
+ * Default barcode dimensions and options.
+ * 
+ * Scaling rules:
+ * - Width scaling scales entire barcode proportionally
+ * - Digit size scales with barcode WIDTH
+ * - Gap between bars and digits is fixed ratio, scales with width
+ * - Bar height can be adjusted independently
+ * 
+ * EAN-13 format: 13 digits displayed as: X XXXXXX XXXXXX X
+ * (first digit outside left, 6 digits left group, 6 digits right group, check digit)
+ */
+export const DEFAULT_BARCODE_OPTIONS: BarcodeOptions = {
+  format: 'EAN_13',
+  barHeightIn: 0.5,      // Height of black bars only
+  textSizeIn: 0.08,      // Font size for digits (scales with width)
+  textGapIn: 0.03,       // Gap between bars and text (scales with width)
+  backgroundColor: '#FFFFFF',
+};
+
+/**
+ * Create a default BARCODE element at the specified position.
+ * Uses EAN-13 format.
+ */
+export function createDefaultBarcodeElement(
+  xIn: number,
+  yIn: number,
+  widthIn: number = 1.0,
+  barHeightIn: number = 0.5
+): PlaceableElement {
+  // Total height = bar height + gap + text height
+  // Text size and gap scale with width
+  const textSizeIn = widthIn * 0.08;  // 8% of width
+  const textGapIn = widthIn * 0.03;   // 3% of width
+  const heightIn = barHeightIn + textGapIn + textSizeIn;
+  
+  return {
+    id: `barcode_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+    type: 'BARCODE',
+    placement: {
+      xIn,
+      yIn,
+      widthIn,
+      heightIn,
+      rotation: 0,
+    },
+    barcode: {
+      format: 'EAN_13',
+      barHeightIn,
+      textSizeIn,
+      textGapIn,
+      backgroundColor: '#FFFFFF',
+    },
+  };
+}
+
+/**
+ * Calculate barcode total height from width and bar height.
+ * Text size and gap scale proportionally with width.
+ */
+export function calculateBarcodeHeight(widthIn: number, barHeightIn: number): number {
+  const textSizeIn = widthIn * 0.08;  // 8% of width
+  const textGapIn = widthIn * 0.03;   // 3% of width
+  return barHeightIn + textGapIn + textSizeIn;
+}
+
+/**
+ * Update barcode options when width changes.
+ * Maintains proportional text size and gap.
+ */
+export function updateBarcodeForWidth(
+  element: PlaceableElement,
+  newWidthIn: number
+): Partial<PlaceableElement> {
+  if (element.type !== 'BARCODE' || !element.barcode) {
+    return {};
+  }
+  
+  const newTextSizeIn = newWidthIn * 0.08;
+  const newTextGapIn = newWidthIn * 0.03;
+  const newHeightIn = element.barcode.barHeightIn + newTextGapIn + newTextSizeIn;
+  
+  return {
+    placement: {
+      ...element.placement,
+      widthIn: newWidthIn,
+      heightIn: newHeightIn,
+    },
+    barcode: {
+      ...element.barcode,
+      textSizeIn: newTextSizeIn,
+      textGapIn: newTextGapIn,
     },
   };
 }
