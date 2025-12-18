@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/auth';
-import { getLabelVersion, updateVersionQrPosition } from '@/lib/services/labelService';
+import { getLabelVersion, updateVersionElements, getLabelMetadata } from '@/lib/services/labelService';
 import { handleApiError } from '@/lib/utils/errors';
 import { hasPermission } from '@/lib/auth/rbac';
+import { PlaceableElement, validateElements } from '@/lib/types/placement';
 
 /**
  * GET /api/labels/versions/[id]
- * Get a label version by ID
+ * Get a label version by ID with elements array
  */
 export async function GET(
   req: NextRequest,
@@ -24,8 +25,19 @@ export async function GET(
 
     const { id } = await params;
     const version = await getLabelVersion(id);
+    
+    // Get metadata including resolved elements (handles default creation)
+    const meta = await getLabelMetadata(id);
 
-    return NextResponse.json(version);
+    return NextResponse.json({
+      ...version,
+      // Ensure elements is always an array (resolved from stored or default)
+      elements: meta.elements,
+      labelMeta: {
+        widthIn: meta.widthIn,
+        heightIn: meta.heightIn
+      }
+    });
   } catch (error) {
     return handleApiError(error);
   }
@@ -33,7 +45,9 @@ export async function GET(
 
 /**
  * PATCH /api/labels/versions/[id]
- * Update label version settings (qrScale, qrOffsetX, qrOffsetY)
+ * Update label version elements (unified placement model)
+ * 
+ * Body: { elements: PlaceableElement[] }
  */
 export async function PATCH(
   req: NextRequest,
@@ -60,56 +74,67 @@ export async function PATCH(
     const { id } = await params;
     const body = await req.json();
 
-    // Build settings object from valid fields
-    const settings: { 
-      qrScale?: number; 
-      qrOffsetX?: number; 
-      qrOffsetY?: number;
-      labelWidthIn?: number;
-      labelHeightIn?: number;
-      contentScale?: number;
-      contentOffsetX?: number;
-      contentOffsetY?: number;
-    } = {};
-
-    // Validate qrScale if provided (10% to 150%)
-    if (body.qrScale !== undefined) {
-      const val = parseFloat(body.qrScale);
-      if (isNaN(val) || val < 0.1 || val > 1.5) {
-        return NextResponse.json({ error: 'qrScale must be between 0.1 and 1.5' }, { status: 400 });
-      }
-      settings.qrScale = val;
-    }
-
-    // Validate offsets and other numeric fields
-    const numericFields = ['qrOffsetX', 'qrOffsetY', 'labelWidthIn', 'labelHeightIn', 'contentScale', 'contentOffsetX', 'contentOffsetY'];
-    
-    for (const field of numericFields) {
-      if (body[field] !== undefined) {
-        const val = parseFloat(body[field]);
-        if (isNaN(val)) {
-          return NextResponse.json({ error: `${field} must be a number` }, { status: 400 });
-        }
-        // Additional checks
-        if ((field === 'labelWidthIn' || field === 'labelHeightIn' || field === 'contentScale') && val <= 0) {
-          return NextResponse.json({ error: `${field} must be positive` }, { status: 400 });
-        }
-        (settings as any)[field] = val;
-      }
-    }
-
-    // Check if any valid fields to update
-    if (Object.keys(settings).length === 0) {
+    // Validate elements array is present
+    if (!body.elements || !Array.isArray(body.elements)) {
       return NextResponse.json(
-        { error: 'No valid fields to update' },
+        { error: 'elements array is required' },
         { status: 400 }
       );
     }
 
-    const updated = await updateVersionQrPosition(id, settings, session.user.id);
-    return NextResponse.json(updated);
+    const elements = body.elements as PlaceableElement[];
+
+    // Basic structure validation (detailed validation happens in service)
+    for (let i = 0; i < elements.length; i++) {
+      const el = elements[i];
+      if (!el.id || typeof el.id !== 'string') {
+        return NextResponse.json(
+          { error: `Element ${i}: id is required and must be a string` },
+          { status: 400 }
+        );
+      }
+      if (!el.type || !['QR', 'BARCODE'].includes(el.type)) {
+        return NextResponse.json(
+          { error: `Element ${i}: type must be 'QR' or 'BARCODE'` },
+          { status: 400 }
+        );
+      }
+      if (!el.placement || typeof el.placement !== 'object') {
+        return NextResponse.json(
+          { error: `Element ${i}: placement object is required` },
+          { status: 400 }
+        );
+      }
+      const { xIn, yIn, widthIn, heightIn, rotation } = el.placement;
+      if (typeof xIn !== 'number' || typeof yIn !== 'number' || 
+          typeof widthIn !== 'number' || typeof heightIn !== 'number') {
+        return NextResponse.json(
+          { error: `Element ${i}: placement requires xIn, yIn, widthIn, heightIn as numbers` },
+          { status: 400 }
+        );
+      }
+      if (rotation !== undefined && ![0, 90, -90].includes(rotation)) {
+        return NextResponse.json(
+          { error: `Element ${i}: rotation must be 0, 90, or -90` },
+          { status: 400 }
+        );
+      }
+    }
+
+    const updated = await updateVersionElements(id, elements, session.user.id);
+    
+    // Get updated metadata
+    const meta = await getLabelMetadata(id);
+
+    return NextResponse.json({
+      ...updated,
+      elements: meta.elements,
+      labelMeta: {
+        widthIn: meta.widthIn,
+        heightIn: meta.heightIn
+      }
+    });
   } catch (error) {
     return handleApiError(error);
   }
 }
-

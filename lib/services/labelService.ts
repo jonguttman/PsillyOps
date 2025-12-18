@@ -1,5 +1,13 @@
-// LABEL SERVICE - Template management, versioning, and QR injection
-// SVG is the source of truth - PDF rendering deferred to Phase 2
+// LABEL SERVICE - Template management, versioning, and element injection
+// SVG is the source of truth - Unified Placement Model
+//
+// DESIGN LAWS:
+// - Geometry is geometry (xIn, yIn, widthIn, heightIn)
+// - Semantics are semantics (barcode options)
+// - Rotation is visual only (does not affect placement values)
+// - Movement is always label-relative (up = up, regardless of rotation)
+// - All measurements in physical inches
+// - No scale+offset models, no placeholder-relative math
 
 import { prisma } from '@/lib/db/prisma';
 import { AppError, ErrorCodes } from '@/lib/utils/errors';
@@ -7,6 +15,12 @@ import { logAction } from './loggingService';
 import { getLabelStorage, validateSvgPlaceholder, isAllowedFileType, getFileExtension } from './labelStorage';
 import { ActivityEntity, LabelEntityType } from '@prisma/client';
 import QRCode from 'qrcode';
+import { 
+  PlaceableElement, 
+  validateElements, 
+  createDefaultQrElement,
+  type Placement 
+} from '@/lib/types/placement';
 
 // ========================================
 // TYPES
@@ -50,12 +64,11 @@ const LETTER_MARGIN_IN = 0.25;
 const LETTER_USABLE_WIDTH_IN = LETTER_WIDTH_IN - 2 * LETTER_MARGIN_IN; // 8.0
 const LETTER_USABLE_HEIGHT_IN = LETTER_HEIGHT_IN - 2 * LETTER_MARGIN_IN; // 10.5
 
-// Auto-generated QR placeholder defaults
-const QR_PLACEHOLDER_MARGIN_IN = 0.125;
-const QR_PLACEHOLDER_SIZE_LARGE_IN = 0.75; // For labels >= 2in wide
-const QR_PLACEHOLDER_SIZE_SMALL_IN = 0.5;  // For labels < 2in wide
+// Default QR placement constants
+const DEFAULT_QR_SIZE_LARGE_IN = 0.75; // For labels >= 2in wide
+const DEFAULT_QR_SIZE_SMALL_IN = 0.5;  // For labels < 2in wide
+const DEFAULT_QR_MARGIN_IN = 0.125;
 
-// TODO: Consolidate render routes into a single endpoint once legacy paths are retired
 export type RenderMode = 'embedded' | 'token';
 
 export interface RenderLabelsParams {
@@ -228,13 +241,12 @@ export async function createVersion(params: CreateVersionParams) {
     throw new AppError(ErrorCodes.INVALID_INPUT, 'Only SVG and PDF files are allowed');
   }
   
-  // For SVG files, check placeholder (but don't block - we auto-generate if missing)
+  // For SVG files, check placeholder (informational only - we handle missing placeholders)
   if (ext === '.svg') {
     const svgContent = file.toString('utf-8');
     if (!validateSvgPlaceholder(svgContent)) {
-      // Log warning but allow upload - placeholder will be auto-generated at render time
       if (process.env.NODE_ENV === 'development') {
-        console.warn(`[labelService] SVG missing qr-placeholder for template ${templateId} - will auto-generate at render time`);
+        console.warn(`[labelService] SVG missing qr-placeholder for template ${templateId} - default placement will be used`);
       }
     }
   }
@@ -243,7 +255,7 @@ export async function createVersion(params: CreateVersionParams) {
   const storage = getLabelStorage();
   const fileUrl = await storage.save(templateId, version, file, ext);
   
-  // Create version record
+  // Create version record (elements starts as Prisma.DbNull - will be initialized on first edit)
   const templateVersion = await prisma.labelTemplateVersion.create({
     data: {
       templateId,
@@ -252,6 +264,7 @@ export async function createVersion(params: CreateVersionParams) {
       qrTemplate,
       notes,
       isActive: false
+      // elements defaults to null via schema
     }
   });
   
@@ -386,140 +399,65 @@ export async function getActiveTemplatesForEntityType(entityType: LabelEntityTyp
 }
 
 /**
- * Update QR position settings for a label version
- * Does NOT regenerate tokens - only affects future renders
+ * Update elements array for a label version
+ * This is the ONLY way to update placement - no scale/offset fields
  */
-export async function updateVersionQrPosition(
-  versionId: string, 
-  settings: {
-    qrScale?: number;
-    qrOffsetX?: number;
-    qrOffsetY?: number;
-    labelWidthIn?: number;
-    labelHeightIn?: number;
-    contentScale?: number;
-    contentOffsetX?: number;
-    contentOffsetY?: number;
-  },
+export async function updateVersionElements(
+  versionId: string,
+  elements: PlaceableElement[],
   userId?: string
 ) {
-  const { qrScale, qrOffsetX, qrOffsetY, labelWidthIn, labelHeightIn, contentScale, contentOffsetX, contentOffsetY } = settings;
-
-  // Validate scale range if provided (10% to 150%)
-  if (qrScale !== undefined && (qrScale < 0.1 || qrScale > 1.5)) {
-    throw new AppError(
-      ErrorCodes.INVALID_INPUT, 
-      'QR scale must be between 0.1 (10%) and 1.5 (150%)'
-    );
-  }
-
-  const version = await fetchVersionWithSettings(versionId);
+  const version = await prisma.labelTemplateVersion.findUnique({
+    where: { id: versionId },
+    include: { template: true }
+  });
 
   if (!version) {
     throw new AppError(ErrorCodes.NOT_FOUND, 'Label version not found');
   }
 
-  const before = {
-    qrScale: version.qrScale,
-    qrOffsetX: version.qrOffsetX,
-    qrOffsetY: version.qrOffsetY,
-    labelWidthIn: version.labelWidthIn,
-    labelHeightIn: version.labelHeightIn,
-    contentScale: version.contentScale,
-    contentOffsetX: version.contentOffsetX,
-    contentOffsetY: version.contentOffsetY
-  };
+  // Get label dimensions for validation
+  const storage = getLabelStorage();
+  const fileBuffer = await storage.load(version.fileUrl);
+  const svgContent = fileBuffer.toString('utf-8');
+  const { widthIn: labelWidthIn, heightIn: labelHeightIn } = getSvgPhysicalSizeInches(svgContent);
 
-  // Build update data
-  const updateData: any = {
-    updatedAt: new Date()
-  };
-  
-  if (qrScale !== undefined) updateData.qrScale = qrScale;
-  if (qrOffsetX !== undefined) updateData.qrOffsetX = qrOffsetX;
-  if (qrOffsetY !== undefined) updateData.qrOffsetY = qrOffsetY;
-  if (labelWidthIn !== undefined) updateData.labelWidthIn = labelWidthIn;
-  if (labelHeightIn !== undefined) updateData.labelHeightIn = labelHeightIn;
-  if (contentScale !== undefined) updateData.contentScale = contentScale;
-  if (contentOffsetX !== undefined) updateData.contentOffsetX = contentOffsetX;
-  if (contentOffsetY !== undefined) updateData.contentOffsetY = contentOffsetY;
-
-  // WORKAROUND: Use raw query because Prisma Client runtime might be stale and missing new fields
-  // This bypasses the JS-level schema validation error: "Unknown argument labelWidthIn"
-  const setClauses: string[] = [];
-  const params: any[] = [];
-  let paramIdx = 1;
-
-  const fields = [
-    'qrScale', 'qrOffsetX', 'qrOffsetY', 
-    'labelWidthIn', 'labelHeightIn', 
-    'contentScale', 'contentOffsetX', 'contentOffsetY'
-  ];
-
-  fields.forEach(field => {
-    if (updateData[field] !== undefined) {
-      setClauses.push(`"${field}" = $${paramIdx++}`);
-      params.push(updateData[field]);
-    }
-  });
-  
-  // Always update updatedAt
-  setClauses.push(`"updatedAt" = $${paramIdx++}`);
-  params.push(new Date());
-
-  params.push(versionId); // ID is last param
-
-  if (setClauses.length > 0) {
-    await prisma.$executeRawUnsafe(
-      `UPDATE "LabelTemplateVersion" SET ${setClauses.join(', ')} WHERE "id" = $${paramIdx}`,
-      ...params
-    );
+  // Validate elements
+  const errors = validateElements(elements, labelWidthIn, labelHeightIn);
+  if (errors.length > 0) {
+    throw new AppError(ErrorCodes.INVALID_INPUT, `Invalid elements: ${errors.join('; ')}`);
   }
 
-  // Construct updated object for return and logging (since we can't rely on stale client return)
-  const updated = {
-    ...version,
-    ...updateData
-  };
+  const before = version.elements;
 
-  // Build summary message
-  const changes: string[] = [];
-  if (qrScale !== undefined) changes.push(`QR scale to ${Math.round(qrScale * 100)}%`);
-  if (qrOffsetX !== undefined) changes.push(`QR X to ${qrOffsetX}`);
-  if (qrOffsetY !== undefined) changes.push(`QR Y to ${qrOffsetY}`);
-  if (labelWidthIn !== undefined) changes.push(`Width to ${labelWidthIn}"`);
-  if (contentScale !== undefined) changes.push(`Content scale to ${Math.round(contentScale * 100)}%`);
+  // Update elements
+  const updated = await prisma.labelTemplateVersion.update({
+    where: { id: versionId },
+    data: {
+      elements: elements as any, // Prisma Json type
+      updatedAt: new Date()
+    },
+    include: { template: true }
+  });
 
   await logAction({
     entityType: ActivityEntity.LABEL,
     entityId: version.templateId,
-    action: 'label_settings_updated',
+    action: 'label_elements_updated',
     userId,
-    summary: `Updated settings for version ${version.version} of "${version.template.name}": ${changes.join(', ')}`,
-    before,
-    after: { 
-      qrScale: updated.qrScale, 
-      qrOffsetX: updated.qrOffsetX, 
-      qrOffsetY: updated.qrOffsetY,
-      labelWidthIn: updated.labelWidthIn,
-      labelHeightIn: updated.labelHeightIn,
-      contentScale: updated.contentScale,
-      contentOffsetX: updated.contentOffsetX,
-      contentOffsetY: updated.contentOffsetY
-    },
+    summary: `Updated ${elements.length} element(s) for version ${version.version} of "${version.template.name}"`,
+    before: { elements: before },
+    after: { elements },
     metadata: {
       versionId,
       version: version.version,
-      templateName: version.template.name
+      templateName: version.template.name,
+      elementCount: elements.length
     }
   });
 
   return updated;
 }
-
-// Alias for backward compatibility
-export const updateVersionQrScale = (versionId: string, qrScale: number, userId?: string) => 
-  updateVersionQrPosition(versionId, { qrScale }, userId);
 
 /**
  * Get a label version by ID
@@ -543,47 +481,15 @@ export async function getLabelVersion(versionId: string) {
 
 /**
  * Render a label SVG with QR code injection
+ * Uses unified placement model - elements array with absolute inch positions
  */
-// Helper to fetch version with settings, handling potentially stale Prisma Client
-async function fetchVersionWithSettings(versionId: string) {
+export async function renderLabelSvg(params: RenderLabelParams): Promise<string> {
+  const { versionId, qrPayload } = params;
+  
   const version = await prisma.labelTemplateVersion.findUnique({
     where: { id: versionId },
     include: { template: true }
   });
-
-  if (!version) return null;
-
-  // Fallback for stale client: fetch new fields via raw query if missing
-  if ((version as any).labelWidthIn === undefined) {
-    try {
-      const rawResult = await prisma.$queryRawUnsafe<any[]>(
-        `SELECT "labelWidthIn", "labelHeightIn", "contentScale", "contentOffsetX", "contentOffsetY" FROM "LabelTemplateVersion" WHERE "id" = $1`,
-        versionId
-      );
-      
-      if (rawResult && rawResult.length > 0) {
-        const raw = rawResult[0];
-        Object.assign(version, {
-          labelWidthIn: raw.labelWidthIn,
-          labelHeightIn: raw.labelHeightIn,
-          contentScale: raw.contentScale,
-          contentOffsetX: raw.contentOffsetX,
-          contentOffsetY: raw.contentOffsetY
-        });
-      }
-    } catch (e) {
-      console.warn('Failed to fetch extended version settings via raw query:', e);
-    }
-  }
-
-  return version;
-}
-
-export async function renderLabelSvg(params: RenderLabelParams): Promise<string> {
-  const { versionId, qrPayload } = params;
-  
-  // Get the version
-  const version = await fetchVersionWithSettings(versionId);
   
   if (!version) {
     throw new AppError(ErrorCodes.NOT_FOUND, 'Label version not found');
@@ -594,56 +500,20 @@ export async function renderLabelSvg(params: RenderLabelParams): Promise<string>
   const fileBuffer = await storage.load(version.fileUrl);
   let svgContent = fileBuffer.toString('utf-8');
   
-  // Ensure QR placeholder exists (auto-generate if missing)
-  svgContent = ensureQrPlaceholder(svgContent);
-  
-  // Apply persisted canvas adjustments (Size Override & Content Transform)
-  // 1. Label Size Override
+  // Apply label size override if set
   if (version.labelWidthIn && version.labelHeightIn) {
-    try {
-      const { widthIn: nativeWidth, heightIn: nativeHeight } = getSvgPhysicalSizeInches(svgContent);
-      svgContent = applyLabelSizeOverride(
-        svgContent, 
-        nativeWidth, 
-        nativeHeight, 
-        version.labelWidthIn, 
-        version.labelHeightIn
-      );
-    } catch (e) {
-      console.warn('Failed to apply label size override during render:', e);
-    }
+    const { widthIn: nativeWidth, heightIn: nativeHeight } = getSvgPhysicalSizeInches(svgContent);
+    svgContent = applyLabelSizeOverride(svgContent, nativeWidth, nativeHeight, version.labelWidthIn, version.labelHeightIn);
   }
-
-  // 2. Content Transform (Scale/Offset)
-  const contentScale = version.contentScale ?? 1.0;
-  const contentOffsetX = version.contentOffsetX ?? 0;
-  const contentOffsetY = version.contentOffsetY ?? 0;
-
-  if (Math.abs(contentScale - 1.0) > 0.001 || Math.abs(contentOffsetX) > 0.001 || Math.abs(contentOffsetY) > 0.001) {
-    try {
-      const { widthIn, heightIn } = getSvgPhysicalSizeInches(svgContent);
-      svgContent = applyContentTransform(
-        svgContent, 
-        contentOffsetX, 
-        contentOffsetY, 
-        widthIn, 
-        heightIn, 
-        contentScale
-      );
-    } catch (e) {
-      console.warn('Failed to apply content transform during render:', e);
-    }
-  }
-
-  // Generate QR code as SVG markup (vector)
+  
+  // Get elements (or create default if none exist)
+  const elements = getElementsOrDefault(version.elements as PlaceableElement[] | null, svgContent);
+  
+  // Generate QR code as SVG markup
   const qrSvg = await generateQrSvgFromUrl(qrPayload.url);
   
-  // Inject QR code into placeholder with saved scale and offset
-  svgContent = injectQRCode(svgContent, qrSvg, {
-    scale: version.qrScale,
-    offsetX: version.qrOffsetX,
-    offsetY: version.qrOffsetY
-  });
+  // Inject elements at absolute positions
+  svgContent = injectElements(svgContent, elements, qrSvg);
   
   return svgContent;
 }
@@ -712,18 +582,16 @@ export async function logLabelPrinted(params: {
 
 export interface RenderLabelWithTokenParams {
   versionId: string;
-  token: string;  // Pre-generated QR token (e.g., "qr_2x7kP9mN4...")
+  token: string;
   baseUrl: string;
 }
 
 /**
  * Render a label SVG with a token-based QR code
- * The QR code encodes only the token URL, not embedded data
  */
 export async function renderLabelWithToken(params: RenderLabelWithTokenParams): Promise<string> {
   const { versionId, token, baseUrl } = params;
   
-  // Get the version
   const version = await prisma.labelTemplateVersion.findUnique({
     where: { id: versionId },
     include: { template: true }
@@ -738,56 +606,35 @@ export async function renderLabelWithToken(params: RenderLabelWithTokenParams): 
   const fileBuffer = await storage.load(version.fileUrl);
   let svgContent = fileBuffer.toString('utf-8');
   
-  // Ensure QR placeholder exists (auto-generate if missing)
-  svgContent = ensureQrPlaceholder(svgContent);
-  
-  // Apply persisted canvas adjustments
+  // Apply label size override if set
   if (version.labelWidthIn && version.labelHeightIn) {
-    try {
-      const { widthIn: nativeWidth, heightIn: nativeHeight } = getSvgPhysicalSizeInches(svgContent);
-      svgContent = applyLabelSizeOverride(svgContent, nativeWidth, nativeHeight, version.labelWidthIn, version.labelHeightIn);
-    } catch {}
+    const { widthIn: nativeWidth, heightIn: nativeHeight } = getSvgPhysicalSizeInches(svgContent);
+    svgContent = applyLabelSizeOverride(svgContent, nativeWidth, nativeHeight, version.labelWidthIn, version.labelHeightIn);
   }
-
-  const contentScale = version.contentScale ?? 1.0;
-  const contentOffsetX = version.contentOffsetX ?? 0;
-  const contentOffsetY = version.contentOffsetY ?? 0;
-
-  if (Math.abs(contentScale - 1.0) > 0.001 || Math.abs(contentOffsetX) > 0.001 || Math.abs(contentOffsetY) > 0.001) {
-    try {
-      const { widthIn, heightIn } = getSvgPhysicalSizeInches(svgContent);
-      svgContent = applyContentTransform(svgContent, contentOffsetX, contentOffsetY, widthIn, heightIn, contentScale);
-    } catch {}
-  }
-
-  // Build the token URL
-  const tokenUrl = `${baseUrl}/qr/${token}`;
   
-  // Generate QR code from the simple URL (vector SVG)
+  // Get elements (or create default if none exist)
+  const elements = getElementsOrDefault(version.elements as PlaceableElement[] | null, svgContent);
+  
+  // Build the token URL and generate QR
+  const tokenUrl = `${baseUrl}/qr/${token}`;
   const qrSvg = await generateQrSvgFromUrl(tokenUrl);
   
-  // Inject QR code into placeholder with saved scale and offset
-  svgContent = injectQRCode(svgContent, qrSvg, {
-    scale: version.qrScale,
-    offsetX: version.qrOffsetX,
-    offsetY: version.qrOffsetY
-  });
+  // Inject elements
+  svgContent = injectElements(svgContent, elements, qrSvg);
   
   return svgContent;
 }
 
 /**
  * Render multiple labels with unique tokens
- * Used for sheet printing where each label needs its own token
  */
 export async function renderLabelsWithTokens(params: {
   versionId: string;
-  tokens: string[];  // Array of pre-generated tokens
+  tokens: string[];
   baseUrl: string;
 }): Promise<string[]> {
   const { versionId, tokens, baseUrl } = params;
   
-  // Get the version
   const version = await prisma.labelTemplateVersion.findUnique({
     where: { id: versionId },
     include: { template: true }
@@ -802,40 +649,21 @@ export async function renderLabelsWithTokens(params: {
   const fileBuffer = await storage.load(version.fileUrl);
   let svgTemplate = fileBuffer.toString('utf-8');
   
-  // Ensure QR placeholder exists (auto-generate if missing)
-  svgTemplate = ensureQrPlaceholder(svgTemplate);
-  
-  // Apply persisted canvas adjustments
+  // Apply label size override if set
   if (version.labelWidthIn && version.labelHeightIn) {
-    try {
-      const { widthIn: nativeWidth, heightIn: nativeHeight } = getSvgPhysicalSizeInches(svgTemplate);
-      svgTemplate = applyLabelSizeOverride(svgTemplate, nativeWidth, nativeHeight, version.labelWidthIn, version.labelHeightIn);
-    } catch {}
+    const { widthIn: nativeWidth, heightIn: nativeHeight } = getSvgPhysicalSizeInches(svgTemplate);
+    svgTemplate = applyLabelSizeOverride(svgTemplate, nativeWidth, nativeHeight, version.labelWidthIn, version.labelHeightIn);
   }
-
-  const contentScale = version.contentScale ?? 1.0;
-  const contentOffsetX = version.contentOffsetX ?? 0;
-  const contentOffsetY = version.contentOffsetY ?? 0;
-
-  if (Math.abs(contentScale - 1.0) > 0.001 || Math.abs(contentOffsetX) > 0.001 || Math.abs(contentOffsetY) > 0.001) {
-    try {
-      const { widthIn, heightIn } = getSvgPhysicalSizeInches(svgTemplate);
-      svgTemplate = applyContentTransform(svgTemplate, contentOffsetX, contentOffsetY, widthIn, heightIn, contentScale);
-    } catch {}
-  }
-
-  // Render each label with its unique token and saved scale/offset
-  const qrOptions: QrPositionOptions = {
-    scale: version.qrScale,
-    offsetX: version.qrOffsetX,
-    offsetY: version.qrOffsetY
-  };
   
+  // Get elements (or create default if none exist)
+  const elements = getElementsOrDefault(version.elements as PlaceableElement[] | null, svgTemplate);
+  
+  // Render each label with its unique token
   const svgs: string[] = [];
   for (const token of tokens) {
     const tokenUrl = `${baseUrl}/qr/${token}`;
     const qrSvg = await generateQrSvgFromUrl(tokenUrl);
-    const svgContent = injectQRCode(svgTemplate, qrSvg, qrOptions);
+    const svgContent = injectElements(svgTemplate, elements, qrSvg);
     svgs.push(svgContent);
   }
   
@@ -843,16 +671,9 @@ export async function renderLabelsWithTokens(params: {
 }
 
 /**
- * Generate a QR code SVG markup from a URL.
- * Hard rules:
- * - URL-only encoding
- * - errorCorrectionLevel: 'L'
- * - minimal quiet zone (margin)
- * - black on white
- * - vector SVG (no raster, no data URL)
+ * Generate a QR code SVG markup from a URL
  */
 async function generateQrSvgFromUrl(url: string): Promise<string> {
-  // qrcode library returns an <svg> string when type: 'svg'
   return await QRCode.toString(url, {
     type: 'svg',
     errorCorrectionLevel: 'L',
@@ -868,19 +689,16 @@ async function generateQrSvgFromUrl(url: string): Promise<string> {
 // SHARED RENDER HELPER
 // ========================================
 
-// TODO: Consolidate render routes into a single endpoint once legacy paths are retired
-
 /**
  * Shared helper for rendering labels in different modes
- * Used internally by both /api/labels/render and /api/labels/render-with-tokens
- * 
- * @param mode - 'embedded' for legacy JSON payload QR, 'token' for token-based QR
  */
 export async function renderLabelsShared(params: RenderLabelsParams): Promise<RenderLabelsResult> {
   const { mode, versionId, entityType, entityId, quantity, userId, qrPayload, baseUrl } = params;
 
-  // Get the version
-  const version = await fetchVersionWithSettings(versionId);
+  const version = await prisma.labelTemplateVersion.findUnique({
+    where: { id: versionId },
+    include: { template: true }
+  });
 
   if (!version) {
     throw new AppError(ErrorCodes.NOT_FOUND, 'Label version not found');
@@ -894,45 +712,22 @@ export async function renderLabelsShared(params: RenderLabelsParams): Promise<Re
   const fileBuffer = await storage.load(version.fileUrl);
   let svgTemplate = fileBuffer.toString('utf-8');
   
-  // Ensure QR placeholder exists (auto-generate if missing)
-  svgTemplate = ensureQrPlaceholder(svgTemplate);
-
-  // Apply persisted canvas adjustments
-  if (version.labelWidthIn != null && version.labelHeightIn != null) {
-    try {
-      const { widthIn: nativeWidth, heightIn: nativeHeight } = getSvgPhysicalSizeInches(svgTemplate);
-      svgTemplate = applyLabelSizeOverride(svgTemplate, nativeWidth, nativeHeight, version.labelWidthIn, version.labelHeightIn);
-    } catch {}
+  // Apply label size override if set
+  if (version.labelWidthIn && version.labelHeightIn) {
+    const { widthIn: nativeWidth, heightIn: nativeHeight } = getSvgPhysicalSizeInches(svgTemplate);
+    svgTemplate = applyLabelSizeOverride(svgTemplate, nativeWidth, nativeHeight, version.labelWidthIn, version.labelHeightIn);
   }
 
-  const contentScale = version.contentScale ?? 1.0;
-  const contentOffsetX = version.contentOffsetX ?? 0;
-  const contentOffsetY = version.contentOffsetY ?? 0;
-
-  if (Math.abs(contentScale - 1.0) > 0.001 || Math.abs(contentOffsetX) > 0.001 || Math.abs(contentOffsetY) > 0.001) {
-    try {
-      const { widthIn, heightIn } = getSvgPhysicalSizeInches(svgTemplate);
-      svgTemplate = applyContentTransform(svgTemplate, contentOffsetX, contentOffsetY, widthIn, heightIn, contentScale);
-    } catch {}
-  }
-
-  // Build position options from version settings
-  const qrOptions: QrPositionOptions = {
-    scale: version.qrScale,
-    offsetX: version.qrOffsetX,
-    offsetY: version.qrOffsetY
-  };
+  // Get elements (or create default if none exist)
+  const elements = getElementsOrDefault(version.elements as PlaceableElement[] | null, svgTemplate);
 
   if (mode === 'embedded') {
-    // Legacy mode: Use embedded QR payload
     if (!qrPayload) {
       throw new AppError(ErrorCodes.INVALID_INPUT, 'qrPayload required for embedded mode');
     }
 
-    // Embedded mode still uses URL-only QR and vector SVG for scan reliability.
-    // NOTE: This keeps backward compatibility with the endpoint while improving QR output.
     const qrSvg = await generateQrSvgFromUrl(qrPayload.url);
-    const svg = injectQRCode(svgTemplate, qrSvg, qrOptions);
+    const svg = injectElements(svgTemplate, elements, qrSvg);
 
     // For embedded mode, duplicate SVG for quantity (all identical)
     const svgs = Array(quantity).fill(svg);
@@ -946,12 +741,10 @@ export async function renderLabelsShared(params: RenderLabelsParams): Promise<Re
     };
   } else {
     // Token mode: Create unique tokens and render each label
-    // IMPORTANT: Token creation happens HERE at render time
     if (!baseUrl) {
       throw new AppError(ErrorCodes.INVALID_INPUT, 'baseUrl required for token mode');
     }
 
-    // Import dynamically to avoid circular dependency
     const { createTokenBatch, buildTokenUrl } = await import('./qrTokenService');
 
     const createdTokens = await createTokenBatch({
@@ -962,12 +755,11 @@ export async function renderLabelsShared(params: RenderLabelsParams): Promise<Re
       userId
     });
 
-    // Render each label with its unique token and saved scale/offset
     const svgs: string[] = [];
     for (const token of createdTokens) {
       const tokenUrl = `${baseUrl}/qr/${token.token}`;
       const qrSvg = await generateQrSvgFromUrl(tokenUrl);
-      const svgContent = injectQRCode(svgTemplate, qrSvg, qrOptions);
+      const svgContent = injectElements(svgTemplate, elements, qrSvg);
       svgs.push(svgContent);
     }
 
@@ -1014,12 +806,158 @@ async function getEntityCode(entityType: LabelEntityType, entityId: string): Pro
 }
 
 // ========================================
-// PREVIEW MODE HELPERS
+// ELEMENT INJECTION (UNIFIED PLACEMENT)
+// ========================================
+
+/**
+ * Inject placeable elements into SVG at absolute inch positions.
+ * 
+ * CRITICAL: All inch-to-SVG conversions go through getSvgPhysicalSizeInches
+ * and extractViewBox. No hardcoded DPI assumptions.
+ * 
+ * Rotation uses translate-rotate-translate pattern for cross-renderer consistency.
+ */
+function injectElements(
+  svg: string,
+  elements: PlaceableElement[],
+  qrSvgContent: string
+): string {
+  if (elements.length === 0) {
+    return svg;
+  }
+
+  // SINGLE SOURCE OF TRUTH for coordinate conversion
+  const { widthIn, heightIn } = getSvgPhysicalSizeInches(svg);
+  const viewBox = extractViewBox(svg);
+  
+  let vbWidth: number;
+  let vbHeight: number;
+  
+  if (viewBox) {
+    const parts = viewBox.split(/\s+/).map(parseFloat);
+    if (parts.length >= 4) {
+      vbWidth = parts[2];
+      vbHeight = parts[3];
+    } else {
+      // Fallback: assume 96 DPI
+      vbWidth = widthIn * 96;
+      vbHeight = heightIn * 96;
+    }
+  } else {
+    // No viewBox: assume 96 DPI
+    vbWidth = widthIn * 96;
+    vbHeight = heightIn * 96;
+  }
+
+  const pxPerInchX = vbWidth / widthIn;
+  const pxPerInchY = vbHeight / heightIn;
+
+  let injectedContent = '';
+
+  for (const el of elements) {
+    const x = el.placement.xIn * pxPerInchX;
+    const y = el.placement.yIn * pxPerInchY;
+    const w = el.placement.widthIn * pxPerInchX;
+    const h = el.placement.heightIn * pxPerInchY;
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+
+    // Rotation: translate-rotate-translate pattern for cross-renderer consistency
+    const rotateAttr = el.placement.rotation !== 0
+      ? `transform="translate(${cx.toFixed(3)}, ${cy.toFixed(3)}) rotate(${el.placement.rotation}) translate(${(-cx).toFixed(3)}, ${(-cy).toFixed(3)})"`
+      : '';
+
+    if (el.type === 'QR') {
+      // Extract viewBox from QR SVG for proper scaling
+      const qrVbMatch = qrSvgContent.match(/\bviewBox="0 0 ([0-9.]+) ([0-9.]+)"/i);
+      const qrVbSize = qrVbMatch ? parseFloat(qrVbMatch[1]) : 0;
+      const qrInner = stripOuterSvg(qrSvgContent);
+
+      injectedContent += `
+  <g ${rotateAttr}>
+    <svg x="${x.toFixed(3)}" y="${y.toFixed(3)}" width="${w.toFixed(3)}" height="${h.toFixed(3)}"${qrVbSize ? ` viewBox="0 0 ${qrVbSize} ${qrVbSize}"` : ''} shape-rendering="crispEdges">
+      ${qrInner}
+    </svg>
+  </g>`;
+    }
+    // BARCODE injection will be added in Phase 2
+  }
+
+  // Insert before closing </svg> tag
+  return svg.replace(/<\/svg>\s*$/i, `${injectedContent}\n</svg>`);
+}
+
+/**
+ * Get elements from version or create default placement
+ * 
+ * Initial placement logic (one-time only):
+ * 1. Check SVG for id="qr-placeholder" element
+ * 2. If found: extract position, create default QR element at that location
+ * 3. If not found: use default placement at bottom-right
+ * 
+ * After save, placeholder is ignored forever.
+ */
+function getElementsOrDefault(
+  storedElements: PlaceableElement[] | null,
+  svgContent: string
+): PlaceableElement[] {
+  // If elements exist, use them
+  if (storedElements && storedElements.length > 0) {
+    return storedElements;
+  }
+
+  // Get label dimensions
+  let widthIn: number;
+  let heightIn: number;
+  try {
+    const size = getSvgPhysicalSizeInches(svgContent);
+    widthIn = size.widthIn;
+    heightIn = size.heightIn;
+  } catch {
+    widthIn = 2;
+    heightIn = 2;
+  }
+
+  // Try to extract placeholder position for initial placement
+  const placeholderBox = extractPlaceholderBox(svgContent);
+  
+  if (placeholderBox) {
+    // Convert placeholder position from SVG units to inches
+    const viewBox = extractViewBox(svgContent);
+    let pxPerInchX = 96;
+    let pxPerInchY = 96;
+    
+    if (viewBox) {
+      const parts = viewBox.split(/\s+/).map(parseFloat);
+      if (parts.length >= 4) {
+        pxPerInchX = parts[2] / widthIn;
+        pxPerInchY = parts[3] / heightIn;
+      }
+    }
+    
+    const xIn = placeholderBox.x / pxPerInchX;
+    const yIn = placeholderBox.y / pxPerInchY;
+    const sizeIn = Math.min(placeholderBox.width / pxPerInchX, placeholderBox.height / pxPerInchY);
+    
+    return [createDefaultQrElement(xIn, yIn, sizeIn)];
+  }
+
+  // No placeholder: use default placement (bottom-right corner)
+  const qrSize = widthIn >= 2 ? DEFAULT_QR_SIZE_LARGE_IN : DEFAULT_QR_SIZE_SMALL_IN;
+  const margin = DEFAULT_QR_MARGIN_IN;
+  const xIn = widthIn - qrSize - margin;
+  const yIn = heightIn - qrSize - margin;
+
+  return [createDefaultQrElement(xIn, yIn, qrSize)];
+}
+
+// ========================================
+// SVG UTILITIES
 // ========================================
 
 /**
  * Extract bounding box from <g id="qr-placeholder"> element
- * Designers must add data-width and data-height attributes to the placeholder group
+ * Used ONLY for initial placement detection
  */
 function extractPlaceholderBox(svg: string): {
   x: number;
@@ -1041,7 +979,7 @@ function extractPlaceholderBox(svg: string): {
     };
   }
 
-  // Also try reverse attribute order (data attrs before transform)
+  // Also try reverse attribute order
   const reverseMatch = svg.match(
     /<g[^>]*id="qr-placeholder"[^>]*data-width="([^"]+)"[^>]*data-height="([^"]+)"[^>]*transform="translate\(([^,]+),\s*([^)]+)\)"/
   );
@@ -1055,7 +993,7 @@ function extractPlaceholderBox(svg: string): {
     };
   }
 
-  // Fallback: try to find placeholder without data attributes (use default 100x100)
+  // Fallback: placeholder without data attributes (use default 100x100)
   const basicMatch = svg.match(
     /<g[^>]*id="qr-placeholder"[^>]*transform="translate\(([^,]+),\s*([^)]+)\)"/
   );
@@ -1069,7 +1007,7 @@ function extractPlaceholderBox(svg: string): {
     };
   }
 
-  // Final fallback: placeholder exists but no transform
+  // Placeholder exists but no transform
   if (svg.includes('id="qr-placeholder"')) {
     return {
       x: 0,
@@ -1103,8 +1041,11 @@ function parseLengthToInches(raw: string): number | null {
   }
 }
 
+/**
+ * SINGLE SOURCE OF TRUTH for SVG physical dimensions
+ * All inch conversions must go through this function
+ */
 function getSvgPhysicalSizeInches(svg: string): { widthIn: number; heightIn: number } {
-  // Find the root <svg ... > tag content to avoid matching nested elements
   const rootMatch = svg.match(/<svg([^>]*)>/i);
   if (!rootMatch) {
     throw new AppError(ErrorCodes.INVALID_INPUT, 'Invalid SVG: No root <svg> tag found');
@@ -1123,8 +1064,7 @@ function getSvgPhysicalSizeInches(svg: string): { widthIn: number; heightIn: num
   if ((!widthIn || !heightIn) && viewBoxMatch) {
     const parts = viewBoxMatch[1].split(/\s+/).map(parseFloat);
     if (parts.length >= 4) {
-      // Assuming 96 DPI for unitless viewBox dimensions (standard CSS px)
-      // This is a heuristic; some tools use 72 DPI, but 96 is safer for web consistency
+      // Assuming 96 DPI for unitless viewBox dimensions
       if (!widthIn) widthIn = parts[2] / 96;
       if (!heightIn) heightIn = parts[3] / 96;
     }
@@ -1138,116 +1078,6 @@ function getSvgPhysicalSizeInches(svg: string): { widthIn: number; heightIn: num
   }
 
   return { widthIn, heightIn };
-}
-
-/**
- * Check if SVG has a qr-placeholder element
- */
-function hasQrPlaceholder(svg: string): boolean {
-  return svg.includes('id="qr-placeholder"');
-}
-
-/**
- * Ensure SVG has a QR placeholder, auto-generating one if missing.
- * 
- * If the SVG already has <g id="qr-placeholder">, returns unchanged.
- * Otherwise, injects a fallback placeholder positioned at bottom-right corner.
- * 
- * Placement rules:
- * - Bottom-right corner with 0.125in margin from edges
- * - QR size: 0.75in if label width >= 2in, else 0.5in
- * - Uses SVG viewBox coordinates if available, otherwise physical units
- */
-function ensureQrPlaceholder(svg: string): string {
-  // If placeholder already exists, return unchanged
-  if (hasQrPlaceholder(svg)) {
-    return svg;
-  }
-
-  // Dev-only console warning
-  if (process.env.NODE_ENV === 'development') {
-    console.warn('[labelService] SVG missing qr-placeholder - auto-generating fallback');
-  }
-
-  // Get SVG dimensions
-  let widthIn: number;
-  let heightIn: number;
-  
-  try {
-    const size = getSvgPhysicalSizeInches(svg);
-    widthIn = size.widthIn;
-    heightIn = size.heightIn;
-  } catch {
-    // Fallback to default 2x2 inches if size detection fails
-    widthIn = 2;
-    heightIn = 2;
-  }
-
-  // Determine QR size based on label width
-  const qrSizeIn = widthIn >= 2 ? QR_PLACEHOLDER_SIZE_LARGE_IN : QR_PLACEHOLDER_SIZE_SMALL_IN;
-  
-  // Calculate position (bottom-right corner with margin)
-  const marginIn = QR_PLACEHOLDER_MARGIN_IN;
-  
-  // Get viewBox to determine coordinate system
-  const viewBoxMatch = svg.match(/\bviewBox="([^"]+)"/i);
-  
-  let qrSize: number;
-  let qrX: number;
-  let qrY: number;
-  
-  if (viewBoxMatch) {
-    // Use viewBox coordinate system
-    const parts = viewBoxMatch[1].split(/\s+/).map(parseFloat);
-    if (parts.length >= 4) {
-      const [, , vbWidth, vbHeight] = parts;
-      // Scale QR size and margin to viewBox units
-      const scaleX = vbWidth / widthIn;
-      const scaleY = vbHeight / heightIn;
-      qrSize = qrSizeIn * Math.min(scaleX, scaleY);
-      const marginX = marginIn * scaleX;
-      const marginY = marginIn * scaleY;
-      qrX = vbWidth - qrSize - marginX;
-      qrY = vbHeight - qrSize - marginY;
-    } else {
-      // Fallback: use inches directly (96 DPI)
-      qrSize = qrSizeIn * 96;
-      qrX = (widthIn - qrSizeIn - marginIn) * 96;
-      qrY = (heightIn - qrSizeIn - marginIn) * 96;
-    }
-  } else {
-    // No viewBox - use physical units (convert to pixels at 96 DPI)
-    qrSize = qrSizeIn * 96;
-    qrX = (widthIn - qrSizeIn - marginIn) * 96;
-    qrY = (heightIn - qrSizeIn - marginIn) * 96;
-  }
-
-  // Build the auto-generated placeholder group
-  const placeholderGroup = `
-  <g id="qr-placeholder" data-auto-generated="true" transform="translate(${qrX.toFixed(3)}, ${qrY.toFixed(3)})" data-width="${qrSize.toFixed(3)}" data-height="${qrSize.toFixed(3)}">
-    <rect
-      x="0"
-      y="0"
-      width="${qrSize.toFixed(3)}"
-      height="${qrSize.toFixed(3)}"
-      fill="#ffffff"
-      stroke="#000000"
-      stroke-width="0.02"
-      rx="0.05"
-    />
-    <text
-      x="${(qrSize / 2).toFixed(3)}"
-      y="${(qrSize / 2).toFixed(3)}"
-      dominant-baseline="middle"
-      text-anchor="middle"
-      font-size="${(qrSize * 0.12).toFixed(3)}"
-      fill="#666666"
-      font-family="sans-serif"
-    >QR</text>
-  </g>`;
-
-  // Inject before closing </svg> tag
-  return svg.replace(/<\/svg>\s*$/i, `${placeholderGroup}\n</svg>`);
 }
 
 function extractViewBox(svg: string): string | null {
@@ -1268,21 +1098,16 @@ function prefixSvgIds(svg: string, prefix: string): string {
   const safePrefix = prefix.replace(/[^a-zA-Z0-9_-]/g, '_');
   const p = `${safePrefix}__`;
 
-  // Critical: multiple embedded label instances will otherwise collide on SVG IDs
-  // (gradients, clipPaths, masks, etc.) causing unpredictable rendering.
-  // Prefix ids
   let out = svg.replace(/\bid="([^"]+)"/g, (full, id) => {
     if (String(id).startsWith(p)) return full;
     return `id="${p}${id}"`;
   });
 
-  // url(#...)
   out = out.replace(/url\(#([^)]+)\)/g, (full, id) => {
     if (String(id).startsWith(p)) return full;
     return `url(#${p}${id})`;
   });
 
-  // href="#..." and xlink:href="#..."
   out = out.replace(/\b(xlink:href|href)="#([^"]+)"/g, (full, attr, id) => {
     if (String(id).startsWith(p)) return full;
     return `${attr}="#${p}${id}"`;
@@ -1290,6 +1115,45 @@ function prefixSvgIds(svg: string, prefix: string): string {
 
   return out;
 }
+
+/**
+ * Apply label size override at render time (non-destructive)
+ */
+function applyLabelSizeOverride(
+  svg: string,
+  nativeWidthIn: number,
+  nativeHeightIn: number,
+  targetWidthIn: number,
+  targetHeightIn: number
+): string {
+  if (Math.abs(nativeWidthIn - targetWidthIn) < 0.001 && Math.abs(nativeHeightIn - targetHeightIn) < 0.001) {
+    return svg;
+  }
+
+  const viewBoxMatch = svg.match(/\bviewBox="([^"]+)"/i);
+  let viewBox: string;
+  
+  if (viewBoxMatch) {
+    viewBox = viewBoxMatch[1];
+  } else {
+    const vbWidth = nativeWidthIn * 96;
+    const vbHeight = nativeHeightIn * 96;
+    viewBox = `0 0 ${vbWidth} ${vbHeight}`;
+  }
+
+  let result = svg.replace(/\bwidth="[^"]+"/i, `width="${targetWidthIn}in"`);
+  result = result.replace(/\bheight="[^"]+"/i, `height="${targetHeightIn}in"`);
+  
+  if (!viewBoxMatch) {
+    result = result.replace(/<svg([^>]*)>/i, `<svg$1 viewBox="${viewBox}">`);
+  }
+
+  return result;
+}
+
+// ========================================
+// LETTER SHEET COMPOSITION
+// ========================================
 
 function computeLetterSheetLayout(labelWidthIn: number, labelHeightIn: number): {
   columns: number;
@@ -1380,8 +1244,6 @@ export function composeLetterSheetsFromLabelSvgs(params: {
       const vb = extractViewBox(prefixed) || viewBox || undefined;
 
       if (layout.rotationUsed) {
-        // Rotate around top-left of the placed cell; after rotating, translate to keep in-bounds.
-        // cellWidthIn = labelHeightIn, cellHeightIn = labelWidthIn
         content += `
   <g transform="translate(${x}, ${y})">
     <g transform="translate(${layout.cellWidthIn}, 0) rotate(90)">
@@ -1424,120 +1286,14 @@ ${content}
   };
 }
 
-/**
- * QR positioning options
- */
-interface QrPositionOptions {
-  scale?: number;    // Scale factor (0.1 - 1.5), defaults to 1.0
-  offsetX?: number;  // Horizontal offset in SVG units (positive = right)
-  offsetY?: number;  // Vertical offset in SVG units (positive = down)
-}
-
-/**
- * Inject a QR SVG markup with optional scaling and position offset
- * 
- * @param svg - The SVG template content
- * @param qrSvg - The QR SVG markup (full <svg>...</svg>)
- * @param options - Scale and offset options
- */
-function injectQrWithScale(svg: string, qrSvg: string, options: QrPositionOptions = {}): string {
-  const box = extractPlaceholderBox(svg);
-
-  if (!box) {
-    throw new AppError(
-      ErrorCodes.INVALID_INPUT,
-      'QR placeholder bounding box not found. Ensure SVG has <g id="qr-placeholder"> element.'
-    );
-  }
-
-  // Extract options with defaults
-  const { scale: qrScale = 1.0, offsetX: userOffsetX = 0, offsetY: userOffsetY = 0 } = options;
-
-  // Clamp scale to valid range (10% to 150%)
-  const scale = Math.max(0.1, Math.min(1.5, qrScale));
-
-  // Calculate scaled dimensions
-  const scaledWidth = box.width * scale;
-  const scaledHeight = box.height * scale;
-
-  // Center the scaled QR within the original placeholder bounds, then apply user offset
-  const finalX = box.x + (box.width - scaledWidth) / 2 + userOffsetX;
-  const finalY = box.y + (box.height - scaledHeight) / 2 + userOffsetY;
-
-  // Extract viewBox size and inner content from QR SVG
-  const vbMatch = qrSvg.match(/\bviewBox="0 0 ([0-9.]+) ([0-9.]+)"/i);
-  const size = vbMatch ? parseFloat(vbMatch[1]) : 0;
-  const inner = stripOuterSvg(qrSvg);
-
-  const qrNestedSvg = `
-    <svg x="${finalX}" y="${finalY}" width="${scaledWidth}" height="${scaledHeight}"${size ? ` viewBox="0 0 ${size} ${size}"` : ''} shape-rendering="crispEdges">
-      ${inner}
-    </svg>
-  `;
-
-  // Replace the placeholder group content with the image
-  return svg.replace(
-    /<g[^>]*id="qr-placeholder"[^>]*>[\s\S]*?<\/g>/i,
-    `<g id="qr-placeholder">${qrNestedSvg}</g>`
-  );
-}
-
-/**
- * Inject a placeholder PNG image for preview mode
- * Uses <image> tag instead of nested SVG for PNG support
- */
-function injectPlaceholderImage(svg: string, imagePath: string, options: QrPositionOptions = {}): string {
-  const box = extractPlaceholderBox(svg);
-
-  if (!box) {
-    throw new AppError(
-      ErrorCodes.INVALID_INPUT,
-      'QR placeholder bounding box not found. Ensure SVG has <g id="qr-placeholder"> element.'
-    );
-  }
-
-  // Extract options with defaults
-  const { scale: qrScale = 1.0, offsetX: userOffsetX = 0, offsetY: userOffsetY = 0 } = options;
-
-  // Clamp scale to valid range (10% to 150%)
-  const scale = Math.max(0.1, Math.min(1.5, qrScale));
-
-  // Calculate scaled dimensions
-  const scaledWidth = box.width * scale;
-  const scaledHeight = box.height * scale;
-
-  // Center the scaled image within the original placeholder bounds, then apply user offset
-  const finalX = box.x + (box.width - scaledWidth) / 2 + userOffsetX;
-  const finalY = box.y + (box.height - scaledHeight) / 2 + userOffsetY;
-
-  const imageTag = `
-    <image
-      href="${imagePath}"
-      x="${finalX}"
-      y="${finalY}"
-      width="${scaledWidth}"
-      height="${scaledHeight}"
-      preserveAspectRatio="xMidYMid meet"
-    />
-  `;
-
-  // Replace the placeholder group content with the image
-  return svg.replace(
-    /<g[^>]*id="qr-placeholder"[^>]*>[\s\S]*?<\/g>/i,
-    `<g id="qr-placeholder">${imageTag}</g>`
-  );
-}
-
 // ========================================
-// LABEL METADATA
+// LABEL METADATA & PREVIEW
 // ========================================
 
 export interface LabelMetadata {
   widthIn: number;
   heightIn: number;
-  hasPlaceholder: boolean;
-  placeholderBox: { x: number; y: number; width: number; height: number } | null;
-  isAutoGenerated: boolean;
+  elements: PlaceableElement[];
 }
 
 export interface LabelPreviewResult {
@@ -1546,8 +1302,7 @@ export interface LabelPreviewResult {
 }
 
 /**
- * Get label metadata from an SVG file
- * Returns dimensions, placeholder info, and whether placeholder was auto-generated
+ * Get label metadata from a version
  */
 export async function getLabelMetadata(versionId: string): Promise<LabelMetadata> {
   const version = await prisma.labelTemplateVersion.findUnique({
@@ -1562,10 +1317,6 @@ export async function getLabelMetadata(versionId: string): Promise<LabelMetadata
   const fileBuffer = await storage.load(version.fileUrl);
   const svgContent = fileBuffer.toString('utf-8');
 
-  // Check if original SVG has placeholder
-  const hasPlaceholder = svgContent.includes('id="qr-placeholder"');
-
-  // Get dimensions
   let widthIn: number;
   let heightIn: number;
   try {
@@ -1577,32 +1328,21 @@ export async function getLabelMetadata(versionId: string): Promise<LabelMetadata
     heightIn = 2;
   }
 
-  // Ensure placeholder exists for extraction
-  const svgWithPlaceholder = ensureQrPlaceholder(svgContent);
-  const placeholderBox = extractPlaceholderBox(svgWithPlaceholder);
-  
-  // Check if placeholder was auto-generated
-  const isAutoGenerated = svgWithPlaceholder.includes('data-auto-generated="true"');
+  const elements = getElementsOrDefault(version.elements as PlaceableElement[] | null, svgContent);
 
   return {
     widthIn,
     heightIn,
-    hasPlaceholder,
-    placeholderBox,
-    isAutoGenerated
+    elements
   };
 }
 
 /**
  * Render a label preview with placeholder QR code
- * No entity lookup, no QR token generation - safe preview-only logic
- * 
- * @param versionId - The label version ID
- * @param overrides - Optional overrides for live preview (uses saved values if not provided)
  */
 export async function renderLabelPreview(
-  versionId: string, 
-  overrides?: { qrScale?: number; qrOffsetX?: number; qrOffsetY?: number }
+  versionId: string,
+  overrides?: { elements?: PlaceableElement[] }
 ): Promise<string> {
   const result = await renderLabelPreviewWithMeta(versionId, overrides);
   return result.svg;
@@ -1610,25 +1350,19 @@ export async function renderLabelPreview(
 
 /**
  * Render a label preview with metadata
- * Returns both the SVG and label metadata in a single call
- * 
- * Label size override is treated as a layout instruction applied at render time.
- * The original SVG remains unchanged in storage.
  */
 export async function renderLabelPreviewWithMeta(
-  versionId: string, 
-  overrides?: { 
-    qrScale?: number; 
-    qrOffsetX?: number; 
-    qrOffsetY?: number; 
-    labelWidthIn?: number; 
+  versionId: string,
+  overrides?: {
+    elements?: PlaceableElement[];
+    labelWidthIn?: number;
     labelHeightIn?: number;
-    contentOffsetX?: number;
-    contentOffsetY?: number;
-    contentScale?: number;
   }
 ): Promise<LabelPreviewResult> {
-  const version = await fetchVersionWithSettings(versionId);
+  const version = await prisma.labelTemplateVersion.findUnique({
+    where: { id: versionId },
+    include: { template: true }
+  });
 
   if (!version) {
     throw new AppError(ErrorCodes.NOT_FOUND, 'Label version not found');
@@ -1637,14 +1371,7 @@ export async function renderLabelPreviewWithMeta(
   // Load the SVG template
   const storage = getLabelStorage();
   const fileBuffer = await storage.load(version.fileUrl);
-  const originalSvg = fileBuffer.toString('utf-8');
-  
-  // Check if original has placeholder before processing
-  const hasPlaceholder = originalSvg.includes('id="qr-placeholder"');
-  
-  // Ensure QR placeholder exists (auto-generate if missing)
-  let svgContent = ensureQrPlaceholder(originalSvg);
-  const isAutoGenerated = svgContent.includes('data-auto-generated="true"');
+  let svgContent = fileBuffer.toString('utf-8');
 
   // Get native dimensions
   let nativeWidthIn: number;
@@ -1658,226 +1385,31 @@ export async function renderLabelPreviewWithMeta(
     nativeHeightIn = 2;
   }
 
-  // Apply label size override at render time (non-destructive)
-  // The original SVG is wrapped/scaled, never mutated
-  // Priority: 1. Runtime override, 2. Persisted setting, 3. Native SVG size
+  // Apply label size override
   const finalWidthIn = overrides?.labelWidthIn ?? version.labelWidthIn ?? nativeWidthIn;
   const finalHeightIn = overrides?.labelHeightIn ?? version.labelHeightIn ?? nativeHeightIn;
   
-  // Apply size override if it differs from native
   if (Math.abs(finalWidthIn - nativeWidthIn) > 0.001 || Math.abs(finalHeightIn - nativeHeightIn) > 0.001) {
     svgContent = applyLabelSizeOverride(svgContent, nativeWidthIn, nativeHeightIn, finalWidthIn, finalHeightIn);
   }
 
-  // Determine content transform values
-  // Priority: 1. Runtime override, 2. Persisted setting, 3. Default (0 or 1.0)
-  const contentOffsetX = overrides?.contentOffsetX ?? version.contentOffsetX ?? 0;
-  const contentOffsetY = overrides?.contentOffsetY ?? version.contentOffsetY ?? 0;
-  const contentScale = overrides?.contentScale ?? version.contentScale ?? 1.0;
+  // Get elements: override > stored > default
+  const elements = overrides?.elements ?? getElementsOrDefault(version.elements as PlaceableElement[] | null, svgContent);
 
-  // Apply content offset (placement) and scale if needed
-  if (Math.abs(contentOffsetX) > 0.001 || Math.abs(contentOffsetY) > 0.001 || Math.abs(contentScale - 1.0) > 0.001) {
-    svgContent = applyContentTransform(
-      svgContent, 
-      contentOffsetX, 
-      contentOffsetY, 
-      finalWidthIn, 
-      finalHeightIn,
-      contentScale
-    );
-  }
-
-  // Extract placeholder box after any transformations
-  const placeholderBox = extractPlaceholderBox(svgContent);
-
-  // Use overrides if provided, otherwise use saved values from version
-  const qrOptions: QrPositionOptions = {
-    scale: overrides?.qrScale ?? version.qrScale,
-    offsetX: overrides?.qrOffsetX ?? version.qrOffsetX,
-    offsetY: overrides?.qrOffsetY ?? version.qrOffsetY
-  };
-
-  // Preview uses the colorful placeholder PNG to clearly indicate it's not a real QR
-  const svg = injectPlaceholderImage(svgContent, '/labels/placeholder-qr.png', qrOptions);
+  // Generate placeholder QR for preview
+  const placeholderQrSvg = await generateQrSvgFromUrl('https://psillyops.app/preview');
+  
+  // Inject elements
+  const svg = injectElements(svgContent, elements, placeholderQrSvg);
 
   return {
     svg,
     meta: {
       widthIn: finalWidthIn,
       heightIn: finalHeightIn,
-      hasPlaceholder,
-      placeholderBox,
-      isAutoGenerated
+      elements
     }
   };
-}
-
-/**
- * Apply label size override at render time (non-destructive)
- * Wraps the original SVG content to scale it to new dimensions
- * Original SVG templates are never mutated.
- */
-function applyLabelSizeOverride(
-  svg: string, 
-  nativeWidthIn: number, 
-  nativeHeightIn: number,
-  targetWidthIn: number, 
-  targetHeightIn: number
-): string {
-  // If same size, return unchanged
-  if (Math.abs(nativeWidthIn - targetWidthIn) < 0.001 && Math.abs(nativeHeightIn - targetHeightIn) < 0.001) {
-    return svg;
-  }
-
-  // Extract viewBox or calculate from dimensions
-  const viewBoxMatch = svg.match(/\bviewBox="([^"]+)"/i);
-  let viewBox: string;
-  
-  if (viewBoxMatch) {
-    viewBox = viewBoxMatch[1];
-  } else {
-    // Estimate viewBox from physical dimensions (assume 96 DPI)
-    const vbWidth = nativeWidthIn * 96;
-    const vbHeight = nativeHeightIn * 96;
-    viewBox = `0 0 ${vbWidth} ${vbHeight}`;
-  }
-
-  // Update width and height attributes to new dimensions
-  let result = svg.replace(/\bwidth="[^"]+"/i, `width="${targetWidthIn}in"`);
-  result = result.replace(/\bheight="[^"]+"/i, `height="${targetHeightIn}in"`);
-  
-  // Add or update viewBox to preserve content scaling
-  if (!viewBoxMatch) {
-    result = result.replace(/<svg([^>]*)>/i, `<svg$1 viewBox="${viewBox}">`);
-  }
-
-  return result;
-}
-
-/**
- * Apply content translation (offset) to the SVG.
- * Wraps content in a <g transform="translate(dx, dy)">
- */
-function applyContentTransform(
-  svg: string, 
-  offsetXIn: number, 
-  offsetYIn: number, 
-  widthIn: number, 
-  heightIn: number,
-  scale: number = 1.0
-): string {
-  if (Math.abs(offsetXIn) < 0.001 && Math.abs(offsetYIn) < 0.001 && Math.abs(scale - 1.0) < 0.001) {
-    return svg;
-  }
-
-  const viewBox = extractViewBox(svg);
-  let scaleX = 96;
-  let scaleY = 96;
-  let vbWidth = widthIn * 96;
-  let vbHeight = heightIn * 96;
-
-  // Calculate pixels/units per inch based on viewBox
-  if (viewBox) {
-    const parts = viewBox.split(/\s+/).map(parseFloat);
-    if (parts.length >= 4) {
-      // Width/Height in user units
-      vbWidth = parts[2];
-      vbHeight = parts[3];
-      
-      // Scale = units / inches
-      if (widthIn > 0) scaleX = vbWidth / widthIn;
-      if (heightIn > 0) scaleY = vbHeight / heightIn;
-    }
-  }
-
-  const dx = offsetXIn * scaleX;
-  const dy = offsetYIn * scaleY;
-  
-  // Center of the viewBox for scaling
-  const cx = vbWidth / 2;
-  const cy = vbHeight / 2;
-
-  const innerContent = stripOuterSvg(svg);
-  
-  // Reconstruct SVG with transform wrapper
-  const finalViewBox = viewBox || `0 0 ${widthIn * 96} ${heightIn * 96}`;
-
-  // Apply translate(dx, dy) for offset
-  // Apply translate(cx, cy) scale(s) translate(-cx, -cy) for centered scaling
-  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${widthIn}in" height="${heightIn}in" viewBox="${finalViewBox}">
-  <g transform="translate(${dx.toFixed(3)}, ${dy.toFixed(3)}) translate(${cx.toFixed(3)}, ${cy.toFixed(3)}) scale(${scale}) translate(-${cx.toFixed(3)}, -${cy.toFixed(3)})">
-    ${innerContent}
-  </g>
-</svg>`;
-}
-
-/**
- * Legacy: Render a mm-based manual grid preview (deprecated).
- */
-export async function renderLabelSheetPreview(params: {
-  versionId: string;
-  columns: number;
-  rows: number;
-  gapMm?: number;
-  labelWidthMm?: number;
-  labelHeightMm?: number;
-  qrScale?: number;
-  qrOffsetX?: number;
-  qrOffsetY?: number;
-}): Promise<string> {
-  const { versionId, columns, rows, gapMm = 4, labelWidthMm = 100, labelHeightMm = 100, qrScale, qrOffsetX, qrOffsetY } = params;
-
-  // Get single label preview with optional overrides
-  const singleLabel = await renderLabelPreview(versionId, { qrScale, qrOffsetX, qrOffsetY });
-
-  // Extract viewBox dimensions from the single label SVG
-  const viewBoxMatch = singleLabel.match(/viewBox="([^"]+)"/);
-  let singleWidth = labelWidthMm;
-  let singleHeight = labelHeightMm;
-
-  if (viewBoxMatch) {
-    const parts = viewBoxMatch[1].split(/\s+/);
-    if (parts.length >= 4) {
-      singleWidth = parseFloat(parts[2]) || labelWidthMm;
-      singleHeight = parseFloat(parts[3]) || labelHeightMm;
-    }
-  }
-
-  // Build grid of labels
-  let content = '';
-  const gap = gapMm;
-
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < columns; c++) {
-      const x = c * (singleWidth + gap);
-      const y = r * (singleHeight + gap);
-
-      // Strip the outer SVG wrapper and just use the content
-      const innerContent = singleLabel
-        .replace(/<\?xml[^?]*\?>/i, '')
-        .replace(/<svg[^>]*>/i, '')
-        .replace(/<\/svg>/i, '');
-
-      content += `
-        <g transform="translate(${x}, ${y})">
-          ${innerContent}
-        </g>
-      `;
-    }
-  }
-
-  // Calculate total sheet dimensions
-  const totalWidth = columns * singleWidth + (columns - 1) * gap;
-  const totalHeight = rows * singleHeight + (rows - 1) * gap;
-
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" 
-     xmlns:xlink="http://www.w3.org/1999/xlink"
-     viewBox="0 0 ${totalWidth} ${totalHeight}"
-     width="${totalWidth}mm"
-     height="${totalHeight}mm">
-  ${content}
-</svg>`;
 }
 
 export interface LetterSheetPreviewResult {
@@ -1887,113 +1419,155 @@ export interface LetterSheetPreviewResult {
 }
 
 /**
- * Render an auto-tiled letter-size sheet preview (first sheet only).
- * Hard rules:
- * - uses dummy token URL (no token creation)
- * - uses the same tiling logic as printing
- * - label size override is treated as a layout instruction applied at render time
- * - original SVG templates are never mutated
+ * Render an auto-tiled letter-size sheet preview
  */
 export async function renderLetterSheetPreview(params: {
   versionId: string;
   quantity: number;
-  qrScale?: number;
-  qrOffsetX?: number;
-  qrOffsetY?: number;
+  elements?: PlaceableElement[];
   labelWidthIn?: number;
   labelHeightIn?: number;
-  contentOffsetX?: number;
-  contentOffsetY?: number;
-  contentScale?: number;
 }): Promise<LetterSheetPreviewResult> {
-  const { versionId, quantity, qrScale, qrOffsetX, qrOffsetY, labelWidthIn, labelHeightIn, contentOffsetX, contentOffsetY, contentScale } = params;
+  const { versionId, quantity, elements, labelWidthIn, labelHeightIn } = params;
   const qty = Math.max(1, Math.min(1000, Math.floor(quantity || 1)));
 
-  // Get label preview with metadata (includes size override handling)
-  const labelResult = await renderLabelPreviewWithMeta(versionId, { 
-    qrScale, 
-    qrOffsetX, 
-    qrOffsetY,
+  const labelResult = await renderLabelPreviewWithMeta(versionId, {
+    elements,
     labelWidthIn,
-    labelHeightIn,
-    contentOffsetX,
-    contentOffsetY,
-    contentScale
+    labelHeightIn
   });
   
   const labelSvgs = Array(qty).fill(labelResult.svg).map((s, i) => prefixSvgIds(String(s), `preview_${i}`));
 
   const { sheets, meta } = composeLetterSheetsFromLabelSvgs({ labelSvgs });
-  return { 
-    svg: sheets[0] || '', 
+  return {
+    svg: sheets[0] || '',
     meta,
     labelMeta: labelResult.meta
   };
 }
 
 // ========================================
-// QR CODE GENERATION
+// SMART PLACEMENT UTILITIES
 // ========================================
 
 /**
- * Inject QR SVG into SVG placeholder with optional scaling and offset
- * This is a wrapper around injectQrWithScale for production rendering
+ * Suggest optimal QR placement (bottom-right with margin)
  */
-function injectQRCode(svgContent: string, qrSvg: string, options: QrPositionOptions = {}): string {
-  try {
-    return injectQrWithScale(svgContent, qrSvg, options);
-  } catch {
-    // Fallback for legacy SVGs without proper placeholder structure
-    console.warn('QR placeholder structure not found, using legacy injection');
-    
-    const placeholderRegex = /<g\s+id="qr-placeholder"[^>]*>([\s\S]*?)<\/g>/i;
-    const match = svgContent.match(placeholderRegex);
-    
-    if (!match) {
-      console.warn('QR placeholder not found in SVG');
-      return svgContent;
-    }
-    
-    const transformMatch = match[0].match(/transform="([^"]*)"/);
-    const transform = transformMatch ? transformMatch[1] : '';
-    
-    // Apply scale to default 100x100 size
-    const qrScale = options.scale ?? 1.0;
-    const scale = Math.max(0.1, Math.min(1.5, qrScale));
-    const size = 100 * scale;
-    const centerOffset = (100 - size) / 2;
-    
-    // Apply user offsets
-    const finalX = centerOffset + (options.offsetX ?? 0);
-    const finalY = centerOffset + (options.offsetY ?? 0);
-    
-    const vbMatch = qrSvg.match(/\bviewBox="0 0 ([0-9.]+) ([0-9.]+)"/i);
-    const qrSize = vbMatch ? parseFloat(vbMatch[1]) : 0;
-    const inner = stripOuterSvg(qrSvg);
-    const qrNestedSvg = `<svg x="${finalX}" y="${finalY}" width="${size}" height="${size}"${qrSize ? ` viewBox="0 0 ${qrSize} ${qrSize}"` : ''} shape-rendering="crispEdges">${inner}</svg>`;
-    const qrImage = `<g id="qr-placeholder" ${transform ? `transform="${transform}"` : ''}>
-      ${qrNestedSvg}
-    </g>`;
-    
-    return svgContent.replace(placeholderRegex, qrImage);
-  }
+export function suggestQrPlacement(params: {
+  labelWidthIn: number;
+  labelHeightIn: number;
+  minQrSizeIn?: number;
+  marginIn?: number;
+}): Placement {
+  const { labelWidthIn, labelHeightIn, minQrSizeIn = 0.7, marginIn = 0.1 } = params;
+  
+  const maxQrSize = Math.min(
+    labelWidthIn - marginIn * 2,
+    labelHeightIn - marginIn * 2,
+    minQrSizeIn
+  );
+  const qrSize = Math.max(0.5, maxQrSize);
+
+  return {
+    xIn: labelWidthIn - qrSize - marginIn,
+    yIn: labelHeightIn - qrSize - marginIn,
+    widthIn: qrSize,
+    heightIn: qrSize,
+    rotation: 0
+  };
 }
 
-// ========================================
-// SMART QR PLACEMENT (Preview Only)
-// ========================================
+/**
+ * Calculate maximum safe QR size (centered)
+ */
+export function calculateMaxQrSize(params: {
+  labelWidthIn: number;
+  labelHeightIn: number;
+  marginIn?: number;
+}): Placement {
+  const { labelWidthIn, labelHeightIn, marginIn = 0.1 } = params;
+  
+  const maxSize = Math.min(
+    labelWidthIn - marginIn * 2,
+    labelHeightIn - marginIn * 2
+  );
+  const safeSize = Math.max(0.5, maxSize);
 
-// Re-export client-safe QR placement utilities for backwards compatibility
-// These are defined in lib/utils/qrPlacement.ts (can be imported by client components)
-export {
-  suggestQrPlacement,
-  calculateMaxQrSize,
-  findLargestEmptyRegion,
-  qrBoxToOffsetScale,
-  offsetScaleToQrBox,
-  type QrBoxPosition,
-  type SuggestedRegion,
-} from '@/lib/utils/qrPlacement';
+  return {
+    xIn: (labelWidthIn - safeSize) / 2,
+    yIn: (labelHeightIn - safeSize) / 2,
+    widthIn: safeSize,
+    heightIn: safeSize,
+    rotation: 0
+  };
+}
+
+/**
+ * Find candidate regions for QR placement
+ */
+export function findLargestEmptyRegion(params: {
+  labelWidthIn: number;
+  labelHeightIn: number;
+  qrSizeIn?: number;
+  marginIn?: number;
+}): Array<{ region: Placement; regionName: string }> {
+  const { labelWidthIn, labelHeightIn, qrSizeIn = 0.7, marginIn = 0.1 } = params;
+  const size = Math.min(qrSizeIn, labelWidthIn - marginIn * 2, labelHeightIn - marginIn * 2);
+  
+  return [
+    {
+      regionName: 'bottom-right',
+      region: {
+        xIn: labelWidthIn - size - marginIn,
+        yIn: labelHeightIn - size - marginIn,
+        widthIn: size,
+        heightIn: size,
+        rotation: 0
+      }
+    },
+    {
+      regionName: 'bottom-left',
+      region: {
+        xIn: marginIn,
+        yIn: labelHeightIn - size - marginIn,
+        widthIn: size,
+        heightIn: size,
+        rotation: 0
+      }
+    },
+    {
+      regionName: 'top-right',
+      region: {
+        xIn: labelWidthIn - size - marginIn,
+        yIn: marginIn,
+        widthIn: size,
+        heightIn: size,
+        rotation: 0
+      }
+    },
+    {
+      regionName: 'top-left',
+      region: {
+        xIn: marginIn,
+        yIn: marginIn,
+        widthIn: size,
+        heightIn: size,
+        rotation: 0
+      }
+    },
+    {
+      regionName: 'center',
+      region: {
+        xIn: (labelWidthIn - size) / 2,
+        yIn: (labelHeightIn - size) / 2,
+        widthIn: size,
+        heightIn: size,
+        rotation: 0
+      }
+    }
+  ];
+}
 
 // ========================================
 // UTILITY FUNCTIONS
@@ -2044,4 +1618,3 @@ export function buildInventoryQRPayload(
 export function getBaseUrl(): string {
   return process.env.NEXT_PUBLIC_APP_URL || 'https://psillyops.app';
 }
-

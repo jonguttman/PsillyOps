@@ -3,14 +3,15 @@
  * 
  * Pure functions for QR positioning calculations.
  * Can be safely imported in both client and server components.
+ * 
+ * NOTE: This file is maintained for backwards compatibility.
+ * New code should use lib/types/placement.ts directly.
  */
 
-export interface QrBoxPosition {
-  xIn: number;
-  yIn: number;
-  widthIn: number;
-  heightIn: number;
-}
+import type { Placement } from '@/lib/types/placement';
+
+// Re-export Placement as QrBoxPosition for backwards compatibility
+export type QrBoxPosition = Omit<Placement, 'rotation'>;
 
 export interface SuggestedRegion {
   region: QrBoxPosition;
@@ -20,7 +21,6 @@ export interface SuggestedRegion {
 /**
  * Suggest optimal QR placement based on label dimensions.
  * Default: bottom-right corner with margin.
- * Only used when user has not manually positioned QR.
  */
 export function suggestQrPlacement({
   labelWidthIn,
@@ -33,7 +33,6 @@ export function suggestQrPlacement({
   minQrSizeIn?: number;
   marginIn?: number;
 }): QrBoxPosition {
-  // Ensure QR fits within label bounds
   const maxQrSize = Math.min(
     labelWidthIn - marginIn * 2,
     labelHeightIn - marginIn * 2,
@@ -77,9 +76,8 @@ export function calculateMaxQrSize({
 }
 
 /**
- * Find largest empty region for QR placement (heuristic-based).
- * Uses predefined zones rather than collision detection.
- * Biased toward bottom-right (convention for QR placement).
+ * Find candidate regions for QR placement.
+ * Returns regions sorted by preference (bottom-right first).
  */
 export function findLargestEmptyRegion({
   labelWidthIn,
@@ -94,8 +92,7 @@ export function findLargestEmptyRegion({
 }): SuggestedRegion[] {
   const size = Math.min(qrSizeIn, labelWidthIn - marginIn * 2, labelHeightIn - marginIn * 2);
   
-  // Define candidate regions (sorted by preference)
-  const regions: SuggestedRegion[] = [
+  return [
     {
       regionName: 'bottom-right',
       region: {
@@ -142,75 +139,4 @@ export function findLargestEmptyRegion({
       },
     },
   ];
-
-  return regions;
 }
-
-/**
- * Convert absolute QR box position to offset/scale values.
- * Used when saving QR position from the visual editor.
- */
-export function qrBoxToOffsetScale({
-  qrBox,
-  placeholderBox,
-  svgUnitsPerInch = 96,
-}: {
-  qrBox: QrBoxPosition;
-  placeholderBox: { x: number; y: number; width: number; height: number };
-  svgUnitsPerInch?: number;
-}): { qrScale: number; qrOffsetX: number; qrOffsetY: number } {
-  // Calculate scale based on width ratio
-  const placeholderWidthIn = placeholderBox.width / svgUnitsPerInch;
-  const qrScale = qrBox.widthIn / placeholderWidthIn;
-
-  // Calculate offset from placeholder center to new QR center
-  const placeholderCenterXIn = (placeholderBox.x + placeholderBox.width / 2) / svgUnitsPerInch;
-  const placeholderCenterYIn = (placeholderBox.y + placeholderBox.height / 2) / svgUnitsPerInch;
-  
-  const qrCenterXIn = qrBox.xIn + qrBox.widthIn / 2;
-  const qrCenterYIn = qrBox.yIn + qrBox.heightIn / 2;
-
-  // Convert inch offset back to SVG units
-  const qrOffsetX = (qrCenterXIn - placeholderCenterXIn) * svgUnitsPerInch;
-  const qrOffsetY = (qrCenterYIn - placeholderCenterYIn) * svgUnitsPerInch;
-
-  return { qrScale, qrOffsetX, qrOffsetY };
-}
-
-/**
- * Convert offset/scale values to absolute QR box position.
- * Used when initializing the visual editor.
- */
-export function offsetScaleToQrBox({
-  qrScale,
-  qrOffsetX,
-  qrOffsetY,
-  placeholderBox,
-  svgUnitsPerInch = 96,
-}: {
-  qrScale: number;
-  qrOffsetX: number;
-  qrOffsetY: number;
-  placeholderBox: { x: number; y: number; width: number; height: number };
-  svgUnitsPerInch?: number;
-}): QrBoxPosition {
-  // Calculate QR size based on placeholder and scale
-  const placeholderWidthIn = placeholderBox.width / svgUnitsPerInch;
-  const qrSizeIn = placeholderWidthIn * qrScale;
-
-  // Calculate placeholder center in inches
-  const placeholderCenterXIn = (placeholderBox.x + placeholderBox.width / 2) / svgUnitsPerInch;
-  const placeholderCenterYIn = (placeholderBox.y + placeholderBox.height / 2) / svgUnitsPerInch;
-
-  // Apply offset (convert from SVG units to inches)
-  const qrCenterXIn = placeholderCenterXIn + qrOffsetX / svgUnitsPerInch;
-  const qrCenterYIn = placeholderCenterYIn + qrOffsetY / svgUnitsPerInch;
-
-  return {
-    xIn: qrCenterXIn - qrSizeIn / 2,
-    yIn: qrCenterYIn - qrSizeIn / 2,
-    widthIn: qrSizeIn,
-    heightIn: qrSizeIn,
-  };
-}
-

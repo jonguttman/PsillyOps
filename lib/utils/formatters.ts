@@ -50,3 +50,4 @@ export function generateBatchCode(productSku: string, date: Date = new Date()): 
 
 
 
+

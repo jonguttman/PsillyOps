@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import LabelPreviewButton from '@/components/labels/LabelPreviewButton';
+import type { PlaceableElement } from '@/lib/types/placement';
 
 interface LabelVersion {
   id: string;
@@ -10,9 +11,7 @@ interface LabelVersion {
   isActive: boolean;
   notes: string | null;
   createdAt: string | Date;
-  qrScale?: number | null;
-  qrOffsetX?: number | null;
-  qrOffsetY?: number | null;
+  elements?: unknown; // JSON value from Prisma, cast at usage
   fileUrl?: string;
 }
 
@@ -97,9 +96,7 @@ export default function LabelVersionHistory({
           <LabelPreviewButton 
             versionId={version.id} 
             entityType={templateEntityType}
-            initialQrScale={version.qrScale || 1.0}
-            initialQrOffsetX={version.qrOffsetX || 0}
-            initialQrOffsetY={version.qrOffsetY || 0}
+            initialElements={(version.elements as PlaceableElement[] | null) || []}
           />
           {canManage && (
             <>
@@ -206,4 +203,3 @@ export default function LabelVersionHistory({
     </div>
   );
 }
-
