@@ -1641,12 +1641,42 @@ export async function renderLabelPreviewWithMeta(
   const finalWidthIn = overrides?.labelWidthIn ?? version.labelWidthIn ?? nativeWidthIn;
   const finalHeightIn = overrides?.labelHeightIn ?? version.labelHeightIn ?? nativeHeightIn;
   
+  // Calculate scale factors for element positioning
+  // Elements are stored in inches relative to the STORED label size (or native if not stored)
+  const storedWidthIn = version.labelWidthIn ?? nativeWidthIn;
+  const storedHeightIn = version.labelHeightIn ?? nativeHeightIn;
+  const scaleX = finalWidthIn / storedWidthIn;
+  const scaleY = finalHeightIn / storedHeightIn;
+  const needsElementScaling = Math.abs(scaleX - 1) > 0.001 || Math.abs(scaleY - 1) > 0.001;
+  
   if (Math.abs(finalWidthIn - nativeWidthIn) > 0.001 || Math.abs(finalHeightIn - nativeHeightIn) > 0.001) {
     svgContent = applyLabelSizeOverride(svgContent, nativeWidthIn, nativeHeightIn, finalWidthIn, finalHeightIn);
   }
 
   // Get elements: override > stored > default
-  const elements = overrides?.elements ?? getElementsOrDefault(version.elements as PlaceableElement[] | null, svgContent);
+  let elements = overrides?.elements ?? getElementsOrDefault(version.elements as PlaceableElement[] | null, svgContent);
+  
+  // Scale element positions if label size changed
+  // This ensures QR/barcode stay in their relative positions when label is resized
+  if (needsElementScaling && !overrides?.elements) {
+    elements = elements.map(el => ({
+      ...el,
+      placement: {
+        ...el.placement,
+        xIn: el.placement.xIn * scaleX,
+        yIn: el.placement.yIn * scaleY,
+        widthIn: el.placement.widthIn * scaleX,
+        heightIn: el.placement.heightIn * scaleY,
+      },
+      // Scale barcode-specific dimensions if present
+      barcode: el.barcode ? {
+        ...el.barcode,
+        barHeightIn: el.barcode.barHeightIn * scaleY,
+        textSizeIn: el.barcode.textSizeIn * scaleX,
+        textGapIn: el.barcode.textGapIn * scaleY,
+      } : undefined,
+    }));
+  }
 
   // Compute pxPerInch from the final SVG (after any size override)
   const { pxPerInchX, pxPerInchY } = computePxPerInch(svgContent, finalWidthIn, finalHeightIn);
