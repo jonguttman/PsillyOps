@@ -128,6 +128,7 @@ export interface LetterSheetLayoutMeta {
 
 /**
  * List all label templates, optionally filtered by entity type
+ * Note: We exclude the 'elements' field from versions to keep response size small
  */
 export async function listTemplates(entityType?: LabelEntityType) {
   const where = entityType ? { entityType } : {};
@@ -136,7 +137,21 @@ export async function listTemplates(entityType?: LabelEntityType) {
     where,
     include: {
       versions: {
-        orderBy: { createdAt: 'desc' }
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          templateId: true,
+          version: true,
+          fileUrl: true,
+          qrTemplate: true,
+          labelWidthIn: true,
+          labelHeightIn: true,
+          isActive: true,
+          notes: true,
+          createdAt: true,
+          updatedAt: true,
+          // Explicitly exclude 'elements' - it can be huge and cause 413 errors
+        }
       }
     },
     orderBy: { createdAt: 'desc' }
@@ -145,13 +160,29 @@ export async function listTemplates(entityType?: LabelEntityType) {
 
 /**
  * Get a single template with all versions
+ * Note: We exclude the 'elements' field from versions to keep response size small
+ * (elements can be very large JSON and cause 413 errors on Vercel)
  */
 export async function getTemplate(templateId: string) {
   const template = await prisma.labelTemplate.findUnique({
     where: { id: templateId },
     include: {
       versions: {
-        orderBy: { createdAt: 'desc' }
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          templateId: true,
+          version: true,
+          fileUrl: true,
+          qrTemplate: true,
+          labelWidthIn: true,
+          labelHeightIn: true,
+          isActive: true,
+          notes: true,
+          createdAt: true,
+          updatedAt: true,
+          // Explicitly exclude 'elements' - it can be huge and cause 413 errors
+        }
       }
     }
   });
