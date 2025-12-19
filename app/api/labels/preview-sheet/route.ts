@@ -15,6 +15,8 @@ import { PlaceableElement } from '@/lib/types/placement';
  * - elements?: PlaceableElement[] (optional override for live preview)
  * - labelWidthIn?: number (optional size override, render-time only)
  * - labelHeightIn?: number (optional size override, render-time only)
+ * - orientation?: 'portrait' | 'landscape' (default: 'portrait')
+ * - marginIn?: number (default: 0.25)
  * - format?: 'json' | 'svg' (default: 'json')
  * 
  * Response (format=json):
@@ -42,7 +44,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { versionId, quantity, elements, labelWidthIn, labelHeightIn, format = 'json' } = body;
+    const { versionId, quantity, elements, labelWidthIn, labelHeightIn, orientation, marginIn, format = 'json' } = body;
 
     if (!versionId) {
       return NextResponse.json(
@@ -70,12 +72,24 @@ export async function POST(req: Request) {
       if (!isNaN(h) && h > 0 && h <= 20) parsedLabelHeightIn = h;
     }
 
+    // Parse orientation
+    const parsedOrientation = orientation === 'landscape' ? 'landscape' : 'portrait';
+    
+    // Parse margin
+    let parsedMarginIn: number | undefined;
+    if (marginIn !== undefined) {
+      const m = parseFloat(marginIn);
+      if (!isNaN(m) && m >= 0 && m <= 1) parsedMarginIn = m;
+    }
+
     const result = await renderLetterSheetPreview({
       versionId,
       quantity: parseInt(quantity, 10) || 1,
       elements: parsedElements,
       labelWidthIn: parsedLabelWidthIn,
-      labelHeightIn: parsedLabelHeightIn
+      labelHeightIn: parsedLabelHeightIn,
+      orientation: parsedOrientation,
+      marginIn: parsedMarginIn,
     });
 
     // Support legacy format=svg for backwards compatibility

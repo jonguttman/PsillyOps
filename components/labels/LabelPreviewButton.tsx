@@ -1,9 +1,21 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import SvgInteractionLayer from './SvgInteractionLayer';
 import type { PlaceableElement, Rotation, Placement, BackgroundStyle } from '@/lib/types/placement';
 import { calculateBarcodeHeight, createDefaultBarcodeElement } from '@/lib/types/placement';
+import { 
+  SHEET_INFO,
+  ORIENTATIONS,
+  MARGIN_PRESETS,
+  DEFAULT_SHEET_SETTINGS,
+  calculateGridLayout,
+  getPrintableArea,
+  getSheetDimensions,
+  type SheetOrientation,
+  type MarginPreset,
+  type SheetSettings,
+} from '@/lib/constants/sheet';
 
 /**
  * LABEL PREVIEW BUTTON
@@ -59,7 +71,7 @@ export default function LabelPreviewButton({
   
   // Preview mode state
   const [previewMode, setPreviewMode] = useState<PreviewMode>('single');
-  const [quantity, setQuantity] = useState(12);
+  const [quantity, setQuantity] = useState(1);
   const [sheetMeta, setSheetMeta] = useState<{
     columns: number;
     rows: number;
@@ -67,6 +79,13 @@ export default function LabelPreviewButton({
     rotationUsed: boolean;
     totalSheets: number;
   } | null>(null);
+  
+  // Sheet settings state (for sheet mode)
+  const [sheetSettings, setSheetSettings] = useState<SheetSettings>({
+    ...DEFAULT_SHEET_SETTINGS,
+    labelWidthIn: 1.0, // Will be updated from labelMeta
+    labelHeightIn: 1.0,
+  });
   
   // Label metadata from preview API
   const [labelMeta, setLabelMeta] = useState<LabelMetadata | null>(null);
@@ -104,6 +123,59 @@ export default function LabelPreviewButton({
       setSelectedElementId(elements[0].id);
     }
   }, [elements, selectedElementId]);
+
+  // Sync sheet settings label size with labelMeta when it FIRST loads
+  // Use a ref to track if we've already synced to avoid infinite loops
+  const hasInitializedSheetSettings = useRef(false);
+  useEffect(() => {
+    if (labelMeta && !hasInitializedSheetSettings.current) {
+      hasInitializedSheetSettings.current = true;
+      setSheetSettings(prev => ({
+        ...prev,
+        labelWidthIn: labelMeta.widthIn,
+        labelHeightIn: labelMeta.heightIn,
+      }));
+    }
+  }, [labelMeta]);
+
+  // Memoized computed values to prevent unnecessary recalculations
+  // Always use portrait orientation (auto-rotation handles label orientation)
+  const gridLayout = useMemo(() => calculateGridLayout(
+    'portrait',
+    sheetSettings.marginIn,
+    sheetSettings.labelWidthIn,
+    sheetSettings.labelHeightIn
+  ), [sheetSettings.marginIn, sheetSettings.labelWidthIn, sheetSettings.labelHeightIn]);
+
+  const printableArea = useMemo(() => 
+    getPrintableArea('portrait', sheetSettings.marginIn),
+    [sheetSettings.marginIn]
+  );
+  
+  const sheetDimensions = useMemo(() => 
+    getSheetDimensions('portrait'),
+    []
+  );
+
+  // Number of sheets needed for current quantity
+  const numberOfSheets = useMemo(() => 
+    Math.max(1, Math.ceil(quantity / (gridLayout.perSheet || 1))),
+    [quantity, gridLayout.perSheet]
+  );
+
+  // Update quantity when switching to sheet mode to default to 1 sheet worth
+  // Use a ref to track if we've already set the initial quantity for this session
+  const hasSetInitialQuantity = useRef(false);
+  useEffect(() => {
+    if (previewMode === 'sheet' && gridLayout.perSheet > 0 && !hasSetInitialQuantity.current) {
+      hasSetInitialQuantity.current = true;
+      setQuantity(gridLayout.perSheet);
+    }
+    // Reset when switching back to single mode
+    if (previewMode === 'single') {
+      hasSetInitialQuantity.current = false;
+    }
+  }, [previewMode, gridLayout.perSheet]);
 
   const handlePreview = async () => {
     setIsOpen(true);
@@ -173,6 +245,10 @@ export default function LabelPreviewButton({
         ? '/api/labels/preview'
         : '/api/labels/preview-sheet';
 
+      // Sheet preview now uses SVG <defs>/<use> instancing for performance
+      // so we can render the full sheet without performance degradation
+      const previewQuantity = Math.min(quantity, gridLayout.perSheet || 1);
+      
       const body = previewMode === 'single'
         ? { 
             versionId, 
@@ -181,9 +257,14 @@ export default function LabelPreviewButton({
           }
         : { 
             versionId, 
-            quantity,
+            quantity: previewQuantity, // One sheet's worth for preview
             elements,
-            format: 'json'
+            format: 'json',
+            // Pass sheet settings for layout calculation
+            labelWidthIn: sheetSettings.labelWidthIn,
+            labelHeightIn: sheetSettings.labelHeightIn,
+            orientation: 'portrait', // Always portrait - auto-rotation handles label orientation
+            marginIn: sheetSettings.marginIn,
           };
 
       const response = await fetch(endpoint, {
@@ -230,9 +311,9 @@ export default function LabelPreviewButton({
     } finally {
       setIsLoading(false);
     }
-  }, [previewMode, versionId, quantity, elements]);
+  }, [previewMode, versionId, quantity, elements, sheetSettings, gridLayout.perSheet]);
 
-  // Debounced preview update when elements change
+  // Debounced preview update when elements or sheet settings change
   useEffect(() => {
     if (!isOpen) return;
     
@@ -241,14 +322,54 @@ export default function LabelPreviewButton({
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [elements, isOpen, loadPreview]);
+  }, [elements, isOpen, loadPreview, sheetSettings]);
 
   const handleModeChange = (mode: PreviewMode) => {
     setPreviewMode(mode);
+    // Reset quantity to 1 sheet worth when switching to sheet mode
+    if (mode === 'sheet') {
+      setQuantity(gridLayout.perSheet);
+    }
   };
 
   const handleRefresh = () => {
     loadPreview();
+  };
+
+  // Sheet settings handlers
+  // Note: Orientation is now always 'portrait' - labels auto-rotate for best fit
+
+  const handleMarginPresetChange = (preset: MarginPreset) => {
+    if (preset === 'custom') {
+      setSheetSettings(prev => ({ ...prev, marginPreset: 'custom' }));
+    } else {
+      setSheetSettings(prev => ({
+        ...prev,
+        marginPreset: preset,
+        marginIn: MARGIN_PRESETS[preset].value,
+      }));
+    }
+  };
+
+  const handleCustomMarginChange = (marginIn: number) => {
+    setSheetSettings(prev => ({
+      ...prev,
+      marginPreset: 'custom',
+      marginIn: Math.max(0, Math.min(1, marginIn)),
+    }));
+  };
+
+  const handleLabelSizeChange = (dimension: 'width' | 'height', value: number) => {
+    const clampedValue = Math.max(0.25, Math.min(10, value));
+    setSheetSettings(prev => ({
+      ...prev,
+      [dimension === 'width' ? 'labelWidthIn' : 'labelHeightIn']: clampedValue,
+    }));
+  };
+
+  const handleQuantityChange = (newQuantity: number) => {
+    // Clamp to reasonable range (1 to 1000 labels)
+    setQuantity(Math.max(1, Math.min(1000, newQuantity)));
   };
 
   // Handle element changes from SvgInteractionLayer
@@ -356,12 +477,6 @@ export default function LabelPreviewButton({
 
   // Get selected element
   const selectedElement = elements.find(el => el.id === selectedElementId) || null;
-  
-  // #region agent log - Hypothesis A,B,D: Log selected element info
-  if (typeof window !== 'undefined' && elements.length > 0) {
-    fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'LabelPreviewButton.tsx:selectedElement',message:'Current selection state',data:{selectedElementId,selectedElementType:selectedElement?.type,allElementIds:elements.map(e=>e.id),allElementTypes:elements.map(e=>e.type)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,B,D'})}).catch(()=>{});
-  }
-  // #endregion
 
   // State for sidebar collapse
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -460,22 +575,77 @@ export default function LabelPreviewButton({
                 </button>
               </div>
 
-              {/* Sheet Options */}
+              {/* Sheet Toolbar */}
               {previewMode === 'sheet' && (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min={1}
-                    max={1000}
-                    value={quantity}
-                    onChange={(e) => setQuantity(Math.min(1000, Math.max(1, parseInt(e.target.value) || 1)))}
-                    className="w-16 px-2 py-1 text-xs bg-gray-700 border border-gray-600 rounded text-white"
-                  />
-                  {sheetMeta && (
-                    <span className="text-xs text-gray-400">
-                      {sheetMeta.columns}×{sheetMeta.rows} · {sheetMeta.perSheet}/sheet
-                    </span>
-                  )}
+                <div className="flex items-center gap-3 border-l border-gray-600 pl-3 ml-1">
+                  {/* Label Size */}
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-gray-400">Label:</span>
+                    <input
+                      type="number"
+                      min={0.25}
+                      max={10}
+                      step={0.125}
+                      value={sheetSettings.labelWidthIn}
+                      onChange={(e) => handleLabelSizeChange('width', parseFloat(e.target.value) || 1)}
+                      className="w-14 px-1.5 py-0.5 text-xs bg-gray-700 border border-gray-600 rounded text-white font-mono"
+                      title="Label width (inches)"
+                    />
+                    <span className="text-gray-500">×</span>
+                    <input
+                      type="number"
+                      min={0.25}
+                      max={10}
+                      step={0.125}
+                      value={sheetSettings.labelHeightIn}
+                      onChange={(e) => handleLabelSizeChange('height', parseFloat(e.target.value) || 1)}
+                      className="w-14 px-1.5 py-0.5 text-xs bg-gray-700 border border-gray-600 rounded text-white font-mono"
+                      title="Label height (inches)"
+                    />
+                    <span className="text-xs text-gray-500">in</span>
+                  </div>
+
+                  {/* Labels per sheet indicator with rotation info */}
+                  <div className="flex items-center gap-1 text-xs text-gray-400">
+                    <span className="font-mono">{gridLayout.columns}×{gridLayout.rows}</span>
+                    <span>·</span>
+                    <span className="font-semibold text-gray-300">{gridLayout.perSheet}/sheet</span>
+                    {gridLayout.rotated && (
+                      <span className="text-amber-400 ml-1" title="Labels rotated 90° for optimal fit">↻</span>
+                    )}
+                  </div>
+
+                  {/* Margin Selector */}
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-gray-400">Margin:</span>
+                    <select
+                      value={sheetSettings.marginPreset}
+                      onChange={(e) => handleMarginPresetChange(e.target.value as MarginPreset)}
+                      className="px-1.5 py-0.5 text-xs bg-gray-700 border border-gray-600 rounded text-white"
+                    >
+                      <option value="standard">0.25 in</option>
+                      <option value="narrow">0.125 in</option>
+                      <option value="custom">Custom</option>
+                    </select>
+                    {sheetSettings.marginPreset === 'custom' && (
+                      <input
+                        type="number"
+                        min={0}
+                        max={1}
+                        step={0.0625}
+                        value={sheetSettings.marginIn}
+                        onChange={(e) => handleCustomMarginChange(parseFloat(e.target.value) || 0)}
+                        className="w-14 px-1.5 py-0.5 text-xs bg-gray-700 border border-gray-600 rounded text-white font-mono"
+                      />
+                    )}
+                  </div>
+
+                  {/* Labels per Sheet (Read-only) */}
+                  <div className="text-xs text-gray-300 bg-gray-700/50 px-2 py-0.5 rounded">
+                    <span className="font-mono">{gridLayout.columns}×{gridLayout.rows}</span>
+                    <span className="text-gray-400 ml-1">· {gridLayout.perSheet}/sheet</span>
+                    {gridLayout.rotated && <span className="text-amber-400 ml-1" title="Labels rotated 90° to fit more">↻</span>}
+                  </div>
                 </div>
               )}
             </div>
@@ -534,7 +704,10 @@ export default function LabelPreviewButton({
                 {isLoading ? '...' : '↻ Refresh'}
               </button>
               <button
-                onClick={() => setIsOpen(false)}
+                onClick={() => {
+                  setIsOpen(false);
+                  hasInitializedSheetSettings.current = false; // Reset for next open
+                }}
                 className="p-1 text-gray-400 hover:text-white rounded"
               >
                 <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -562,209 +735,317 @@ export default function LabelPreviewButton({
 
               {!sidebarCollapsed && (
                 <div className="flex-1 overflow-y-auto p-3 space-y-3">
-                  {/* Element Selector - switch between QR and BARCODE */}
-                  {elements.length > 1 && (
-                    <div className="bg-gray-750 rounded-lg p-3">
-                      <label className="text-xs font-medium text-gray-300 block mb-2">Select Element</label>
-                      <div className="flex gap-1">
-                        {elements.map((el) => (
-                          <button
-                            key={el.id}
-                            onClick={() => setSelectedElementId(el.id)}
-                            className={`flex-1 px-2 py-1.5 text-xs font-medium rounded transition-colors ${
-                              selectedElementId === el.id
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                            }`}
-                          >
-                            {el.type}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Element Info */}
-                  <div className="bg-gray-750 rounded-lg p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="text-xs font-medium text-gray-300">
-                        {selectedElement ? `${selectedElement.type} Element` : 'No Selection'}
-                      </label>
-                      {selectedElement && (
-                        <span className="text-xs font-mono text-blue-400">
-                          {selectedElement.placement.widthIn.toFixed(2)}in
-                        </span>
+                  {/* ========== SINGLE MODE SIDEBAR ========== */}
+                  {previewMode === 'single' && (
+                    <>
+                      {/* Element Selector - switch between QR and BARCODE */}
+                      {elements.length > 1 && (
+                        <div className="bg-gray-750 rounded-lg p-3">
+                          <label className="text-xs font-medium text-gray-300 block mb-2">Select Element</label>
+                          <div className="flex gap-1">
+                            {elements.map((el) => (
+                              <button
+                                key={el.id}
+                                onClick={() => setSelectedElementId(el.id)}
+                                className={`flex-1 px-2 py-1.5 text-xs font-medium rounded transition-colors ${
+                                  selectedElementId === el.id
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                }`}
+                              >
+                                {el.type}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
                       )}
-                    </div>
-                    
-                    {selectedElement && (
-                      <div className="space-y-2">
-                        {/* Position in INCHES */}
-                        <div className="text-xs text-gray-400">
-                          <span className="text-gray-500">Position: </span>
-                          {selectedElement.placement.xIn.toFixed(3)}, {selectedElement.placement.yIn.toFixed(3)} in
+
+                      {/* Element Info */}
+                      <div className="bg-gray-750 rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="text-xs font-medium text-gray-300">
+                            {selectedElement ? `${selectedElement.type} Element` : 'No Selection'}
+                          </label>
+                          {selectedElement && (
+                            <span className="text-xs font-mono text-blue-400">
+                              {selectedElement.placement.widthIn.toFixed(2)}in
+                            </span>
+                          )}
                         </div>
                         
-                        {/* Size in INCHES */}
-                        <div className="text-xs text-gray-400">
-                          <span className="text-gray-500">Size: </span>
-                          {selectedElement.placement.widthIn.toFixed(3)} × {selectedElement.placement.heightIn.toFixed(3)} in
-                        </div>
-                        
-                        {/* Rotation */}
-                        <div className="text-xs text-gray-400">
-                          <span className="text-gray-500">Rotation: </span>
-                          {selectedElement.placement.rotation}°
-                        </div>
-                        
-                        {/* ViewBox units (debug display) */}
-                        {vbDisplay && (
-                          <div className="mt-2 pt-2 border-t border-gray-700">
-                            <div className="text-xs text-gray-500 mb-1">ViewBox Units:</div>
-                            <div className="text-xs font-mono text-green-400">
-                              {vbDisplay.x}, {vbDisplay.y} ({vbDisplay.width}×{vbDisplay.height})
+                        {selectedElement && (
+                          <div className="space-y-2">
+                            {/* Position in INCHES */}
+                            <div className="text-xs text-gray-400">
+                              <span className="text-gray-500">Position: </span>
+                              {selectedElement.placement.xIn.toFixed(3)}, {selectedElement.placement.yIn.toFixed(3)} in
                             </div>
+                            
+                            {/* Size in INCHES */}
+                            <div className="text-xs text-gray-400">
+                              <span className="text-gray-500">Size: </span>
+                              {selectedElement.placement.widthIn.toFixed(3)} × {selectedElement.placement.heightIn.toFixed(3)} in
+                            </div>
+                            
+                            {/* Rotation */}
+                            <div className="text-xs text-gray-400">
+                              <span className="text-gray-500">Rotation: </span>
+                              {selectedElement.placement.rotation}°
+                            </div>
+                            
+                            {/* ViewBox units (debug display) */}
+                            {vbDisplay && (
+                              <div className="mt-2 pt-2 border-t border-gray-700">
+                                <div className="text-xs text-gray-500 mb-1">ViewBox Units:</div>
+                                <div className="text-xs font-mono text-green-400">
+                                  {vbDisplay.x}, {vbDisplay.y} ({vbDisplay.width}×{vbDisplay.height})
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
-                    )}
-                  </div>
 
-                  {/* Rotation Controls */}
-                  {selectedElement && (
-                    <div className="bg-gray-750 rounded-lg p-3">
-                      <label className="text-xs font-medium text-gray-300 block mb-2">Rotation</label>
-                      <div className="flex gap-1">
-                        {([0, 90, 180, -90] as Rotation[]).map((rot) => (
-                          <button
-                            key={rot}
-                            onClick={() => handleRotate(rot)}
-                            className={`flex-1 px-2 py-1.5 text-xs font-medium rounded transition-colors ${
-                              selectedElement.placement.rotation === rot
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                            }`}
-                          >
-                            {rot === 0 ? '0°' : rot === 90 ? '+90°' : rot === 180 ? '180°' : '-90°'}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Background Toggle - All elements */}
-                  {selectedElement && (
-                    <div className="bg-gray-750 rounded-lg p-3">
-                      <label className="text-xs font-medium text-gray-300 block mb-2">Background</label>
-                      <div className="flex gap-1">
-                        <button
-                          onClick={() => handleBackgroundChange('white')}
-                          className={`flex-1 px-2 py-1.5 text-xs font-medium rounded transition-colors ${
-                            (selectedElement.background ?? 'white') === 'white'
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                          }`}
-                        >
-                          White
-                        </button>
-                        <button
-                          onClick={() => handleBackgroundChange('transparent')}
-                          className={`flex-1 px-2 py-1.5 text-xs font-medium rounded transition-colors ${
-                            selectedElement.background === 'transparent'
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                          }`}
-                        >
-                          Transparent
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Bar Height Control - BARCODE only */}
-                  {selectedElement?.type === 'BARCODE' && selectedElement.barcode && (
-                    <div className="bg-gray-750 rounded-lg p-3">
-                      <label className="text-xs font-medium text-gray-300 block mb-2">
-                        Bar Height
-                        <span className="ml-2 font-mono text-blue-400">
-                          {selectedElement.barcode.barHeightIn.toFixed(2)}in
-                        </span>
-                      </label>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleBarHeightChange(Math.max(0.05, selectedElement.barcode!.barHeightIn - 0.05))}
-                          className="w-8 h-8 flex items-center justify-center bg-gray-700 text-gray-300 hover:bg-gray-600 rounded"
-                        >
-                          −
-                        </button>
-                        <input
-                          type="range"
-                          min="0.05"
-                          max="0.5"
-                          step="0.01"
-                          value={selectedElement.barcode.barHeightIn}
-                          onChange={(e) => handleBarHeightChange(parseFloat(e.target.value))}
-                          className="flex-1 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                        />
-                        <button
-                          onClick={() => handleBarHeightChange(Math.min(0.5, selectedElement.barcode!.barHeightIn + 0.05))}
-                          className="w-8 h-8 flex items-center justify-center bg-gray-700 text-gray-300 hover:bg-gray-600 rounded"
-                        >
-                          +
-                        </button>
-                      </div>
-                      <p className="text-xs text-gray-500 mt-2">
-                        Adjusts bar height only. Digit size scales with width.
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Label Info */}
-                  {labelMeta && (
-                    <div className="bg-gray-750 rounded-lg p-3">
-                      <label className="text-xs font-medium text-gray-300 block mb-2">Label Size</label>
-                      <p className="text-xs text-gray-400">
-                        {labelMeta.widthIn.toFixed(2)} × {labelMeta.heightIn.toFixed(2)} in
-                      </p>
-                      {viewBox && (
-                        <p className="text-xs text-gray-500 mt-1">
-                          ViewBox: {viewBox.width.toFixed(0)} × {viewBox.height.toFixed(0)}
-                        </p>
+                      {/* Rotation Controls */}
+                      {selectedElement && (
+                        <div className="bg-gray-750 rounded-lg p-3">
+                          <label className="text-xs font-medium text-gray-300 block mb-2">Rotation</label>
+                          <div className="flex gap-1">
+                            {([0, 90, 180, -90] as Rotation[]).map((rot) => (
+                              <button
+                                key={rot}
+                                onClick={() => handleRotate(rot)}
+                                className={`flex-1 px-2 py-1.5 text-xs font-medium rounded transition-colors ${
+                                  selectedElement.placement.rotation === rot
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                }`}
+                              >
+                                {rot === 0 ? '0°' : rot === 90 ? '+90°' : rot === 180 ? '180°' : '-90°'}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
                       )}
-                    </div>
+
+                      {/* Background Toggle - All elements */}
+                      {selectedElement && (
+                        <div className="bg-gray-750 rounded-lg p-3">
+                          <label className="text-xs font-medium text-gray-300 block mb-2">Background</label>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => handleBackgroundChange('white')}
+                              className={`flex-1 px-2 py-1.5 text-xs font-medium rounded transition-colors ${
+                                (selectedElement.background ?? 'white') === 'white'
+                                  ? 'bg-blue-600 text-white'
+                                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                              }`}
+                            >
+                              White
+                            </button>
+                            <button
+                              onClick={() => handleBackgroundChange('transparent')}
+                              className={`flex-1 px-2 py-1.5 text-xs font-medium rounded transition-colors ${
+                                selectedElement.background === 'transparent'
+                                  ? 'bg-blue-600 text-white'
+                                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                              }`}
+                            >
+                              Transparent
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Bar Height Control - BARCODE only */}
+                      {selectedElement?.type === 'BARCODE' && selectedElement.barcode && (
+                        <div className="bg-gray-750 rounded-lg p-3">
+                          <label className="text-xs font-medium text-gray-300 block mb-2">
+                            Bar Height
+                            <span className="ml-2 font-mono text-blue-400">
+                              {selectedElement.barcode.barHeightIn.toFixed(2)}in
+                            </span>
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleBarHeightChange(Math.max(0.05, selectedElement.barcode!.barHeightIn - 0.05))}
+                              className="w-8 h-8 flex items-center justify-center bg-gray-700 text-gray-300 hover:bg-gray-600 rounded"
+                            >
+                              −
+                            </button>
+                            <input
+                              type="range"
+                              min="0.05"
+                              max="0.5"
+                              step="0.01"
+                              value={selectedElement.barcode.barHeightIn}
+                              onChange={(e) => handleBarHeightChange(parseFloat(e.target.value))}
+                              className="flex-1 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                            />
+                            <button
+                              onClick={() => handleBarHeightChange(Math.min(0.5, selectedElement.barcode!.barHeightIn + 0.05))}
+                              className="w-8 h-8 flex items-center justify-center bg-gray-700 text-gray-300 hover:bg-gray-600 rounded"
+                            >
+                              +
+                            </button>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-2">
+                            Adjusts bar height only. Digit size scales with width.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Label Info */}
+                      {labelMeta && (
+                        <div className="bg-gray-750 rounded-lg p-3">
+                          <label className="text-xs font-medium text-gray-300 block mb-2">Label Size</label>
+                          <p className="text-xs text-gray-400">
+                            {labelMeta.widthIn.toFixed(2)} × {labelMeta.heightIn.toFixed(2)} in
+                          </p>
+                          {viewBox && (
+                            <p className="text-xs text-gray-500 mt-1">
+                              ViewBox: {viewBox.width.toFixed(0)} × {viewBox.height.toFixed(0)}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Actions */}
+                      <div className="space-y-2">
+                        <button
+                          type="button"
+                          onClick={handleSavePosition}
+                          disabled={!hasUnsavedChanges || isSaving}
+                          className={`w-full px-3 py-2 text-sm font-medium rounded transition-colors ${
+                            hasUnsavedChanges
+                              ? 'bg-green-600 text-white hover:bg-green-700'
+                              : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                          }`}
+                        >
+                          {isSaving ? 'Saving...' : 'Save Position'}
+                        </button>
+                        {hasUnsavedChanges && (
+                          <button
+                            type="button"
+                            onClick={handleResetPosition}
+                            className="w-full px-2 py-1.5 text-xs text-gray-400 bg-gray-700 border border-gray-600 rounded hover:bg-gray-600"
+                          >
+                            Revert Changes
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Instructions */}
+                      <div className="text-xs text-gray-500 p-2 bg-gray-900/50 rounded">
+                        <p>💡 Drag to move</p>
+                        <p className="mt-1">↘ Drag corner to resize</p>
+                        <p className="mt-1">🔄 Use rotation handle or buttons</p>
+                      </div>
+                    </>
                   )}
 
-                  {/* Actions */}
-                  <div className="space-y-2">
-                    <button
-                      type="button"
-                      onClick={handleSavePosition}
-                      disabled={!hasUnsavedChanges || isSaving}
-                      className={`w-full px-3 py-2 text-sm font-medium rounded transition-colors ${
-                        hasUnsavedChanges
-                          ? 'bg-green-600 text-white hover:bg-green-700'
-                          : 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                      }`}
-                    >
-                      {isSaving ? 'Saving...' : 'Save Position'}
-                    </button>
-                    {hasUnsavedChanges && (
-                      <button
-                        type="button"
-                        onClick={handleResetPosition}
-                        className="w-full px-2 py-1.5 text-xs text-gray-400 bg-gray-700 border border-gray-600 rounded hover:bg-gray-600"
-                      >
-                        Revert Changes
-                      </button>
-                    )}
-                  </div>
+                  {/* ========== SHEET MODE SIDEBAR ========== */}
+                  {previewMode === 'sheet' && (
+                    <>
+                      {/* Quantity to Generate */}
+                      <div className="bg-gray-750 rounded-lg p-3">
+                        <label className="text-xs font-medium text-gray-300 block mb-2">
+                          Total Labels to Generate
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleQuantityChange(quantity - gridLayout.perSheet)}
+                            disabled={quantity <= gridLayout.perSheet}
+                            className="w-8 h-8 flex items-center justify-center bg-gray-700 text-gray-300 hover:bg-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Remove one sheet"
+                          >
+                            −
+                          </button>
+                          <input
+                            type="number"
+                            min={1}
+                            max={1000}
+                            value={quantity}
+                            onChange={(e) => handleQuantityChange(parseInt(e.target.value) || 1)}
+                            className="flex-1 px-2 py-1.5 text-sm bg-gray-700 border border-gray-600 rounded text-white text-center font-mono"
+                          />
+                          <button
+                            onClick={() => handleQuantityChange(quantity + gridLayout.perSheet)}
+                            disabled={quantity >= 1000}
+                            className="w-8 h-8 flex items-center justify-center bg-gray-700 text-gray-300 hover:bg-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Add one sheet"
+                          >
+                            +
+                          </button>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-2">
+                          Use +/− to add/remove full sheets
+                        </p>
+                      </div>
 
-                  {/* Instructions */}
-                  <div className="text-xs text-gray-500 p-2 bg-gray-900/50 rounded">
-                    <p>💡 Drag to move</p>
-                    <p className="mt-1">↘ Drag corner to resize</p>
-                    <p className="mt-1">🔄 Use rotation handle or buttons</p>
-                  </div>
+                      {/* Derived Page Count */}
+                      <div className="bg-blue-900/30 border border-blue-800/50 rounded-lg p-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium text-blue-300">Output</span>
+                          <span className="text-sm font-mono text-blue-200">
+                            {quantity} labels → {numberOfSheets} sheet{numberOfSheets !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                        {quantity % gridLayout.perSheet !== 0 && (
+                          <p className="text-xs text-blue-400/70 mt-1">
+                            Last sheet: {quantity % gridLayout.perSheet} of {gridLayout.perSheet} positions filled
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Print Size Summary */}
+                      <div className="bg-gray-750 rounded-lg p-3">
+                        <label className="text-xs font-medium text-gray-300 block mb-2">Print Summary</label>
+                        <div className="space-y-1.5 text-xs">
+                          <div className="flex justify-between text-gray-400">
+                            <span>Sheet:</span>
+                            <span className="text-gray-300">US Letter (8.5 × 11 in)</span>
+                          </div>
+                          <div className="flex justify-between text-gray-400">
+                            <span>Sheet size:</span>
+                            <span className="font-mono">{sheetDimensions.widthIn} × {sheetDimensions.heightIn} in</span>
+                          </div>
+                          <div className="flex justify-between text-gray-400">
+                            <span>Margins:</span>
+                            <span className="font-mono">{sheetSettings.marginIn} in</span>
+                          </div>
+                          <div className="flex justify-between text-gray-400 border-t border-gray-700 pt-1.5">
+                            <span>Printable area:</span>
+                            <span className="font-mono text-gray-300">
+                              {printableArea.widthIn.toFixed(2)} × {printableArea.heightIn.toFixed(2)} in
+                            </span>
+                          </div>
+                          <div className="flex justify-between text-gray-400 border-t border-gray-700 pt-1.5">
+                            <span>Label size:</span>
+                            <span className="font-mono text-gray-300">
+                              {sheetSettings.labelWidthIn.toFixed(2)} × {sheetSettings.labelHeightIn.toFixed(2)} in
+                            </span>
+                          </div>
+                          <div className="flex justify-between text-gray-400">
+                            <span>Grid:</span>
+                            <span className="font-mono text-gray-300">
+                              {gridLayout.columns} × {gridLayout.rows} = {gridLayout.perSheet}/sheet
+                              {gridLayout.rotated && <span className="text-amber-400 ml-1">↻</span>}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Warning if labels don't fit well */}
+                      {gridLayout.perSheet === 0 && (
+                        <div className="bg-red-900/30 border border-red-800/50 rounded-lg p-3">
+                          <p className="text-xs text-red-300">
+                            ⚠️ Labels are too large to fit on the sheet with current margins.
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -805,8 +1086,13 @@ export default function LabelPreviewButton({
                     style={{
                       // Use actual dimensions for zoom - NOT transform scale
                       // This ensures SVG renders at full resolution (no blurriness)
-                      width: labelMeta ? `${labelMeta.widthIn * (zoom / 100)}in` : 'auto',
-                      height: labelMeta ? `${labelMeta.heightIn * (zoom / 100)}in` : 'auto',
+                      // For sheet mode, use sheet dimensions; for single mode, use label dimensions
+                      width: previewMode === 'sheet' 
+                        ? `${sheetDimensions.widthIn * (zoom / 100)}in`
+                        : labelMeta ? `${labelMeta.widthIn * (zoom / 100)}in` : 'auto',
+                      height: previewMode === 'sheet'
+                        ? `${sheetDimensions.heightIn * (zoom / 100)}in`
+                        : labelMeta ? `${labelMeta.heightIn * (zoom / 100)}in` : 'auto',
                     }}
                   >
                     {/* Base SVG (with QR injected by server) */}

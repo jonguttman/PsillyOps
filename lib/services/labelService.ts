@@ -55,14 +55,16 @@ export interface RenderLabelParams {
 }
 
 // ========================================
-// LETTER SHEET CONSTANTS
+// LETTER SHEET CONSTANTS (from centralized source)
 // ========================================
 
-const LETTER_WIDTH_IN = 8.5;
-const LETTER_HEIGHT_IN = 11;
-const LETTER_MARGIN_IN = 0.25;
-const LETTER_USABLE_WIDTH_IN = LETTER_WIDTH_IN - 2 * LETTER_MARGIN_IN; // 8.0
-const LETTER_USABLE_HEIGHT_IN = LETTER_HEIGHT_IN - 2 * LETTER_MARGIN_IN; // 10.5
+import {
+  SHEET_WIDTH_IN as LETTER_WIDTH_IN,
+  SHEET_HEIGHT_IN as LETTER_HEIGHT_IN,
+  SHEET_MARGIN_IN as LETTER_MARGIN_IN,
+  SHEET_USABLE_WIDTH_IN as LETTER_USABLE_WIDTH_IN,
+  SHEET_USABLE_HEIGHT_IN as LETTER_USABLE_HEIGHT_IN,
+} from '@/lib/constants/sheet';
 
 // Default QR placement constants
 const DEFAULT_QR_SIZE_LARGE_IN = 0.75; // For labels >= 2in wide
@@ -1226,27 +1228,51 @@ function applyLabelSizeOverride(
 // LETTER SHEET COMPOSITION
 // ========================================
 
-function computeLetterSheetLayout(labelWidthIn: number, labelHeightIn: number): {
+function computeLetterSheetLayout(
+  labelWidthIn: number, 
+  labelHeightIn: number,
+  orientation: 'portrait' | 'landscape' = 'portrait',
+  marginIn: number = LETTER_MARGIN_IN
+): {
   columns: number;
   rows: number;
   rotationUsed: boolean;
   perSheet: number;
   cellWidthIn: number;
   cellHeightIn: number;
+  sheetWidthIn: number;
+  sheetHeightIn: number;
+  marginIn: number;
 } {
-  const cols0 = Math.floor(LETTER_USABLE_WIDTH_IN / labelWidthIn);
-  const rows0 = Math.floor(LETTER_USABLE_HEIGHT_IN / labelHeightIn);
+  // Sheet dimensions based on orientation
+  const sheetWidthIn = orientation === 'portrait' ? LETTER_WIDTH_IN : LETTER_HEIGHT_IN;
+  const sheetHeightIn = orientation === 'portrait' ? LETTER_HEIGHT_IN : LETTER_WIDTH_IN;
+  
+  // Usable area after margins
+  const usableWidthIn = sheetWidthIn - 2 * marginIn;
+  const usableHeightIn = sheetHeightIn - 2 * marginIn;
+
+  const cols0 = Math.floor(usableWidthIn / labelWidthIn);
+  const rows0 = Math.floor(usableHeightIn / labelHeightIn);
   const cap0 = cols0 * rows0;
 
-  const cols90 = Math.floor(LETTER_USABLE_WIDTH_IN / labelHeightIn);
-  const rows90 = Math.floor(LETTER_USABLE_HEIGHT_IN / labelWidthIn);
+  const cols90 = Math.floor(usableWidthIn / labelHeightIn);
+  const rows90 = Math.floor(usableHeightIn / labelWidthIn);
   const cap90 = cols90 * rows90;
 
   if (cap0 <= 0 && cap90 <= 0) {
-    throw new AppError(
-      ErrorCodes.INVALID_INPUT,
-      'Label does not fit on a letter sheet with 0.25in margins (no scaling allowed).'
-    );
+    // Return empty layout instead of throwing - let UI handle the warning
+    return {
+      columns: 0,
+      rows: 0,
+      rotationUsed: false,
+      perSheet: 0,
+      cellWidthIn: labelWidthIn,
+      cellHeightIn: labelHeightIn,
+      sheetWidthIn,
+      sheetHeightIn,
+      marginIn
+    };
   }
 
   if (cap90 > cap0) {
@@ -1256,7 +1282,10 @@ function computeLetterSheetLayout(labelWidthIn: number, labelHeightIn: number): 
       rotationUsed: true,
       perSheet: cap90,
       cellWidthIn: labelHeightIn,
-      cellHeightIn: labelWidthIn
+      cellHeightIn: labelWidthIn,
+      sheetWidthIn,
+      sheetHeightIn,
+      marginIn
     };
   }
 
@@ -1266,14 +1295,19 @@ function computeLetterSheetLayout(labelWidthIn: number, labelHeightIn: number): 
     rotationUsed: false,
     perSheet: cap0,
     cellWidthIn: labelWidthIn,
-    cellHeightIn: labelHeightIn
+    cellHeightIn: labelHeightIn,
+    sheetWidthIn,
+    sheetHeightIn,
+    marginIn
   };
 }
 
 export function composeLetterSheetsFromLabelSvgs(params: {
   labelSvgs: string[];
+  orientation?: 'portrait' | 'landscape';
+  marginIn?: number;
 }): { sheets: string[]; meta: LetterSheetLayoutMeta } {
-  const { labelSvgs } = params;
+  const { labelSvgs, orientation = 'portrait', marginIn = LETTER_MARGIN_IN } = params;
   if (!labelSvgs.length) {
     return {
       sheets: [],
@@ -1293,52 +1327,91 @@ export function composeLetterSheetsFromLabelSvgs(params: {
   const { widthIn: labelWidthIn, heightIn: labelHeightIn } = getSvgPhysicalSizeInches(first);
   const viewBox = extractViewBox(first);
 
-  const layout = computeLetterSheetLayout(labelWidthIn, labelHeightIn);
+  const layout = computeLetterSheetLayout(labelWidthIn, labelHeightIn, orientation, marginIn);
+  
+  // Handle case where labels don't fit
+  if (layout.perSheet === 0) {
+    return {
+      sheets: [],
+      meta: {
+        perSheet: 0,
+        columns: 0,
+        rows: 0,
+        rotationUsed: false,
+        totalSheets: 0,
+        labelWidthIn,
+        labelHeightIn
+      }
+    };
+  }
+  
   const totalSheets = Math.ceil(labelSvgs.length / layout.perSheet);
+
+  // PERFORMANCE OPTIMIZATION: Use SVG <defs>/<use> with <g> instancing
+  // CRITICAL: Use <g> NOT <svg> inside <defs> to avoid per-instance re-layout
+  // Define the label once as a <g>, reference it N times with <use>
+  
+  // Extract the first label as the template (all labels on a sheet are identical)
+  const templateSvg = labelSvgs[0];
+  const prefixedTemplate = prefixSvgIds(templateSvg, 'label_template');
+  const templateInner = stripOuterSvg(prefixedTemplate);
+  const templateVb = extractViewBox(prefixedTemplate) || viewBox;
+  
+  // Parse template viewBox to compute scaling factor
+  // The sheet uses inches as viewBox units, but the label uses its own viewBox units
+  // We need to scale the label content to fit in labelWidthIn x labelHeightIn inches
+  let scaleX = 1;
+  let scaleY = 1;
+  if (templateVb) {
+    const vbParts = templateVb.split(/\s+/).map(parseFloat);
+    if (vbParts.length >= 4) {
+      const [, , vbW, vbH] = vbParts;
+      // Scale from label viewBox units to inches (sheet viewBox uses inches)
+      scaleX = labelWidthIn / vbW;
+      scaleY = labelHeightIn / vbH;
+    }
+  }
 
   const sheets: string[] = [];
   for (let s = 0; s < totalSheets; s++) {
     const start = s * layout.perSheet;
     const end = Math.min(start + layout.perSheet, labelSvgs.length);
-    const chunk = labelSvgs.slice(start, end);
+    const labelsOnThisSheet = end - start;
 
-    let content = '';
-    for (let i = 0; i < chunk.length; i++) {
-      const globalIndex = start + i;
+    // Build <use> references for each label position
+    // Use transform="translate(x, y)" instead of x/y attributes to avoid bbox recalculation
+    let useRefs = '';
+    for (let i = 0; i < labelsOnThisSheet; i++) {
       const r = Math.floor(i / layout.columns);
       const c = i % layout.columns;
-      const x = LETTER_MARGIN_IN + c * layout.cellWidthIn;
-      const y = LETTER_MARGIN_IN + r * layout.cellHeightIn;
-
-      const prefixed = prefixSvgIds(chunk[i], `lbl_${globalIndex}`);
-      const inner = stripOuterSvg(prefixed);
-      const vb = extractViewBox(prefixed) || viewBox || undefined;
+      const x = layout.marginIn + c * layout.cellWidthIn;
+      const y = layout.marginIn + r * layout.cellHeightIn;
 
       if (layout.rotationUsed) {
-        content += `
-  <g transform="translate(${x}, ${y})">
-    <g transform="translate(${layout.cellWidthIn}, 0) rotate(90)">
-      <svg x="0" y="0" width="${labelWidthIn}" height="${labelHeightIn}"${vb ? ` viewBox="${vb}"` : ''}>
-        ${inner}
-      </svg>
-    </g>
-  </g>`;
+        // For rotated labels: translate to position, then rotate 90° around origin
+        // The label is rotated so its width becomes height and vice versa
+        useRefs += `
+    <use href="#label-instance" transform="translate(${x + labelHeightIn}, ${y}) rotate(90)"/>`;
       } else {
-        content += `
-  <g transform="translate(${x}, ${y})">
-    <svg x="0" y="0" width="${labelWidthIn}" height="${labelHeightIn}"${vb ? ` viewBox="${vb}"` : ''}>
-      ${inner}
-    </svg>
-  </g>`;
+        useRefs += `
+    <use href="#label-instance" transform="translate(${x}, ${y})"/>`;
       }
     }
 
+    // Build the sheet SVG with <defs> containing the label as a <g> (NOT <svg>)
+    // The <g> is pre-scaled so each <use> just needs translation
     const sheetSvg = `<svg xmlns="http://www.w3.org/2000/svg"
      xmlns:xlink="http://www.w3.org/1999/xlink"
-     width="${LETTER_WIDTH_IN}in"
-     height="${LETTER_HEIGHT_IN}in"
-     viewBox="0 0 ${LETTER_WIDTH_IN} ${LETTER_HEIGHT_IN}">
-${content}
+     width="${layout.sheetWidthIn}in"
+     height="${layout.sheetHeightIn}in"
+     viewBox="0 0 ${layout.sheetWidthIn} ${layout.sheetHeightIn}">
+  <defs>
+    <g id="label-instance" transform="scale(${scaleX}, ${scaleY})">
+      ${templateInner}
+    </g>
+  </defs>
+  <g id="sheet-layout">${useRefs}
+  </g>
 </svg>`;
     sheets.push(sheetSvg);
   }
@@ -1537,7 +1610,184 @@ export interface LetterSheetPreviewResult {
 }
 
 /**
+ * Compose a sheet preview with ONE real label and placeholder boxes for remaining positions.
+ * This is a PREVIEW-ONLY optimization - print/PDF must still use full rendering.
+ * 
+ * Benefits:
+ * - Instant preview even with 50+ labels
+ * - No SVG duplication or instancing complexity
+ * - Visually clear: users see one real label + placement indicators
+ */
+export function composeLetterSheetPreview(params: {
+  labelSvg: string;
+  totalLabels: number;
+  orientation?: 'portrait' | 'landscape';
+  marginIn?: number;
+  labelWidthIn?: number;
+  labelHeightIn?: number;
+}): { svg: string; meta: LetterSheetLayoutMeta } {
+  const { labelSvg, totalLabels, orientation = 'portrait', marginIn = LETTER_MARGIN_IN } = params;
+  
+  if (!labelSvg || totalLabels < 1) {
+    return {
+      svg: '',
+      meta: {
+        perSheet: 0,
+        columns: 0,
+        rows: 0,
+        rotationUsed: false,
+        totalSheets: 0,
+        labelWidthIn: 0,
+        labelHeightIn: 0
+      }
+    };
+  }
+
+  // Use provided label dimensions if available, otherwise extract from SVG
+  const svgDimensions = getSvgPhysicalSizeInches(labelSvg);
+  const labelWidthIn = params.labelWidthIn ?? svgDimensions.widthIn;
+  const labelHeightIn = params.labelHeightIn ?? svgDimensions.heightIn;
+  
+  const viewBox = extractViewBox(labelSvg);
+  const layout = computeLetterSheetLayout(labelWidthIn, labelHeightIn, orientation, marginIn);
+
+  if (layout.perSheet === 0) {
+    return {
+      svg: '',
+      meta: {
+        perSheet: 0,
+        columns: 0,
+        rows: 0,
+        rotationUsed: false,
+        totalSheets: 0,
+        labelWidthIn,
+        labelHeightIn
+      }
+    };
+  }
+
+  const totalSheets = Math.ceil(totalLabels / layout.perSheet);
+  // Always show full grid in preview (all positions on the sheet)
+  // This gives users a clear picture of the sheet layout
+  const labelsOnFirstSheet = layout.perSheet;
+  
+  // Prepare the ONE real label for position 0
+  const prefixedLabel = prefixSvgIds(labelSvg, 'label_real');
+  const labelInner = stripOuterSvg(prefixedLabel);
+  const labelVb = extractViewBox(prefixedLabel) || viewBox;
+  
+  // Compute scaling factor from label viewBox to sheet inches
+  let scaleX = 1;
+  let scaleY = 1;
+  if (labelVb) {
+    const vbParts = labelVb.split(/\s+/).map(parseFloat);
+    if (vbParts.length >= 4) {
+      const [, , vbW, vbH] = vbParts;
+      scaleX = labelWidthIn / vbW;
+      scaleY = labelHeightIn / vbH;
+    }
+  }
+
+  // Build content: one real label + placeholder boxes
+  let content = '';
+  
+  for (let i = 0; i < labelsOnFirstSheet; i++) {
+    const r = Math.floor(i / layout.columns);
+    const c = i % layout.columns;
+    const x = layout.marginIn + c * layout.cellWidthIn;
+    const y = layout.marginIn + r * layout.cellHeightIn;
+    
+    // Determine label dimensions in cell (accounting for rotation)
+    const cellLabelW = layout.rotationUsed ? labelHeightIn : labelWidthIn;
+    const cellLabelH = layout.rotationUsed ? labelWidthIn : labelHeightIn;
+
+    if (i === 0) {
+      // FIRST POSITION: Render the full label SVG
+      if (layout.rotationUsed) {
+        content += `
+    <g transform="translate(${x + labelHeightIn}, ${y}) rotate(90)">
+      <g transform="scale(${scaleX}, ${scaleY})">
+        ${labelInner}
+      </g>
+    </g>`;
+      } else {
+        content += `
+    <g transform="translate(${x}, ${y})">
+      <g transform="scale(${scaleX}, ${scaleY})">
+        ${labelInner}
+      </g>
+    </g>`;
+      }
+    } else {
+      // REMAINING POSITIONS: Render placeholder rectangles
+      // Placeholder: stroke-only, dashed outline, no fill
+      if (layout.rotationUsed) {
+        content += `
+    <rect 
+      x="${x}" 
+      y="${y}" 
+      width="${cellLabelW}" 
+      height="${cellLabelH}"
+      fill="none"
+      stroke="rgba(0,0,0,0.35)"
+      stroke-width="0.01"
+      stroke-dasharray="0.04 0.04"
+    />`;
+      } else {
+        content += `
+    <rect 
+      x="${x}" 
+      y="${y}" 
+      width="${labelWidthIn}" 
+      height="${labelHeightIn}"
+      fill="none"
+      stroke="rgba(0,0,0,0.35)"
+      stroke-width="0.01"
+      stroke-dasharray="0.04 0.04"
+    />`;
+      }
+    }
+  }
+
+  // Optional: Add label count indicator
+  const countText = totalLabels > 1 
+    ? `
+    <text 
+      x="${layout.sheetWidthIn - layout.marginIn}" 
+      y="${layout.sheetHeightIn - 0.1}"
+      font-size="0.12"
+      font-family="system-ui, sans-serif"
+      fill="rgba(0,0,0,0.4)"
+      text-anchor="end"
+    >×${totalLabels} labels${totalSheets > 1 ? ` (${totalSheets} sheets)` : ''}</text>`
+    : '';
+
+  const sheetSvg = `<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="${layout.sheetWidthIn}in"
+     height="${layout.sheetHeightIn}in"
+     viewBox="0 0 ${layout.sheetWidthIn} ${layout.sheetHeightIn}">
+  <g id="sheet-layout">${content}
+  </g>${countText}
+</svg>`;
+
+  return {
+    svg: sheetSvg,
+    meta: {
+      perSheet: layout.perSheet,
+      columns: layout.columns,
+      rows: layout.rows,
+      rotationUsed: layout.rotationUsed,
+      totalSheets,
+      labelWidthIn,
+      labelHeightIn
+    }
+  };
+}
+
+/**
  * Render an auto-tiled letter-size sheet preview
+ * Uses optimized preview rendering: ONE real label + placeholder boxes
  */
 export async function renderLetterSheetPreview(params: {
   versionId: string;
@@ -1545,21 +1795,32 @@ export async function renderLetterSheetPreview(params: {
   elements?: PlaceableElement[];
   labelWidthIn?: number;
   labelHeightIn?: number;
+  orientation?: 'portrait' | 'landscape';
+  marginIn?: number;
 }): Promise<LetterSheetPreviewResult> {
-  const { versionId, quantity, elements, labelWidthIn, labelHeightIn } = params;
+  const { versionId, quantity, elements, labelWidthIn, labelHeightIn, orientation = 'portrait', marginIn } = params;
   const qty = Math.max(1, Math.min(1000, Math.floor(quantity || 1)));
 
+  // Render just ONE label - we only need one for preview
   const labelResult = await renderLabelPreviewWithMeta(versionId, {
     elements,
     labelWidthIn,
     labelHeightIn
   });
   
-  const labelSvgs = Array(qty).fill(labelResult.svg).map((s, i) => prefixSvgIds(String(s), `preview_${i}`));
-
-  const { sheets, meta } = composeLetterSheetsFromLabelSvgs({ labelSvgs });
+  // Use optimized preview: one real label + placeholder boxes
+  // Pass label dimensions to override SVG-extracted dimensions if provided
+  const { svg, meta } = composeLetterSheetPreview({ 
+    labelSvg: labelResult.svg,
+    totalLabels: qty,
+    orientation,
+    marginIn,
+    labelWidthIn,
+    labelHeightIn,
+  });
+  
   return {
-    svg: sheets[0] || '',
+    svg,
     meta,
     labelMeta: labelResult.meta
   };
