@@ -56,6 +56,9 @@ export interface CreateVersionParams {
 export interface RenderLabelParams {
   versionId: string;
   qrPayload: QRPayload;
+  // Optional entity info for barcode rendering
+  entityType?: LabelEntityType;
+  entityId?: string;
 }
 
 // ========================================
@@ -533,7 +536,7 @@ export async function getLabelVersion(versionId: string) {
  * Uses unified placement model - elements array with absolute inch positions
  */
 export async function renderLabelSvg(params: RenderLabelParams): Promise<string> {
-  const { versionId, qrPayload } = params;
+  const { versionId, qrPayload, entityType, entityId } = params;
   
   const version = await prisma.labelTemplateVersion.findUnique({
     where: { id: versionId },
@@ -561,8 +564,13 @@ export async function renderLabelSvg(params: RenderLabelParams): Promise<string>
   // Generate QR code as SVG markup
   const qrSvg = await generateQrSvgFromUrl(qrPayload.url);
   
-  // Inject elements at absolute positions
-  svgContent = injectElements(svgContent, elements, qrSvg);
+  // Get barcode value from entity (product.barcodeValue ?? product.sku)
+  const barcodeValue = entityType && entityId 
+    ? await getEntityBarcodeValue(entityType, entityId)
+    : undefined;
+  
+  // Inject elements at absolute positions (print flow, not editor preview)
+  svgContent = injectElements(svgContent, elements, qrSvg, barcodeValue, false);
   
   return svgContent;
 }
@@ -668,8 +676,8 @@ export async function renderLabelWithToken(params: RenderLabelWithTokenParams): 
   const tokenUrl = `${baseUrl}/qr/${token}`;
   const qrSvg = await generateQrSvgFromUrl(tokenUrl);
   
-  // Inject elements
-  svgContent = injectElements(svgContent, elements, qrSvg);
+  // Inject elements (print flow - uses sample barcode since no entity context)
+  svgContent = injectElements(svgContent, elements, qrSvg, undefined, true);
   
   return svgContent;
 }
@@ -707,12 +715,12 @@ export async function renderLabelsWithTokens(params: {
   // Get elements (or create default if none exist)
   const elements = getElementsOrDefault(version.elements as PlaceableElement[] | null, svgTemplate);
   
-  // Render each label with its unique token
+  // Render each label with its unique token (uses sample barcode since no entity context)
   const svgs: string[] = [];
   for (const token of tokens) {
     const tokenUrl = `${baseUrl}/qr/${token}`;
     const qrSvg = await generateQrSvgFromUrl(tokenUrl);
-    const svgContent = injectElements(svgTemplate, elements, qrSvg);
+    const svgContent = injectElements(svgTemplate, elements, qrSvg, undefined, true);
     svgs.push(svgContent);
   }
   
@@ -753,8 +761,19 @@ export async function renderLabelsShared(params: RenderLabelsParams): Promise<Re
     throw new AppError(ErrorCodes.NOT_FOUND, 'Label version not found');
   }
 
-  // Get entity code
-  const entityCode = await getEntityCode(entityType, entityId);
+  // Get entity code and barcode value
+  let entityCode: string;
+  let barcodeValue: string | undefined;
+  try {
+    entityCode = await getEntityCode(entityType, entityId);
+  } catch (err) {
+    throw err;
+  }
+  try {
+    barcodeValue = await getEntityBarcodeValue(entityType, entityId);
+  } catch (err) {
+    throw err;
+  }
 
   // Load the SVG template
   const storage = getLabelStorage();
@@ -769,6 +788,12 @@ export async function renderLabelsShared(params: RenderLabelsParams): Promise<Re
 
   // Get elements (or create default if none exist)
   const elements = getElementsOrDefault(version.elements as PlaceableElement[] | null, svgTemplate);
+  
+  // Check if label has BARCODE elements - if so, barcode value is required (print flow enforcement)
+  const hasBarcodeElement = elements.some(el => el.type === 'BARCODE');
+  if (hasBarcodeElement && !barcodeValue) {
+    throw new AppError(ErrorCodes.INVALID_INPUT, 'Barcode required but missing for this product. Set a barcode value in Product Settings.');
+  }
 
   if (mode === 'embedded') {
     if (!qrPayload) {
@@ -776,7 +801,8 @@ export async function renderLabelsShared(params: RenderLabelsParams): Promise<Re
     }
 
     const qrSvg = await generateQrSvgFromUrl(qrPayload.url);
-    const svg = injectElements(svgTemplate, elements, qrSvg);
+    // Print flow - not editor preview
+    const svg = injectElements(svgTemplate, elements, qrSvg, barcodeValue, false);
 
     // For embedded mode, duplicate SVG for quantity (all identical)
     const svgs = Array(quantity).fill(svg);
@@ -808,7 +834,8 @@ export async function renderLabelsShared(params: RenderLabelsParams): Promise<Re
     for (const token of createdTokens) {
       const tokenUrl = `${baseUrl}/qr/${token.token}`;
       const qrSvg = await generateQrSvgFromUrl(tokenUrl);
-      const svgContent = injectElements(svgTemplate, elements, qrSvg);
+      // Print flow - not editor preview
+      const svgContent = injectElements(svgTemplate, elements, qrSvg, barcodeValue, false);
       svgs.push(svgContent);
     }
 
@@ -854,9 +881,53 @@ async function getEntityCode(entityType: LabelEntityType, entityId: string): Pro
   }
 }
 
+/**
+ * Get the barcode value for an entity
+ * 
+ * Source of truth: Product owns barcode data
+ * - barcodeValue defaults to SKU if not explicitly set
+ * - No placeholder barcodes ever render
+ */
+async function getEntityBarcodeValue(entityType: LabelEntityType, entityId: string): Promise<string | undefined> {
+  switch (entityType) {
+    case 'PRODUCT': {
+      const product = await prisma.product.findUnique({ 
+        where: { id: entityId },
+        select: { barcodeValue: true, sku: true }
+      });
+      if (!product) return undefined;
+      // barcodeValue defaults to SKU
+      return product.barcodeValue ?? product.sku;
+    }
+    case 'BATCH': {
+      // Batches inherit barcode from their product
+      const batch = await prisma.batch.findUnique({ 
+        where: { id: entityId },
+        include: { product: { select: { barcodeValue: true, sku: true } } }
+      });
+      if (!batch?.product) return undefined;
+      return batch.product.barcodeValue ?? batch.product.sku;
+    }
+    case 'INVENTORY': {
+      // Inventory items may be linked to products
+      const inventory = await prisma.inventoryItem.findUnique({ 
+        where: { id: entityId },
+        include: { product: { select: { barcodeValue: true, sku: true } } }
+      });
+      if (!inventory?.product) return undefined;
+      return inventory.product.barcodeValue ?? inventory.product.sku;
+    }
+    default:
+      return undefined;
+  }
+}
+
 // ========================================
 // ELEMENT INJECTION (UNIFIED PLACEMENT)
 // ========================================
+
+// Sample barcode for editor preview (no product context)
+const EDITOR_PREVIEW_BARCODE = 'SKU-EXAMPLE';
 
 /**
  * Inject placeable elements into SVG at absolute inch positions.
@@ -865,11 +936,19 @@ async function getEntityCode(entityType: LabelEntityType, entityId: string): Pro
  * and extractViewBox. No hardcoded DPI assumptions.
  * 
  * Rotation uses translate-rotate-translate pattern for cross-renderer consistency.
+ * 
+ * @param svg - The base SVG template
+ * @param elements - Placeable elements to inject
+ * @param qrSvgContent - Generated QR code SVG content
+ * @param barcodeValue - Product barcode value for print flows, undefined for editor preview
+ * @param isEditorPreview - If true, use sample barcode; if false, require real barcode for BARCODE elements
  */
 function injectElements(
   svg: string,
   elements: PlaceableElement[],
-  qrSvgContent: string
+  qrSvgContent: string,
+  barcodeValue?: string,
+  isEditorPreview: boolean = false
 ): string {
   if (elements.length === 0) {
     return svg;
@@ -938,8 +1017,9 @@ function injectElements(
     </svg>
   </g>`;
     } else if (el.type === 'BARCODE' && el.barcode) {
-      // Phase 3: BARCODE injection (editor preview only)
-      // Generates EAN-13 placeholder barcode visualization
+      // BARCODE injection logic:
+      // - Editor preview: always use sample barcode (EDITOR_PREVIEW_BARCODE)
+      // - Print flows: use product.barcodeValue ?? product.sku (required)
       const barHeightVb = el.barcode.barHeightIn * pxPerInchX;
       const textSizeVb = el.barcode.textSizeIn * pxPerInchX;
       const textGapVb = el.barcode.textGapIn * pxPerInchX;
@@ -947,6 +1027,9 @@ function injectElements(
       
       // Handle transparent background
       const showBackground = el.background !== 'transparent';
+      
+      // Determine barcode value based on context
+      const actualCode = isEditorPreview ? EDITOR_PREVIEW_BARCODE : (barcodeValue || '');
       
       // EAN-13 structure: 95 modules total
       const totalModules = 95;
@@ -974,11 +1057,10 @@ function injectElements(
         barX += moduleWidth;
       }
       
-      // EAN-13 number display: X XXXXXX XXXXXX (first digit outside, then 6+6)
-      const placeholderCode = '1234567890913';
-      const firstDigit = placeholderCode[0];
-      const leftGroup = placeholderCode.slice(1, 7);
-      const rightGroup = placeholderCode.slice(7, 13);
+      // Display the barcode value
+      // For EAN-13 format: X XXXXXX XXXXXX (first digit outside, then 6+6)
+      // For other formats: display as-is, centered
+      const isEan13 = actualCode.length === 13 && /^\d+$/.test(actualCode);
       
       const firstDigitX = barsStartX - textSizeVb * 0.6;
       const leftGroupX = barsStartX + (3 + 21) * moduleWidth;
@@ -990,14 +1072,27 @@ function injectElements(
         ? `<rect x="0" y="0" width="${w.toFixed(3)}" height="${h.toFixed(3)}" fill="${el.barcode.backgroundColor}"/>`
         : '';
       
+      let textContent: string;
+      if (isEan13) {
+        // EAN-13 format display
+        const firstDigit = actualCode[0];
+        const leftGroup = actualCode.slice(1, 7);
+        const rightGroup = actualCode.slice(7, 13);
+        textContent = `
+      <text x="${firstDigitX.toFixed(3)}" y="${textY.toFixed(3)}" text-anchor="middle" font-family="'OCR-B', 'Courier New', monospace" font-size="${textSizeVb.toFixed(3)}" fill="#000">${firstDigit}</text>
+      <text x="${leftGroupX.toFixed(3)}" y="${textY.toFixed(3)}" text-anchor="middle" font-family="'OCR-B', 'Courier New', monospace" font-size="${textSizeVb.toFixed(3)}" letter-spacing="${letterSpacing.toFixed(3)}" fill="#000">${leftGroup}</text>
+      <text x="${rightGroupX.toFixed(3)}" y="${textY.toFixed(3)}" text-anchor="middle" font-family="'OCR-B', 'Courier New', monospace" font-size="${textSizeVb.toFixed(3)}" letter-spacing="${letterSpacing.toFixed(3)}" fill="#000">${rightGroup}</text>`;
+      } else {
+        // Non-EAN format - display centered
+        textContent = `<text x="${(w / 2).toFixed(3)}" y="${textY.toFixed(3)}" text-anchor="middle" font-family="'OCR-B', 'Courier New', monospace" font-size="${textSizeVb.toFixed(3)}" fill="#000">${actualCode}</text>`;
+      }
+      
       injectedContent += `
   <g ${rotateAttr}>
     <svg x="${x.toFixed(3)}" y="${y.toFixed(3)}" width="${w.toFixed(3)}" height="${h.toFixed(3)}" viewBox="0 0 ${w.toFixed(3)} ${h.toFixed(3)}">
       ${bgRect}
       ${barsContent}
-      <text x="${firstDigitX.toFixed(3)}" y="${textY.toFixed(3)}" text-anchor="middle" font-family="'OCR-B', 'Courier New', monospace" font-size="${textSizeVb.toFixed(3)}" fill="#000">${firstDigit}</text>
-      <text x="${leftGroupX.toFixed(3)}" y="${textY.toFixed(3)}" text-anchor="middle" font-family="'OCR-B', 'Courier New', monospace" font-size="${textSizeVb.toFixed(3)}" letter-spacing="${letterSpacing.toFixed(3)}" fill="#000">${leftGroup}</text>
-      <text x="${rightGroupX.toFixed(3)}" y="${textY.toFixed(3)}" text-anchor="middle" font-family="'OCR-B', 'Courier New', monospace" font-size="${textSizeVb.toFixed(3)}" letter-spacing="${letterSpacing.toFixed(3)}" fill="#000">${rightGroup}</text>
+      ${textContent}
     </svg>
   </g>`;
     }
@@ -1635,6 +1730,10 @@ export async function renderLabelPreview(
 
 /**
  * Render a label preview with metadata
+ * 
+ * @param versionId - Label template version ID
+ * @param overrides - Optional overrides for elements and size
+ * @param entityInfo - Optional entity info for barcode rendering (if provided, real barcode is used)
  */
 export async function renderLabelPreviewWithMeta(
   versionId: string,
@@ -1642,6 +1741,10 @@ export async function renderLabelPreviewWithMeta(
     elements?: PlaceableElement[];
     labelWidthIn?: number;
     labelHeightIn?: number;
+  },
+  entityInfo?: {
+    entityType: LabelEntityType;
+    entityId: string;
   }
 ): Promise<LabelPreviewResult> {
   const version = await prisma.labelTemplateVersion.findUnique({
@@ -1719,8 +1822,16 @@ export async function renderLabelPreviewWithMeta(
   // Generate placeholder QR for preview
   const placeholderQrSvg = await generateQrSvgFromUrl('https://psillyops.app/preview');
   
-  // Inject elements
-  const svg = injectElements(svgContent, elements, placeholderQrSvg);
+  // Determine if this is editor preview (no entity context) or print preview (with entity)
+  const isEditorPreview = !entityInfo;
+  
+  // Get barcode value if entity info provided (for print preview with product data)
+  const barcodeValue = entityInfo 
+    ? await getEntityBarcodeValue(entityInfo.entityType, entityInfo.entityId)
+    : undefined;
+  
+  // Inject elements - editor preview uses sample barcode, print preview uses real barcode
+  const svg = injectElements(svgContent, elements, placeholderQrSvg, barcodeValue, isEditorPreview);
 
   return {
     svg,
@@ -2158,6 +2269,9 @@ export function composeLetterSheetPreview(params: {
 /**
  * Render an auto-tiled letter-size sheet preview
  * Uses optimized preview rendering: ONE real label + placeholder boxes
+ * 
+ * @param params.entityType - Optional entity type for barcode rendering
+ * @param params.entityId - Optional entity ID for barcode rendering
  */
 export async function renderLetterSheetPreview(params: {
   versionId: string;
@@ -2168,6 +2282,9 @@ export async function renderLetterSheetPreview(params: {
   orientation?: 'portrait' | 'landscape';
   marginIn?: number;
   decorations?: SheetDecorations;
+  // Optional entity info for barcode rendering
+  entityType?: LabelEntityType;
+  entityId?: string;
 }): Promise<LetterSheetPreviewResult> {
   const { 
     versionId, 
@@ -2178,15 +2295,19 @@ export async function renderLetterSheetPreview(params: {
     orientation = 'portrait', 
     marginIn,
     decorations = DEFAULT_SHEET_DECORATIONS,
+    entityType,
+    entityId,
   } = params;
   const qty = Math.max(1, Math.min(1000, Math.floor(quantity || 1)));
 
   // Render just ONE label - we only need one for preview
+  // Pass entity info if provided for barcode rendering
+  const entityInfo = entityType && entityId ? { entityType, entityId } : undefined;
   const labelResult = await renderLabelPreviewWithMeta(versionId, {
     elements,
     labelWidthIn,
     labelHeightIn
-  });
+  }, entityInfo);
   
   // Calculate total sheets for decoration rendering
   const tempLayout = computeLetterSheetLayout(

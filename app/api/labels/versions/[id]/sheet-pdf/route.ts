@@ -20,6 +20,9 @@ interface SheetPdfRequestBody {
   labelWidthIn?: number | null;
   labelHeightIn?: number | null;
   decorations?: SheetDecorations;
+  // Optional entity info for barcode rendering
+  entityType?: 'PRODUCT' | 'BATCH' | 'INVENTORY' | 'CUSTOM';
+  entityId?: string;
 }
 
 export async function POST(
@@ -48,7 +51,7 @@ export async function POST(
     }
     
     // Validate quantity
-    const { quantity, elements, labelWidthIn, labelHeightIn, decorations } = body;
+    const { quantity, elements, labelWidthIn, labelHeightIn, decorations, entityType, entityId } = body;
     
     if (typeof quantity !== 'number' || quantity < 1) {
       return NextResponse.json(
@@ -93,6 +96,9 @@ export async function POST(
       labelWidthIn: labelWidthIn ?? undefined,
       labelHeightIn: labelHeightIn ?? undefined,
       decorations,
+      // Pass entity info for barcode rendering (product.barcodeValue ?? product.sku)
+      entityType,
+      entityId,
     });
     
     // Return PDF as downloadable file

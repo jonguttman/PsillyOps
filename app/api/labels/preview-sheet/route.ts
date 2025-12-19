@@ -45,7 +45,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { versionId, quantity, elements, labelWidthIn, labelHeightIn, orientation, marginIn, decorations, format = 'json' } = body;
+    const { versionId, quantity, elements, labelWidthIn, labelHeightIn, orientation, marginIn, decorations, format = 'json', entityType, entityId } = body;
 
     if (!versionId) {
       return NextResponse.json(
@@ -115,6 +115,9 @@ export async function POST(req: Request) {
       orientation: parsedOrientation,
       marginIn: parsedMarginIn,
       decorations: parsedDecorations,
+      // Pass entity info for barcode rendering (product.barcodeValue ?? product.sku)
+      entityType: entityType as 'PRODUCT' | 'BATCH' | 'INVENTORY' | 'CUSTOM' | undefined,
+      entityId: entityId as string | undefined,
     });
 
     // Support legacy format=svg for backwards compatibility

@@ -46,6 +46,9 @@ export interface SheetPdfParams {
   labelWidthIn?: number;
   labelHeightIn?: number;
   decorations?: SheetDecorations;
+  // Optional entity info for barcode rendering (product.barcodeValue ?? product.sku)
+  entityType?: 'PRODUCT' | 'BATCH' | 'INVENTORY' | 'CUSTOM';
+  entityId?: string;
 }
 
 export interface SheetPdfResult {
@@ -133,6 +136,8 @@ export async function renderSheetPdfBuffer(params: SheetPdfParams): Promise<Shee
     labelWidthIn, 
     labelHeightIn,
     decorations = DEFAULT_SHEET_DECORATIONS,
+    entityType,
+    entityId,
   } = params;
   
   // Validate and clamp quantity
@@ -142,12 +147,19 @@ export async function renderSheetPdfBuffer(params: SheetPdfParams): Promise<Shee
     throw new Error(`Quantity exceeds maximum of ${MAX_LABELS} labels`);
   }
   
+  // Build entity info for barcode rendering - REQUIRED for PDF generation
+  if (!entityType || !entityId) {
+    throw new Error('entityType and entityId are required for PDF generation');
+  }
+  const entityInfo = { entityType: entityType as 'PRODUCT' | 'BATCH' | 'INVENTORY' | 'CUSTOM', entityId };
+  
   // Step 1: Render a single label to get the SVG template
+  // Pass entity info for barcode rendering (product.barcodeValue ?? product.sku)
   const labelResult = await renderLabelPreviewWithMeta(versionId, {
     elements,
     labelWidthIn,
     labelHeightIn,
-  });
+  }, entityInfo);
   
   // Step 2: Compute layout to determine labels per sheet
   const effectiveWidthIn = labelWidthIn ?? labelResult.meta.widthIn;

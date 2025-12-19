@@ -214,6 +214,7 @@ model Product {
   id                String   @id @default(cuid())
   name              String
   sku               String   @unique
+  barcodeValue      String?  // Barcode value for label printing (defaults to SKU if null)
   unitOfMeasure     String
   defaultBatchSize  Int?
   leadTimeDays      Int      @default(0)

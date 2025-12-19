@@ -28,6 +28,7 @@ async function updateProduct(formData: FormData) {
   const id = formData.get("id") as string;
   const name = formData.get("name") as string;
   const sku = formData.get("sku") as string;
+  const barcodeValueRaw = formData.get("barcodeValue") as string;
   const unitOfMeasure = formData.get("unitOfMeasure") as string;
   const reorderPoint = parseInt(formData.get("reorderPoint") as string, 10) || 0;
   const leadTimeDays = parseInt(formData.get("leadTimeDays") as string, 10) || 0;
@@ -46,11 +47,19 @@ async function updateProduct(formData: FormData) {
 
   const strainChanged = existingProduct && existingProduct.strainId !== strainId;
 
+  // Barcode logic: If barcodeValue is empty or matches old SKU, default to new SKU
+  // This ensures barcode stays in sync with SKU unless user explicitly customized it
+  let barcodeValue: string | null = barcodeValueRaw?.trim() || null;
+  if (!barcodeValue || barcodeValue === existingProduct?.sku) {
+    barcodeValue = sku; // Default to SKU
+  }
+
   await prisma.product.update({
     where: { id },
     data: {
       name,
       sku,
+      barcodeValue,
       unitOfMeasure,
       reorderPoint,
       leadTimeDays,
@@ -251,6 +260,22 @@ export default async function ProductDetailPage({
                 />
               </div>
               <div>
+                <label htmlFor="barcodeValue" className="block text-sm font-medium text-gray-700">
+                  Barcode Value
+                </label>
+                <input
+                  type="text"
+                  name="barcodeValue"
+                  id="barcodeValue"
+                  defaultValue={product.barcodeValue ?? product.sku}
+                  placeholder={product.sku}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Defaults to SKU. Used when printing labels with barcodes.
+                </p>
+              </div>
+              <div>
                 <label htmlFor="unitOfMeasure" className="block text-sm font-medium text-gray-700">
                   Unit of Measure
                 </label>
@@ -366,6 +391,12 @@ export default async function ProductDetailPage({
                 ) : (
                   <span className="text-gray-400">No strain</span>
                 )}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-sm font-medium text-gray-500">Barcode</dt>
+              <dd className="mt-1 text-sm text-gray-900 font-mono">
+                {product.barcodeValue ?? product.sku}
               </dd>
             </div>
             <div>

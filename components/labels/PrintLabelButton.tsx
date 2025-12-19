@@ -57,6 +57,11 @@ export default function PrintLabelButton({
   const [paperUsedOnReprint, setPaperUsedOnReprint] = useState(false);
   const [isMarkingPaper, setIsMarkingPaper] = useState(false);
   const printContainerRef = useRef<HTMLDivElement>(null);
+  
+  // Barcode guardrails: track if label needs barcode and if product has one
+  const [labelHasBarcode, setLabelHasBarcode] = useState(false);
+  const [productBarcodeValue, setProductBarcodeValue] = useState<string | null>(null);
+  const [barcodeCheckLoading, setBarcodeCheckLoading] = useState(false);
 
   const getPreviewSvg = (sheetSvg: string) => {
     // Screen preview should be responsive; printing/download must keep exact physical sizing.
@@ -78,8 +83,57 @@ export default function PrintLabelButton({
   useEffect(() => {
     if (isOpen) {
       fetchTemplates();
+      // Fetch product barcode info for guardrails
+      checkBarcodeRequirements();
     }
   }, [isOpen]);
+  
+  // Check barcode requirements when version changes
+  useEffect(() => {
+    if (selectedVersionId) {
+      checkBarcodeRequirements();
+    }
+  }, [selectedVersionId]);
+  
+  // Check if label has barcode elements and if product has barcode value
+  const checkBarcodeRequirements = async () => {
+    if (!selectedVersionId) {
+      setLabelHasBarcode(false);
+      return;
+    }
+    
+    setBarcodeCheckLoading(true);
+    try {
+      // Fetch label version to check for BARCODE elements
+      const versionRes = await fetch(`/api/labels/versions/${selectedVersionId}`);
+      if (versionRes.ok) {
+        const versionData = await versionRes.json();
+        // Elements are at the top level of the response
+        const elements = versionData.elements || [];
+        const hasBarcode = elements.some((el: { type: string }) => el.type === 'BARCODE');
+        setLabelHasBarcode(hasBarcode);
+      }
+      
+      // Fetch product barcode value (only for PRODUCT entity type)
+      if (entityType === 'PRODUCT') {
+        const productRes = await fetch(`/api/products/${entityId}`);
+        if (productRes.ok) {
+          const productData = await productRes.json();
+          // barcodeValue defaults to SKU if not set
+          const resolvedBarcode = productData.barcodeValue ?? productData.sku ?? null;
+          setProductBarcodeValue(resolvedBarcode);
+        }
+      } else {
+        // For BATCH/INVENTORY, we'd need to fetch the linked product
+        // For now, assume barcode is available through the entity chain
+        setProductBarcodeValue(entityCode); // Use entityCode as fallback
+      }
+    } catch (err) {
+      console.error('Failed to check barcode requirements:', err);
+    } finally {
+      setBarcodeCheckLoading(false);
+    }
+  };
 
   const fetchTemplates = async () => {
     setIsLoading(true);
@@ -261,7 +315,12 @@ export default function PrintLabelButton({
       const response = await fetch(`/api/labels/versions/${selectedVersionId}/sheet-pdf`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ quantity })
+        body: JSON.stringify({ 
+          quantity,
+          // Pass entity info for barcode rendering (product.barcodeValue ?? product.sku)
+          entityType,
+          entityId,
+        })
       });
 
       if (!response.ok) {
@@ -295,6 +354,9 @@ export default function PrintLabelButton({
   );
 
   const hasActiveTemplate = allVersions.some(v => v.isActive);
+  
+  // Barcode guardrail: block printing if label has barcode but product doesn't have one
+  const isBarcodeBlocked = labelHasBarcode && !productBarcodeValue;
 
   return (
     <>
@@ -339,6 +401,21 @@ export default function PrintLabelButton({
                 {error && (
                   <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded text-sm">
                     {error}
+                  </div>
+                )}
+                
+                {/* Barcode guardrail warning */}
+                {labelHasBarcode && !productBarcodeValue && !barcodeCheckLoading && (
+                  <div className="mb-4 bg-yellow-50 border border-yellow-200 text-yellow-800 px-3 py-2 rounded text-sm">
+                    <div className="flex items-start">
+                      <svg className="h-5 w-5 text-yellow-400 mr-2 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                      <div>
+                        <p className="font-medium">This label requires a barcode.</p>
+                        <p className="text-xs mt-1">Set one in Product Settings before printing.</p>
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -423,8 +500,9 @@ export default function PrintLabelButton({
 
                       <button
                         onClick={handleRender}
-                        disabled={!selectedVersionId || isRendering}
+                        disabled={!selectedVersionId || isRendering || isBarcodeBlocked}
                         className="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title={isBarcodeBlocked ? 'Set barcode in Product Settings first' : undefined}
                       >
                         {isRendering ? (
                           <>
@@ -482,8 +560,9 @@ export default function PrintLabelButton({
                     </button>
                     <button
                       onClick={handleDownloadPdf}
-                      disabled={isDownloadingPdf}
+                      disabled={isDownloadingPdf || isBarcodeBlocked}
                       className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
+                      title={isBarcodeBlocked ? 'Set barcode in Product Settings first' : undefined}
                     >
                       {isDownloadingPdf ? (
                         <>
