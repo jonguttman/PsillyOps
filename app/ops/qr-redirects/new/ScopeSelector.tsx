@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import { Check, Search, Package, Layers, Archive } from 'lucide-react';
+import { useState, useMemo, useCallback } from 'react';
+import { Check, Search, Package, Layers, Archive, X } from 'lucide-react';
 
 // Types for the data passed from server component
 export interface ProductItem {
@@ -16,7 +16,8 @@ export interface BatchItem {
   batchCode: string;
   productName: string;
   status: string;
-  isPlanned: boolean; // true = from ProductionOrder without batch, false = actual batch
+  isPlanned: boolean;
+  hasActiveRule?: boolean;
 }
 
 interface ScopeSelectorProps {
@@ -34,8 +35,17 @@ export default function ScopeSelector({
 }: ScopeSelectorProps) {
   const [activeTab, setActiveTab] = useState<TabType>('products');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [selectedType, setSelectedType] = useState<'PRODUCT' | 'BATCH' | null>(null);
+  
+  // Phase 7.2: Multi-select using Sets
+  const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
+  const [selectedBatchIds, setSelectedBatchIds] = useState<Set<string>>(new Set());
+
+  // Determine current scope type based on selection
+  const scopeType = useMemo(() => {
+    if (selectedProductIds.size > 0) return 'PRODUCT';
+    if (selectedBatchIds.size > 0) return 'BATCH';
+    return null;
+  }, [selectedProductIds.size, selectedBatchIds.size]);
 
   // Filter products by search query
   const filteredProducts = useMemo(() => {
@@ -69,43 +79,95 @@ export default function ScopeSelector({
     );
   }, [plannedBatches, searchQuery]);
 
-  // Handle selection
-  const handleProductSelect = (productId: string) => {
-    if (selectedId === productId && selectedType === 'PRODUCT') {
-      // Deselect
-      setSelectedId(null);
-      setSelectedType(null);
-    } else {
-      setSelectedId(productId);
-      setSelectedType('PRODUCT');
-    }
-  };
+  // All filtered batches combined
+  const allFilteredBatches = useMemo(() => {
+    return [...filteredRecentBatches, ...filteredPlannedBatches];
+  }, [filteredRecentBatches, filteredPlannedBatches]);
 
-  const handleBatchSelect = (batchId: string) => {
-    if (selectedId === batchId && selectedType === 'BATCH') {
-      // Deselect
-      setSelectedId(null);
-      setSelectedType(null);
-    } else {
-      setSelectedId(batchId);
-      setSelectedType('BATCH');
-    }
-  };
+  // Count selected items with active rules (for warning)
+  const selectedProductsWithActiveRules = useMemo(() => {
+    return products.filter(p => selectedProductIds.has(p.id) && p.hasActiveRule);
+  }, [products, selectedProductIds]);
 
-  // Clear search when switching tabs
+  const selectedBatchesWithActiveRules = useMemo(() => {
+    const allBatches = [...recentBatches, ...plannedBatches];
+    return allBatches.filter(b => selectedBatchIds.has(b.id) && b.hasActiveRule);
+  }, [recentBatches, plannedBatches, selectedBatchIds]);
+
+  // Get selected items info for summary
+  const selectedProducts = useMemo(() => {
+    return products.filter(p => selectedProductIds.has(p.id));
+  }, [products, selectedProductIds]);
+
+  const selectedBatches = useMemo(() => {
+    const allBatches = [...recentBatches, ...plannedBatches];
+    return allBatches.filter(b => selectedBatchIds.has(b.id));
+  }, [recentBatches, plannedBatches, selectedBatchIds]);
+
+  // Handle product selection toggle
+  const handleProductSelect = useCallback((productId: string) => {
+    setSelectedProductIds(prev => {
+      const next = new Set(prev);
+      if (next.has(productId)) {
+        next.delete(productId);
+      } else {
+        next.add(productId);
+      }
+      return next;
+    });
+  }, []);
+
+  // Handle batch selection toggle
+  const handleBatchSelect = useCallback((batchId: string) => {
+    setSelectedBatchIds(prev => {
+      const next = new Set(prev);
+      if (next.has(batchId)) {
+        next.delete(batchId);
+      } else {
+        next.add(batchId);
+      }
+      return next;
+    });
+  }, []);
+
+  // Select all visible products
+  const handleSelectAllProducts = useCallback(() => {
+    const eligibleIds = filteredProducts
+      .filter(p => !p.hasActiveRule)
+      .map(p => p.id);
+    setSelectedProductIds(new Set(eligibleIds));
+  }, [filteredProducts]);
+
+  // Select all visible batches
+  const handleSelectAllBatches = useCallback(() => {
+    const eligibleIds = allFilteredBatches
+      .filter(b => !b.hasActiveRule)
+      .map(b => b.id);
+    setSelectedBatchIds(new Set(eligibleIds));
+  }, [allFilteredBatches]);
+
+  // Clear product selection
+  const handleClearProductSelection = useCallback(() => {
+    setSelectedProductIds(new Set());
+  }, []);
+
+  // Clear batch selection
+  const handleClearBatchSelection = useCallback(() => {
+    setSelectedBatchIds(new Set());
+  }, []);
+
+  // Clear search and selection when switching tabs
   const handleTabChange = (tab: TabType) => {
     setActiveTab(tab);
     setSearchQuery('');
-    // Clear selection if switching to a different entity type
-    if (tab === 'products' && selectedType !== 'PRODUCT') {
-      setSelectedId(null);
-      setSelectedType(null);
-    } else if (tab === 'batches' && selectedType !== 'BATCH') {
-      setSelectedId(null);
-      setSelectedType(null);
+    // Clear selection when switching tabs (per Phase 7.2 decision)
+    if (tab === 'products') {
+      setSelectedBatchIds(new Set());
+    } else if (tab === 'batches') {
+      setSelectedProductIds(new Set());
     } else if (tab === 'inventory') {
-      setSelectedId(null);
-      setSelectedType(null);
+      setSelectedProductIds(new Set());
+      setSelectedBatchIds(new Set());
     }
   };
 
@@ -131,19 +193,40 @@ export default function ScopeSelector({
     return status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
   };
 
+  // Calculate selection counts
+  const productSelectionCount = selectedProductIds.size;
+  const batchSelectionCount = selectedBatchIds.size;
+  const totalSelectionCount = productSelectionCount + batchSelectionCount;
+
+  // Check if any selected items have active rules
+  const hasConflicts = selectedProductsWithActiveRules.length > 0 || selectedBatchesWithActiveRules.length > 0;
+  const conflictCount = selectedProductsWithActiveRules.length + selectedBatchesWithActiveRules.length;
+
+  // Format skipped items list
+  const formatSkippedItems = () => {
+    const items = scopeType === 'PRODUCT' 
+      ? selectedProductsWithActiveRules.map(p => p.name)
+      : selectedBatchesWithActiveRules.map(b => b.batchCode);
+    
+    if (items.length <= 3) {
+      return items.join(', ');
+    }
+    return `${items.slice(0, 3).join(', ')}, +${items.length - 3} more`;
+  };
+
   return (
     <div className="space-y-4">
-      {/* Hidden inputs for form submission */}
-      <input type="hidden" name="scopeType" value={selectedType || ''} />
+      {/* Hidden inputs for form submission - Phase 7.2: arrays */}
+      <input type="hidden" name="scopeType" value={scopeType || ''} />
       <input
         type="hidden"
-        name="productId"
-        value={selectedType === 'PRODUCT' ? selectedId || '' : ''}
-      />
-      <input
-        type="hidden"
-        name="batchId"
-        value={selectedType === 'BATCH' ? selectedId || '' : ''}
+        name="entityIds"
+        value={scopeType === 'PRODUCT' 
+          ? JSON.stringify(Array.from(selectedProductIds))
+          : scopeType === 'BATCH'
+          ? JSON.stringify(Array.from(selectedBatchIds))
+          : '[]'
+        }
       />
 
       {/* Tabs */}
@@ -160,6 +243,11 @@ export default function ScopeSelector({
           >
             <Package className="w-4 h-4" />
             Products
+            {productSelectionCount > 0 && (
+              <span className="ml-1 px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-700 rounded-full">
+                {productSelectionCount}
+              </span>
+            )}
           </button>
           <button
             type="button"
@@ -172,6 +260,11 @@ export default function ScopeSelector({
           >
             <Layers className="w-4 h-4" />
             Batches
+            {batchSelectionCount > 0 && (
+              <span className="ml-1 px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-700 rounded-full">
+                {batchSelectionCount}
+              </span>
+            )}
           </button>
           <button
             type="button"
@@ -185,21 +278,70 @@ export default function ScopeSelector({
         </nav>
       </div>
 
-      {/* Search Input */}
+      {/* Search + Selection Controls */}
       {activeTab !== 'inventory' && (
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder={
-              activeTab === 'products'
-                ? 'Search by product name or SKU...'
-                : 'Search by batch code or product name...'
-            }
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          />
+        <div className="flex items-center gap-3">
+          {/* Search Input */}
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder={
+                activeTab === 'products'
+                  ? 'Search by product name or SKU...'
+                  : 'Search by batch code or product name...'
+              }
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          
+          {/* Selection Controls */}
+          <div className="flex items-center gap-2">
+            {activeTab === 'products' && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleSelectAllProducts}
+                  className="px-3 py-2 text-xs font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors"
+                >
+                  Select all visible
+                </button>
+                {productSelectionCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearProductSelection}
+                    className="px-3 py-2 text-xs font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors flex items-center gap-1"
+                  >
+                    <X className="w-3 h-3" />
+                    Clear ({productSelectionCount})
+                  </button>
+                )}
+              </>
+            )}
+            {activeTab === 'batches' && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleSelectAllBatches}
+                  className="px-3 py-2 text-xs font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors"
+                >
+                  Select all visible
+                </button>
+                {batchSelectionCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearBatchSelection}
+                    className="px-3 py-2 text-xs font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors flex items-center gap-1"
+                  >
+                    <X className="w-3 h-3" />
+                    Clear ({batchSelectionCount})
+                  </button>
+                )}
+              </>
+            )}
+          </div>
         </div>
       )}
 
@@ -219,21 +361,19 @@ export default function ScopeSelector({
             ) : (
               <ul className="divide-y divide-gray-100">
                 {filteredProducts.map((product) => {
-                  const isSelected =
-                    selectedId === product.id && selectedType === 'PRODUCT';
+                  const isSelected = selectedProductIds.has(product.id);
                   const isDisabled = product.hasActiveRule;
 
                   return (
                     <li key={product.id}>
                       <button
                         type="button"
-                        onClick={() => !isDisabled && handleProductSelect(product.id)}
-                        disabled={isDisabled}
+                        onClick={() => handleProductSelect(product.id)}
                         className={`w-full flex items-center justify-between px-4 py-3 text-left transition-colors ${
                           isSelected
                             ? 'bg-blue-50'
                             : isDisabled
-                            ? 'bg-gray-50 cursor-not-allowed'
+                            ? 'bg-gray-50'
                             : 'hover:bg-gray-50'
                         }`}
                       >
@@ -300,8 +440,8 @@ export default function ScopeSelector({
                     </div>
                     <ul className="divide-y divide-gray-100">
                       {filteredRecentBatches.map((batch) => {
-                        const isSelected =
-                          selectedId === batch.id && selectedType === 'BATCH';
+                        const isSelected = selectedBatchIds.has(batch.id);
+                        const isDisabled = batch.hasActiveRule;
 
                         return (
                           <li key={batch.id}>
@@ -309,12 +449,16 @@ export default function ScopeSelector({
                               type="button"
                               onClick={() => handleBatchSelect(batch.id)}
                               className={`w-full flex items-center justify-between px-4 py-3 text-left transition-colors ${
-                                isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'
+                                isSelected
+                                  ? 'bg-blue-50'
+                                  : isDisabled
+                                  ? 'bg-gray-50'
+                                  : 'hover:bg-gray-50'
                               }`}
                             >
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
-                                  <span className="text-sm font-medium text-gray-900">
+                                  <span className={`text-sm font-medium ${isDisabled ? 'text-gray-400' : 'text-gray-900'}`}>
                                     {batch.batchCode}
                                   </span>
                                   <span
@@ -324,8 +468,13 @@ export default function ScopeSelector({
                                   >
                                     {formatStatus(batch.status)}
                                   </span>
+                                  {batch.hasActiveRule && (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                                      Has active rule
+                                    </span>
+                                  )}
                                 </div>
-                                <p className="text-xs text-gray-500">
+                                <p className={`text-xs ${isDisabled ? 'text-gray-300' : 'text-gray-500'}`}>
                                   {batch.productName}
                                 </p>
                               </div>
@@ -350,8 +499,8 @@ export default function ScopeSelector({
                     </div>
                     <ul className="divide-y divide-gray-100">
                       {filteredPlannedBatches.map((batch) => {
-                        const isSelected =
-                          selectedId === batch.id && selectedType === 'BATCH';
+                        const isSelected = selectedBatchIds.has(batch.id);
+                        const isDisabled = batch.hasActiveRule;
 
                         return (
                           <li key={batch.id}>
@@ -359,12 +508,16 @@ export default function ScopeSelector({
                               type="button"
                               onClick={() => handleBatchSelect(batch.id)}
                               className={`w-full flex items-center justify-between px-4 py-3 text-left transition-colors ${
-                                isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'
+                                isSelected
+                                  ? 'bg-blue-50'
+                                  : isDisabled
+                                  ? 'bg-gray-50'
+                                  : 'hover:bg-gray-50'
                               }`}
                             >
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
-                                  <span className="text-sm font-medium text-gray-900">
+                                  <span className={`text-sm font-medium ${isDisabled ? 'text-gray-400' : 'text-gray-900'}`}>
                                     {batch.batchCode}
                                   </span>
                                   <span
@@ -374,8 +527,13 @@ export default function ScopeSelector({
                                   >
                                     {formatStatus(batch.status)}
                                   </span>
+                                  {batch.hasActiveRule && (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                                      Has active rule
+                                    </span>
+                                  )}
                                 </div>
-                                <p className="text-xs text-gray-500">
+                                <p className={`text-xs ${isDisabled ? 'text-gray-300' : 'text-gray-500'}`}>
                                   {batch.productName}
                                 </p>
                               </div>
@@ -406,30 +564,53 @@ export default function ScopeSelector({
         )}
       </div>
 
-      {/* Selection Helper Text */}
-      {!selectedId && activeTab !== 'inventory' && (
-        <p className="text-sm text-amber-600 flex items-center gap-2">
-          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-            <path
-              fillRule="evenodd"
-              d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
-              clipRule="evenodd"
-            />
-          </svg>
-          Select a {activeTab === 'products' ? 'product' : 'batch'} to continue
-        </p>
-      )}
+      {/* Selection Summary & Warnings */}
+      <div className="space-y-3">
+        {/* No selection helper */}
+        {totalSelectionCount === 0 && activeTab !== 'inventory' && (
+          <p className="text-sm text-amber-600 flex items-center gap-2">
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path
+                fillRule="evenodd"
+                d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                clipRule="evenodd"
+              />
+            </svg>
+            Select at least one {activeTab === 'products' ? 'product' : 'batch'} to continue
+          </p>
+        )}
 
-      {/* Selection Confirmation */}
-      {selectedId && selectedType && (
-        <div className="flex items-center gap-2 text-sm text-green-600">
-          <Check className="w-4 h-4" />
-          <span>
-            {selectedType === 'PRODUCT' ? 'Product' : 'Batch'} selected
-          </span>
-        </div>
-      )}
+        {/* Selection summary */}
+        {totalSelectionCount > 0 && (
+          <div className="flex items-center gap-2 text-sm text-green-600">
+            <Check className="w-4 h-4" />
+            <span>
+              Creating rule for {totalSelectionCount} {scopeType === 'PRODUCT' ? (totalSelectionCount === 1 ? 'product' : 'products') : (totalSelectionCount === 1 ? 'batch' : 'batches')}
+            </span>
+          </div>
+        )}
+
+        {/* Conflict warning */}
+        {hasConflicts && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+            <div className="flex items-start gap-2">
+              <svg className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path
+                  fillRule="evenodd"
+                  d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              <div className="text-sm text-amber-800">
+                <p className="font-medium">Some selected items already have active redirect rules and will be skipped.</p>
+                <p className="text-xs mt-1 text-amber-700">
+                  Skipped ({conflictCount}): {formatSkippedItems()}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
-
