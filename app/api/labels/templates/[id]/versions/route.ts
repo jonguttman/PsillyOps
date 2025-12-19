@@ -15,6 +15,8 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  console.log('[VersionUpload] POST request received');
+  
   try {
     // 1. Validate auth
     const session = await auth();
@@ -63,6 +65,13 @@ export async function POST(
     // Convert file to buffer
     const arrayBuffer = await file.arrayBuffer();
     const fileBuffer = Buffer.from(arrayBuffer);
+    
+    console.log('[VersionUpload] File received:', {
+      fileName: file.name,
+      fileSize: fileBuffer.length,
+      version,
+      templateId,
+    });
 
     // 2. Call Service
     const templateVersion = await createVersion({
@@ -78,6 +87,10 @@ export async function POST(
     // 3. Return JSON
     return Response.json({ version: templateVersion }, { status: 201 });
   } catch (error) {
+    console.error('[VersionUpload] Error:', {
+      error: String(error),
+      stack: (error as Error)?.stack,
+    });
     return handleApiError(error);
   }
 }
