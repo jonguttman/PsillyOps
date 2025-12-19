@@ -147,14 +147,33 @@ export class VercelBlobStorage implements LabelStorage {
     // Build the path
     const pathname = `${this.prefix}/${safeTemplateId}/${safeVersion}${normalizedExt}`;
     
-    // Upload to Vercel Blob
-    const blob = await put(pathname, file, {
-      access: 'public',
+    // Log for debugging
+    console.log('[VercelBlobStorage] Saving file:', {
+      pathname,
+      fileSize: file.length,
       contentType: normalizedExt === '.svg' ? 'image/svg+xml' : 'application/octet-stream',
+      hasBlobToken: !!process.env.BLOB_READ_WRITE_TOKEN,
     });
     
-    // Return the full URL for database storage
-    return blob.url;
+    try {
+      // Upload to Vercel Blob
+      const blob = await put(pathname, file, {
+        access: 'public',
+        contentType: normalizedExt === '.svg' ? 'image/svg+xml' : 'application/octet-stream',
+      });
+      
+      console.log('[VercelBlobStorage] Upload successful:', blob.url);
+      
+      // Return the full URL for database storage
+      return blob.url;
+    } catch (error) {
+      console.error('[VercelBlobStorage] Upload failed:', {
+        error: String(error),
+        pathname,
+        fileSize: file.length,
+      });
+      throw error;
+    }
   }
 
   /**
