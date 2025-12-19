@@ -1649,6 +1649,18 @@ export async function renderLabelPreviewWithMeta(
   const scaleY = finalHeightIn / storedHeightIn;
   const needsElementScaling = Math.abs(scaleX - 1) > 0.001 || Math.abs(scaleY - 1) > 0.001;
   
+  // Debug logging
+  console.log('[renderLabelPreviewWithMeta] Size info:', {
+    nativeWidthIn, nativeHeightIn,
+    storedWidthIn, storedHeightIn,
+    finalWidthIn, finalHeightIn,
+    scaleX, scaleY,
+    needsElementScaling,
+    hasOverrideWidth: !!overrides?.labelWidthIn,
+    hasOverrideHeight: !!overrides?.labelHeightIn,
+    hasOverrideElements: !!overrides?.elements,
+  });
+  
   if (Math.abs(finalWidthIn - nativeWidthIn) > 0.001 || Math.abs(finalHeightIn - nativeHeightIn) > 0.001) {
     svgContent = applyLabelSizeOverride(svgContent, nativeWidthIn, nativeHeightIn, finalWidthIn, finalHeightIn);
   }
@@ -1659,6 +1671,9 @@ export async function renderLabelPreviewWithMeta(
   // Scale element positions if label size changed
   // This ensures QR/barcode stay in their relative positions when label is resized
   if (needsElementScaling && !overrides?.elements) {
+    console.log('[renderLabelPreviewWithMeta] Scaling elements by:', { scaleX, scaleY });
+    console.log('[renderLabelPreviewWithMeta] Elements BEFORE scaling:', JSON.stringify(elements.map(e => e.placement)));
+    
     elements = elements.map(el => ({
       ...el,
       placement: {
@@ -1676,6 +1691,10 @@ export async function renderLabelPreviewWithMeta(
         textGapIn: el.barcode.textGapIn * scaleY,
       } : undefined,
     }));
+    
+    console.log('[renderLabelPreviewWithMeta] Elements AFTER scaling:', JSON.stringify(elements.map(e => e.placement)));
+  } else {
+    console.log('[renderLabelPreviewWithMeta] NOT scaling elements:', { needsElementScaling, hasOverrideElements: !!overrides?.elements });
   }
 
   // Compute pxPerInch from the final SVG (after any size override)
