@@ -22,6 +22,8 @@ interface PrintLabelButtonProps {
   entityCode: string;  // SKU, batch code, or lot number
   buttonText?: string;
   className?: string;
+  // Label selection moved to Product Settings - passed in from parent
+  selectedVersionId?: string;
 }
 
 export default function PrintLabelButton({
@@ -29,11 +31,14 @@ export default function PrintLabelButton({
   entityId,
   entityCode,
   buttonText = 'Print Labels',
-  className = ''
+  className = '',
+  selectedVersionId: externalVersionId  // Label selection from Product Settings
 }: PrintLabelButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [templates, setTemplates] = useState<LabelTemplate[]>([]);
-  const [selectedVersionId, setSelectedVersionId] = useState<string>('');
+  // Use external version if provided, otherwise auto-select active
+  const [internalVersionId, setInternalVersionId] = useState<string>('');
+  const selectedVersionId = externalVersionId || internalVersionId;
   const [quantity, setQuantity] = useState(1);
   const [sheetSvgs, setSheetSvgs] = useState<string[]>([]);
   const [sheetMeta, setSheetMeta] = useState<{
@@ -46,6 +51,7 @@ export default function PrintLabelButton({
   const [printJobId, setPrintJobId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isRendering, setIsRendering] = useState(false);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showReprintModal, setShowReprintModal] = useState(false);
   const [paperUsedOnReprint, setPaperUsedOnReprint] = useState(false);
@@ -89,13 +95,15 @@ export default function PrintLabelButton({
 
       setTemplates(data.templates || []);
 
-      // Auto-select active version if available
-      const activeVersion = data.templates
-        ?.flatMap((t: LabelTemplate) => t.versions)
-        ?.find((v: LabelVersion) => v.isActive);
-      
-      if (activeVersion) {
-        setSelectedVersionId(activeVersion.id);
+      // Auto-select active version only if no external version provided
+      if (!externalVersionId) {
+        const activeVersion = data.templates
+          ?.flatMap((t: LabelTemplate) => t.versions)
+          ?.find((v: LabelVersion) => v.isActive);
+        
+        if (activeVersion) {
+          setInternalVersionId(activeVersion.id);
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load templates');
@@ -239,49 +247,44 @@ export default function PrintLabelButton({
     }
   };
 
-  const handleDownload = () => {
-    if (!sheetSvgs.length) return;
-    const safe = entityCode.replace(/[^a-z0-9]/gi, '_');
+  // Download PDF using the sheet-pdf API endpoint
+  const handleDownloadPdf = async () => {
+    if (!selectedVersionId) {
+      setError('Please select a label version');
+      return;
+    }
 
-    if (sheetSvgs.length === 1) {
-      const blob = new Blob([sheetSvgs[0]], { type: 'image/svg+xml' });
+    setIsDownloadingPdf(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/labels/versions/${selectedVersionId}/sheet-pdf`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ quantity })
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to generate PDF');
+      }
+
+      // Download the PDF blob
+      const blob = await response.blob();
+      const safe = entityCode.replace(/[^a-z0-9]/gi, '_');
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `label-sheet-${safe}.svg`;
+      link.download = `label-sheet-${safe}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-      return;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to download PDF');
+    } finally {
+      setIsDownloadingPdf(false);
     }
-
-    const html = `<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>Label Sheets - ${safe}</title>
-    <style>
-      @page { size: letter; margin: 0; }
-      body { margin: 0; padding: 0; }
-      .sheet { page-break-after: always; }
-      svg { width: 8.5in; height: 11in; }
-    </style>
-  </head>
-  <body>
-    ${sheetSvgs.map(svg => `<div class="sheet">${svg}</div>`).join('')}
-  </body>
-</html>`;
-
-    const blob = new Blob([html], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `label-sheets-${safe}.html`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
   };
 
   const allVersions = templates.flatMap(t => 
@@ -359,33 +362,48 @@ export default function PrintLabelButton({
                   <div className="grid grid-cols-2 gap-6">
                     {/* Controls */}
                     <div className="space-y-4">
-                      <div>
-                        <label htmlFor="version" className="block text-sm font-medium text-gray-700">
-                          Label Version
-                        </label>
-                        <select
-                          id="version"
-                          value={selectedVersionId}
-                          onChange={(e) => {
-                            setSelectedVersionId(e.target.value);
-                            setSheetSvgs([]);
-                            setSheetMeta(null);
-                          }}
-                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                        >
-                          <option value="">Select a version...</option>
-                          {allVersions.map((v) => (
-                            <option key={v.id} value={v.id}>
-                              {v.templateName} v{v.version} {v.isActive ? '(Active)' : ''}
-                            </option>
-                          ))}
-                        </select>
-                        {!hasActiveTemplate && (
-                          <p className="mt-1 text-xs text-yellow-600">
-                            No active version. Activate a version in the Labels page for default selection.
+                      {/* Label selection only shown if not provided externally (from Product Settings) */}
+                      {!externalVersionId && (
+                        <div>
+                          <label htmlFor="version" className="block text-sm font-medium text-gray-700">
+                            Label Version
+                          </label>
+                          <select
+                            id="version"
+                            value={selectedVersionId}
+                            onChange={(e) => {
+                              setInternalVersionId(e.target.value);
+                              setSheetSvgs([]);
+                              setSheetMeta(null);
+                            }}
+                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                          >
+                            <option value="">Select a version...</option>
+                            {allVersions.map((v) => (
+                              <option key={v.id} value={v.id}>
+                                {v.templateName} v{v.version} {v.isActive ? '(Active)' : ''}
+                              </option>
+                            ))}
+                          </select>
+                          {!hasActiveTemplate && (
+                            <p className="mt-1 text-xs text-yellow-600">
+                              No active version. Activate a version in the Labels page for default selection.
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Show selected label info when provided externally */}
+                      {externalVersionId && (
+                        <div className="text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded p-3">
+                          <span className="font-medium">Label:</span>{' '}
+                          {allVersions.find(v => v.id === externalVersionId)?.templateName || 'Selected'} v
+                          {allVersions.find(v => v.id === externalVersionId)?.version || '?'}
+                          <p className="text-xs text-gray-500 mt-1">
+                            Change label in Product Settings
                           </p>
-                        )}
-                      </div>
+                        </div>
+                      )}
 
                       <div>
                         <label htmlFor="quantity" className="block text-sm font-medium text-gray-700">
@@ -463,13 +481,26 @@ export default function PrintLabelButton({
                       {printJobId ? 'Re-Print' : 'Print'} ({quantity})
                     </button>
                     <button
-                      onClick={handleDownload}
-                      className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+                      onClick={handleDownloadPdf}
+                      disabled={isDownloadingPdf}
+                      className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
                     >
-                      <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                      </svg>
-                      Download {sheetSvgs.length === 1 ? 'SVG' : 'HTML'}
+                      {isDownloadingPdf ? (
+                        <>
+                          <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-700" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                          </svg>
+                          Generating...
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                          </svg>
+                          Download PDF
+                        </>
+                      )}
                     </button>
                   </>
                 )}

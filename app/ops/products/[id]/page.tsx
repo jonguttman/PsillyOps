@@ -4,7 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { ArchiveButton } from "./ArchiveButton";
-import PrintLabelButton from "@/components/labels/PrintLabelButton";
+import ProductLabelSection from "@/components/labels/ProductLabelSection";
 import { logAction } from "@/lib/services/loggingService";
 import { ActivityEntity } from "@prisma/client";
 import { QRBehaviorPanelServer } from "@/components/qr/QRBehaviorPanelServer";
@@ -188,11 +188,6 @@ export default async function ProductDetailPage({
           </p>
         </div>
         <div className="flex gap-2">
-          <PrintLabelButton
-            entityType="PRODUCT"
-            entityId={id}
-            entityCode={product.sku}
-          />
           {!isEditing ? (
             <>
               <Link
@@ -402,6 +397,13 @@ export default async function ProductDetailPage({
           </dl>
         )}
       </div>
+
+      {/* Label Settings - "what am I printing" lives here in Product Settings */}
+      <ProductLabelSection
+        entityType="PRODUCT"
+        entityId={id}
+        entityCode={product.sku}
+      />
 
       {/* Inventory Summary Card */}
       <div className="bg-white shadow rounded-lg p-6">
