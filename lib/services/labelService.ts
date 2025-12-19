@@ -15,6 +15,8 @@ import { logAction } from './loggingService';
 import { getLabelStorage, validateSvgPlaceholder, isAllowedFileType, getFileExtension } from './labelStorage';
 import { ActivityEntity, LabelEntityType } from '@prisma/client';
 import QRCode from 'qrcode';
+import * as fs from 'fs';
+import * as path from 'path';
 import { 
   PlaceableElement, 
   validateElements, 
@@ -64,6 +66,14 @@ import {
   SHEET_MARGIN_IN as LETTER_MARGIN_IN,
   SHEET_USABLE_WIDTH_IN as LETTER_USABLE_WIDTH_IN,
   SHEET_USABLE_HEIGHT_IN as LETTER_USABLE_HEIGHT_IN,
+  SheetDecorations,
+  DEFAULT_SHEET_DECORATIONS,
+  REGISTRATION_MARK_LENGTH_IN,
+  REGISTRATION_MARK_STROKE_WIDTH_IN,
+  REGISTRATION_MARK_COLOR,
+  FOOTER_FONT_SIZE_IN,
+  FOOTER_COLOR,
+  FOOTER_FONT_FAMILY,
 } from '@/lib/constants/sheet';
 
 // Default QR placement constants
@@ -1228,7 +1238,7 @@ function applyLabelSizeOverride(
 // LETTER SHEET COMPOSITION
 // ========================================
 
-function computeLetterSheetLayout(
+export function computeLetterSheetLayout(
   labelWidthIn: number, 
   labelHeightIn: number,
   orientation: 'portrait' | 'landscape' = 'portrait',
@@ -1306,8 +1316,14 @@ export function composeLetterSheetsFromLabelSvgs(params: {
   labelSvgs: string[];
   orientation?: 'portrait' | 'landscape';
   marginIn?: number;
+  decorations?: SheetDecorations;
 }): { sheets: string[]; meta: LetterSheetLayoutMeta } {
-  const { labelSvgs, orientation = 'portrait', marginIn = LETTER_MARGIN_IN } = params;
+  const { 
+    labelSvgs, 
+    orientation = 'portrait', 
+    marginIn = LETTER_MARGIN_IN,
+    decorations = DEFAULT_SHEET_DECORATIONS,
+  } = params;
   if (!labelSvgs.length) {
     return {
       sheets: [],
@@ -1398,6 +1414,23 @@ export function composeLetterSheetsFromLabelSvgs(params: {
       }
     }
 
+    // Render decorations for this sheet
+    const decorationsContent = renderSheetDecorations(
+      decorations,
+      layout.sheetWidthIn,
+      layout.sheetHeightIn,
+      layout.marginIn,
+      s,
+      totalSheets
+    );
+
+    // Render camera registration marks (3 marks for LightBurn alignment)
+    const cameraMarksContent = renderCameraRegistrationMarks(
+      layout.sheetWidthIn,
+      layout.sheetHeightIn,
+      layout.marginIn
+    );
+
     // Build the sheet SVG with <defs> containing the label as a <g> (NOT <svg>)
     // The <g> is pre-scaled so each <use> just needs translation
     const sheetSvg = `<svg xmlns="http://www.w3.org/2000/svg"
@@ -1411,7 +1444,7 @@ export function composeLetterSheetsFromLabelSvgs(params: {
     </g>
   </defs>
   <g id="sheet-layout">${useRefs}
-  </g>
+  </g>${decorationsContent}${cameraMarksContent}
 </svg>`;
     sheets.push(sheetSvg);
   }
@@ -1610,6 +1643,202 @@ export interface LetterSheetPreviewResult {
 }
 
 /**
+ * Render sheet decorations (footer, registration marks, center crosshair)
+ * These are optional print helpers that appear outside the label grid.
+ */
+function renderSheetDecorations(
+  decorations: SheetDecorations,
+  sheetWidthIn: number,
+  sheetHeightIn: number,
+  marginIn: number,
+  sheetIndex: number,
+  totalSheets: number
+): string {
+  if (!decorations.showFooter && !decorations.showRegistrationMarks && !decorations.showCenterCrosshair) {
+    return '';
+  }
+
+  let content = '\n  <g id="sheet-decorations">';
+
+  // Registration marks at corners
+  if (decorations.showRegistrationMarks) {
+    const len = REGISTRATION_MARK_LENGTH_IN;
+    const sw = REGISTRATION_MARK_STROKE_WIDTH_IN;
+    const color = REGISTRATION_MARK_COLOR;
+
+    // Top-left corner
+    content += `
+    <line x1="${marginIn - len}" y1="${marginIn}" x2="${marginIn}" y2="${marginIn}" stroke="${color}" stroke-width="${sw}"/>
+    <line x1="${marginIn}" y1="${marginIn - len}" x2="${marginIn}" y2="${marginIn}" stroke="${color}" stroke-width="${sw}"/>`;
+
+    // Top-right corner
+    content += `
+    <line x1="${sheetWidthIn - marginIn}" y1="${marginIn}" x2="${sheetWidthIn - marginIn + len}" y2="${marginIn}" stroke="${color}" stroke-width="${sw}"/>
+    <line x1="${sheetWidthIn - marginIn}" y1="${marginIn - len}" x2="${sheetWidthIn - marginIn}" y2="${marginIn}" stroke="${color}" stroke-width="${sw}"/>`;
+
+    // Bottom-left corner
+    content += `
+    <line x1="${marginIn - len}" y1="${sheetHeightIn - marginIn}" x2="${marginIn}" y2="${sheetHeightIn - marginIn}" stroke="${color}" stroke-width="${sw}"/>
+    <line x1="${marginIn}" y1="${sheetHeightIn - marginIn}" x2="${marginIn}" y2="${sheetHeightIn - marginIn + len}" stroke="${color}" stroke-width="${sw}"/>`;
+
+    // Bottom-right corner
+    content += `
+    <line x1="${sheetWidthIn - marginIn}" y1="${sheetHeightIn - marginIn}" x2="${sheetWidthIn - marginIn + len}" y2="${sheetHeightIn - marginIn}" stroke="${color}" stroke-width="${sw}"/>
+    <line x1="${sheetWidthIn - marginIn}" y1="${sheetHeightIn - marginIn}" x2="${sheetWidthIn - marginIn}" y2="${sheetHeightIn - marginIn + len}" stroke="${color}" stroke-width="${sw}"/>`;
+  }
+
+  // Center crosshair
+  if (decorations.showCenterCrosshair) {
+    const cx = sheetWidthIn / 2;
+    const cy = sheetHeightIn / 2;
+    const len = REGISTRATION_MARK_LENGTH_IN * 0.5; // Smaller than corner marks
+    const sw = REGISTRATION_MARK_STROKE_WIDTH_IN;
+    const color = REGISTRATION_MARK_COLOR;
+
+    content += `
+    <line x1="${cx - len}" y1="${cy}" x2="${cx + len}" y2="${cy}" stroke="${color}" stroke-width="${sw}"/>
+    <line x1="${cx}" y1="${cy - len}" x2="${cx}" y2="${cy + len}" stroke="${color}" stroke-width="${sw}"/>`;
+  }
+
+  // Footer text
+  if (decorations.showFooter) {
+    const footerY = sheetHeightIn - marginIn + FOOTER_FONT_SIZE_IN + 0.05; // Just below margin
+    const footerX = marginIn;
+    
+    // Build footer text: Product · Version · Printed DATE · Sheet X/Y · Notes
+    const parts: string[] = [];
+    
+    if (decorations.productName) {
+      parts.push(decorations.productName);
+    }
+    if (decorations.versionLabel) {
+      parts.push(decorations.versionLabel);
+    }
+    
+    const date = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    parts.push(`Printed ${date}`);
+    
+    if (totalSheets > 1) {
+      parts.push(`Sheet ${sheetIndex + 1}/${totalSheets}`);
+    }
+    
+    if (decorations.footerNotes) {
+      parts.push(decorations.footerNotes);
+    }
+    
+    const footerContent = parts.join(' · ');
+
+    content += `
+    <text 
+      x="${footerX}" 
+      y="${footerY}"
+      font-size="${FOOTER_FONT_SIZE_IN}"
+      font-family="${FOOTER_FONT_FAMILY}"
+      fill="${FOOTER_COLOR}"
+      text-anchor="start"
+    >${footerContent}</text>`;
+  }
+
+  content += '\n  </g>';
+  return content;
+}
+
+// ========================================
+// CAMERA REGISTRATION MARKS
+// ========================================
+
+// Camera registration mark constants
+const CAMERA_MARK_SIZE_IN = 0.4;  // Fixed physical size for each mark
+const CAMERA_MARK_OFFSET_IN = 0.2; // Offset from grid edge
+
+// Cache for the base64-encoded camera mark image
+let cameraMarkDataUri: string | null = null;
+
+/**
+ * Get the camera mark image as a data URI (cached)
+ */
+function getCameraMarkDataUri(): string {
+  if (cameraMarkDataUri) {
+    return cameraMarkDataUri;
+  }
+  
+  try {
+    // Read the image file from the public directory
+    const imagePath = path.join(process.cwd(), 'public', 'img_0221.png');
+    const imageBuffer = fs.readFileSync(imagePath);
+    const base64 = imageBuffer.toString('base64');
+    cameraMarkDataUri = `data:image/png;base64,${base64}`;
+    return cameraMarkDataUri;
+  } catch (error) {
+    console.error('Failed to load camera mark image:', error);
+    // Return empty string if image can't be loaded
+    return '';
+  }
+}
+
+/**
+ * Render camera registration marks for LightBurn/overhead camera alignment.
+ * Places exactly 3 marks: top-center, bottom-left, bottom-right.
+ * These are in the margin area (between page edge and printable area).
+ */
+function renderCameraRegistrationMarks(
+  sheetWidthIn: number,
+  sheetHeightIn: number,
+  marginIn: number
+): string {
+  const imageDataUri = getCameraMarkDataUri();
+  if (!imageDataUri) {
+    return ''; // Skip marks if image couldn't be loaded
+  }
+  
+  // Use smaller marks that fit in the margin area
+  const size = Math.min(CAMERA_MARK_SIZE_IN, marginIn * 0.8); // Fit within margin
+  const padding = 0.02; // Small padding from page edge
+  
+  // Calculate positions (all marks are in the margin area, inside page bounds)
+  // Top-center: centered horizontally, in the top margin area
+  const topCenterX = (sheetWidthIn - size) / 2;
+  const topCenterY = padding; // Near top edge of page
+  
+  // Bottom-left: in the bottom-left margin corner
+  const bottomLeftX = padding; // Near left edge
+  const bottomLeftY = sheetHeightIn - size - padding; // Near bottom edge
+  
+  // Bottom-right: in the bottom-right margin corner
+  const bottomRightX = sheetWidthIn - size - padding; // Near right edge
+  const bottomRightY = sheetHeightIn - size - padding; // Near bottom edge
+  
+  // Use xlink:href for better compatibility with resvg and older SVG renderers
+  return `
+  <g id="camera-registration-marks">
+    <!-- Top-center mark -->
+    <image
+      xlink:href="${imageDataUri}"
+      x="${topCenterX}"
+      y="${topCenterY}"
+      width="${size}"
+      height="${size}"
+    />
+    <!-- Bottom-left mark -->
+    <image
+      xlink:href="${imageDataUri}"
+      x="${bottomLeftX}"
+      y="${bottomLeftY}"
+      width="${size}"
+      height="${size}"
+    />
+    <!-- Bottom-right mark -->
+    <image
+      xlink:href="${imageDataUri}"
+      x="${bottomRightX}"
+      y="${bottomRightY}"
+      width="${size}"
+      height="${size}"
+    />
+  </g>`;
+}
+
+/**
  * Compose a sheet preview with ONE real label and placeholder boxes for remaining positions.
  * This is a PREVIEW-ONLY optimization - print/PDF must still use full rendering.
  * 
@@ -1625,8 +1854,18 @@ export function composeLetterSheetPreview(params: {
   marginIn?: number;
   labelWidthIn?: number;
   labelHeightIn?: number;
+  decorations?: SheetDecorations;
+  sheetIndex?: number;
+  totalSheets?: number;
 }): { svg: string; meta: LetterSheetLayoutMeta } {
-  const { labelSvg, totalLabels, orientation = 'portrait', marginIn = LETTER_MARGIN_IN } = params;
+  const { 
+    labelSvg, 
+    totalLabels, 
+    orientation = 'portrait', 
+    marginIn = LETTER_MARGIN_IN,
+    decorations = DEFAULT_SHEET_DECORATIONS,
+    sheetIndex = 0,
+  } = params;
   
   if (!labelSvg || totalLabels < 1) {
     return {
@@ -1762,13 +2001,30 @@ export function composeLetterSheetPreview(params: {
     >×${totalLabels} labels${totalSheets > 1 ? ` (${totalSheets} sheets)` : ''}</text>`
     : '';
 
+  // Render decorations (footer, registration marks, crosshair)
+  const decorationsContent = renderSheetDecorations(
+    decorations,
+    layout.sheetWidthIn,
+    layout.sheetHeightIn,
+    layout.marginIn,
+    sheetIndex,
+    totalSheets
+  );
+
+  // Render camera registration marks (3 marks for LightBurn alignment)
+  const cameraMarksContent = renderCameraRegistrationMarks(
+    layout.sheetWidthIn,
+    layout.sheetHeightIn,
+    layout.marginIn
+  );
+
   const sheetSvg = `<svg xmlns="http://www.w3.org/2000/svg"
      xmlns:xlink="http://www.w3.org/1999/xlink"
      width="${layout.sheetWidthIn}in"
      height="${layout.sheetHeightIn}in"
      viewBox="0 0 ${layout.sheetWidthIn} ${layout.sheetHeightIn}">
   <g id="sheet-layout">${content}
-  </g>${countText}
+  </g>${countText}${decorationsContent}${cameraMarksContent}
 </svg>`;
 
   return {
@@ -1797,8 +2053,18 @@ export async function renderLetterSheetPreview(params: {
   labelHeightIn?: number;
   orientation?: 'portrait' | 'landscape';
   marginIn?: number;
+  decorations?: SheetDecorations;
 }): Promise<LetterSheetPreviewResult> {
-  const { versionId, quantity, elements, labelWidthIn, labelHeightIn, orientation = 'portrait', marginIn } = params;
+  const { 
+    versionId, 
+    quantity, 
+    elements, 
+    labelWidthIn, 
+    labelHeightIn, 
+    orientation = 'portrait', 
+    marginIn,
+    decorations = DEFAULT_SHEET_DECORATIONS,
+  } = params;
   const qty = Math.max(1, Math.min(1000, Math.floor(quantity || 1)));
 
   // Render just ONE label - we only need one for preview
@@ -1807,6 +2073,15 @@ export async function renderLetterSheetPreview(params: {
     labelWidthIn,
     labelHeightIn
   });
+  
+  // Calculate total sheets for decoration rendering
+  const tempLayout = computeLetterSheetLayout(
+    labelWidthIn ?? labelResult.meta.widthIn,
+    labelHeightIn ?? labelResult.meta.heightIn,
+    orientation,
+    marginIn ?? LETTER_MARGIN_IN
+  );
+  const totalSheets = tempLayout.perSheet > 0 ? Math.ceil(qty / tempLayout.perSheet) : 1;
   
   // Use optimized preview: one real label + placeholder boxes
   // Pass label dimensions to override SVG-extracted dimensions if provided
@@ -1817,6 +2092,9 @@ export async function renderLetterSheetPreview(params: {
     marginIn,
     labelWidthIn,
     labelHeightIn,
+    decorations,
+    sheetIndex: 0,
+    totalSheets,
   });
   
   return {

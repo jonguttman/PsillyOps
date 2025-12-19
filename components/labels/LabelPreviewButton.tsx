@@ -9,12 +9,14 @@ import {
   ORIENTATIONS,
   MARGIN_PRESETS,
   DEFAULT_SHEET_SETTINGS,
+  DEFAULT_SHEET_DECORATIONS,
   calculateGridLayout,
   getPrintableArea,
   getSheetDimensions,
   type SheetOrientation,
   type MarginPreset,
   type SheetSettings,
+  type SheetDecorations,
 } from '@/lib/constants/sheet';
 
 /**
@@ -87,6 +89,11 @@ export default function LabelPreviewButton({
     labelHeightIn: 1.0,
   });
   
+  // Sheet decorations state (optional print helpers)
+  const [sheetDecorations, setSheetDecorations] = useState<SheetDecorations>({
+    ...DEFAULT_SHEET_DECORATIONS,
+  });
+  
   // Label metadata from preview API
   const [labelMeta, setLabelMeta] = useState<LabelMetadata | null>(null);
   
@@ -99,6 +106,10 @@ export default function LabelPreviewButton({
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
   
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  
+  // PDF generation state
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
 
   // Stage ref for Moveable rootContainer
   const stageRef = useRef<HTMLDivElement>(null);
@@ -265,6 +276,8 @@ export default function LabelPreviewButton({
             labelHeightIn: sheetSettings.labelHeightIn,
             orientation: 'portrait', // Always portrait - auto-rotation handles label orientation
             marginIn: sheetSettings.marginIn,
+            // Pass decorations for preview
+            decorations: sheetDecorations,
           };
 
       const response = await fetch(endpoint, {
@@ -311,7 +324,7 @@ export default function LabelPreviewButton({
     } finally {
       setIsLoading(false);
     }
-  }, [previewMode, versionId, quantity, elements, sheetSettings, gridLayout.perSheet]);
+  }, [previewMode, versionId, quantity, elements, sheetSettings, sheetDecorations, gridLayout.perSheet]);
 
   // Debounced preview update when elements or sheet settings change
   useEffect(() => {
@@ -334,6 +347,52 @@ export default function LabelPreviewButton({
 
   const handleRefresh = () => {
     loadPreview();
+  };
+
+  // PDF Download handler
+  const handleDownloadPdf = async () => {
+    if (isGeneratingPdf || previewMode !== 'sheet') return;
+    
+    setIsGeneratingPdf(true);
+    setPdfError(null);
+    
+    try {
+      const response = await fetch(`/api/labels/versions/${versionId}/sheet-pdf`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          quantity,
+          elements,
+          labelWidthIn: sheetSettings.labelWidthIn,
+          labelHeightIn: sheetSettings.labelHeightIn,
+          decorations: sheetDecorations,
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to generate PDF (${response.status})`);
+      }
+      
+      // Get the blob and trigger download
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `labels-sheet-${versionId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+    } catch (err) {
+      console.error('PDF generation error:', err);
+      setPdfError(err instanceof Error ? err.message : 'Failed to generate PDF');
+    } finally {
+      setIsGeneratingPdf(false);
+    }
   };
 
   // Sheet settings handlers
@@ -646,6 +705,37 @@ export default function LabelPreviewButton({
                     <span className="text-gray-400 ml-1">· {gridLayout.perSheet}/sheet</span>
                     {gridLayout.rotated && <span className="text-amber-400 ml-1" title="Labels rotated 90° to fit more">↻</span>}
                   </div>
+
+                  {/* Decoration Toggles */}
+                  <div className="flex items-center gap-2 border-l border-gray-600 pl-3">
+                    <label className="flex items-center gap-1 text-xs text-gray-400 cursor-pointer" title="Show footer with print date and sheet info">
+                      <input
+                        type="checkbox"
+                        checked={sheetDecorations.showFooter}
+                        onChange={(e) => setSheetDecorations(prev => ({ ...prev, showFooter: e.target.checked }))}
+                        className="w-3 h-3 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-0"
+                      />
+                      <span>Footer</span>
+                    </label>
+                    <label className="flex items-center gap-1 text-xs text-gray-400 cursor-pointer" title="Show corner registration marks for laser alignment">
+                      <input
+                        type="checkbox"
+                        checked={sheetDecorations.showRegistrationMarks}
+                        onChange={(e) => setSheetDecorations(prev => ({ ...prev, showRegistrationMarks: e.target.checked }))}
+                        className="w-3 h-3 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-0"
+                      />
+                      <span>Marks</span>
+                    </label>
+                    <label className="flex items-center gap-1 text-xs text-gray-400 cursor-pointer" title="Show center crosshair for alignment">
+                      <input
+                        type="checkbox"
+                        checked={sheetDecorations.showCenterCrosshair}
+                        onChange={(e) => setSheetDecorations(prev => ({ ...prev, showCenterCrosshair: e.target.checked }))}
+                        className="w-3 h-3 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-0"
+                      />
+                      <span>Center</span>
+                    </label>
+                  </div>
                 </div>
               )}
             </div>
@@ -703,6 +793,35 @@ export default function LabelPreviewButton({
               >
                 {isLoading ? '...' : '↻ Refresh'}
               </button>
+              
+              {/* Download PDF button - only in Sheet mode */}
+              {previewMode === 'sheet' && (
+                <button
+                  type="button"
+                  onClick={handleDownloadPdf}
+                  disabled={isGeneratingPdf || isLoading}
+                  className="px-3 py-1 text-xs font-medium bg-green-600 hover:bg-green-500 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                  title="Download PDF for printing"
+                >
+                  {isGeneratingPdf ? (
+                    <>
+                      <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      <span>Generating...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <span>Download PDF</span>
+                    </>
+                  )}
+                </button>
+              )}
+              
               <button
                 onClick={() => {
                   setIsOpen(false);
@@ -947,6 +1066,26 @@ export default function LabelPreviewButton({
                   {/* ========== SHEET MODE SIDEBAR ========== */}
                   {previewMode === 'sheet' && (
                     <>
+                      {/* PDF Error Display */}
+                      {pdfError && (
+                        <div className="bg-red-900/30 border border-red-800/50 rounded-lg p-3 mb-3">
+                          <div className="flex items-start gap-2">
+                            <svg className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <div className="flex-1">
+                              <p className="text-xs text-red-300">{pdfError}</p>
+                              <button
+                                onClick={() => setPdfError(null)}
+                                className="text-xs text-red-400 hover:text-red-300 mt-1"
+                              >
+                                Dismiss
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      
                       {/* Quantity to Generate */}
                       <div className="bg-gray-750 rounded-lg p-3">
                         <label className="text-xs font-medium text-gray-300 block mb-2">
@@ -1035,6 +1174,61 @@ export default function LabelPreviewButton({
                           </div>
                         </div>
                       </div>
+
+                      {/* Footer Settings (only shown when footer is enabled) */}
+                      {sheetDecorations.showFooter && (
+                        <div className="bg-gray-750 rounded-lg p-3 space-y-3">
+                          <label className="text-xs font-medium text-gray-300 block">Footer Content</label>
+                          
+                          {/* Product Name */}
+                          <div>
+                            <label className="text-xs text-gray-400 block mb-1">Product Name</label>
+                            <input
+                              type="text"
+                              value={sheetDecorations.productName || ''}
+                              onChange={(e) => setSheetDecorations(prev => ({ ...prev, productName: e.target.value || undefined }))}
+                              placeholder="e.g., Mighty Caps"
+                              className="w-full px-2 py-1.5 text-xs bg-gray-700 border border-gray-600 rounded text-white placeholder-gray-500"
+                            />
+                          </div>
+                          
+                          {/* Version */}
+                          <div>
+                            <label className="text-xs text-gray-400 block mb-1">Version</label>
+                            <input
+                              type="text"
+                              value={sheetDecorations.versionLabel || ''}
+                              onChange={(e) => setSheetDecorations(prev => ({ ...prev, versionLabel: e.target.value || undefined }))}
+                              placeholder="e.g., v0.004"
+                              className="w-full px-2 py-1.5 text-xs bg-gray-700 border border-gray-600 rounded text-white placeholder-gray-500"
+                            />
+                          </div>
+                          
+                          {/* Notes */}
+                          <div>
+                            <label className="text-xs text-gray-400 block mb-1">Notes</label>
+                            <input
+                              type="text"
+                              value={sheetDecorations.footerNotes || ''}
+                              onChange={(e) => setSheetDecorations(prev => ({ ...prev, footerNotes: e.target.value || undefined }))}
+                              placeholder="e.g., Retail run, Batch #123"
+                              className="w-full px-2 py-1.5 text-xs bg-gray-700 border border-gray-600 rounded text-white placeholder-gray-500"
+                            />
+                          </div>
+                          
+                          {/* Preview */}
+                          <div className="pt-2 border-t border-gray-700">
+                            <p className="text-xs text-gray-500">
+                              Preview: {[
+                                sheetDecorations.productName,
+                                sheetDecorations.versionLabel,
+                                `Printed ${new Date().toISOString().split('T')[0]}`,
+                                sheetDecorations.footerNotes
+                              ].filter(Boolean).join(' · ')}
+                            </p>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Warning if labels don't fit well */}
                       {gridLayout.perSheet === 0 && (

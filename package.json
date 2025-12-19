@@ -15,6 +15,7 @@
   "dependencies": {
     "@auth/prisma-adapter": "^2.7.4",
     "@prisma/client": "^6.1.0",
+    "@resvg/resvg-js": "^2.6.2",
     "bcryptjs": "^2.4.3",
     "bwip-js": "^4.8.0",
     "date-fns": "^4.1.0",

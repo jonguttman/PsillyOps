@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth/auth';
 import { renderLetterSheetPreview } from '@/lib/services/labelService';
 import { handleApiError } from '@/lib/utils/errors';
 import { PlaceableElement } from '@/lib/types/placement';
+import { SheetDecorations, DEFAULT_SHEET_DECORATIONS } from '@/lib/constants/sheet';
 
 /**
  * POST /api/labels/preview-sheet
@@ -44,7 +45,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { versionId, quantity, elements, labelWidthIn, labelHeightIn, orientation, marginIn, format = 'json' } = body;
+    const { versionId, quantity, elements, labelWidthIn, labelHeightIn, orientation, marginIn, decorations, format = 'json' } = body;
 
     if (!versionId) {
       return NextResponse.json(
@@ -82,6 +83,29 @@ export async function POST(req: Request) {
       if (!isNaN(m) && m >= 0 && m <= 1) parsedMarginIn = m;
     }
 
+    // Parse decorations
+    let parsedDecorations: SheetDecorations = { ...DEFAULT_SHEET_DECORATIONS };
+    if (decorations && typeof decorations === 'object') {
+      if (typeof decorations.showFooter === 'boolean') {
+        parsedDecorations.showFooter = decorations.showFooter;
+      }
+      if (typeof decorations.productName === 'string') {
+        parsedDecorations.productName = decorations.productName;
+      }
+      if (typeof decorations.versionLabel === 'string') {
+        parsedDecorations.versionLabel = decorations.versionLabel;
+      }
+      if (typeof decorations.footerNotes === 'string') {
+        parsedDecorations.footerNotes = decorations.footerNotes;
+      }
+      if (typeof decorations.showRegistrationMarks === 'boolean') {
+        parsedDecorations.showRegistrationMarks = decorations.showRegistrationMarks;
+      }
+      if (typeof decorations.showCenterCrosshair === 'boolean') {
+        parsedDecorations.showCenterCrosshair = decorations.showCenterCrosshair;
+      }
+    }
+
     const result = await renderLetterSheetPreview({
       versionId,
       quantity: parseInt(quantity, 10) || 1,
@@ -90,6 +114,7 @@ export async function POST(req: Request) {
       labelHeightIn: parsedLabelHeightIn,
       orientation: parsedOrientation,
       marginIn: parsedMarginIn,
+      decorations: parsedDecorations,
     });
 
     // Support legacy format=svg for backwards compatibility

@@ -78,6 +78,48 @@ export const DEFAULT_SHEET_SETTINGS: Omit<SheetSettings, 'labelWidthIn' | 'label
 };
 
 // ========================================
+// SHEET DECORATIONS (Optional Print Helpers)
+// ========================================
+
+/**
+ * Sheet decorations are optional print helpers that appear outside
+ * the label grid. They do not affect label placement or count.
+ */
+export interface SheetDecorations {
+  /** Show metadata footer below label grid */
+  showFooter: boolean;
+  /** Product name for footer (e.g., "Mighty Caps") */
+  productName?: string;
+  /** Version identifier for footer (e.g., "v0.004") */
+  versionLabel?: string;
+  /** Custom notes for footer (e.g., "Retail run") */
+  footerNotes?: string;
+  /** Show corner registration marks for laser alignment */
+  showRegistrationMarks: boolean;
+  /** Show center crosshair for alignment reference */
+  showCenterCrosshair: boolean;
+}
+
+export const DEFAULT_SHEET_DECORATIONS: SheetDecorations = {
+  showFooter: false,
+  productName: undefined,
+  versionLabel: undefined,
+  footerNotes: undefined,
+  showRegistrationMarks: false,
+  showCenterCrosshair: false,
+};
+
+// Registration mark dimensions (in inches)
+export const REGISTRATION_MARK_LENGTH_IN = 0.25;
+export const REGISTRATION_MARK_STROKE_WIDTH_IN = 0.01; // Thin but visible for laser
+export const REGISTRATION_MARK_COLOR = 'rgba(0, 0, 0, 0.6)'; // 60% gray - visible but not dominant
+
+// Footer styling
+export const FOOTER_FONT_SIZE_IN = 0.08;
+export const FOOTER_COLOR = 'rgba(0, 0, 0, 0.5)';
+export const FOOTER_FONT_FAMILY = 'Arial, Helvetica, sans-serif'; // Use common fonts for PDF compatibility
+
+// ========================================
 // UTILITY FUNCTIONS
 // ========================================
 
