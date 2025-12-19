@@ -4,6 +4,13 @@ import { renderLetterSheetPreview } from '@/lib/services/labelService';
 import { handleApiError } from '@/lib/utils/errors';
 import { PlaceableElement } from '@/lib/types/placement';
 import { SheetDecorations, DEFAULT_SHEET_DECORATIONS } from '@/lib/constants/sheet';
+import { 
+  validateSheetConfig, 
+  formatValidationError,
+  MAX_LABEL_WIDTH_IN,
+  MAX_LABEL_HEIGHT_IN,
+  DEFAULT_MARGIN_TOP_BOTTOM_IN,
+} from '@/lib/utils/sheetValidation';
 
 /**
  * POST /api/labels/preview-sheet
@@ -64,13 +71,13 @@ export async function POST(req: Request) {
     let parsedLabelWidthIn: number | undefined;
     if (labelWidthIn !== undefined) {
       const w = parseFloat(labelWidthIn);
-      if (!isNaN(w) && w > 0 && w <= 20) parsedLabelWidthIn = w;
+      if (!isNaN(w) && w > 0 && w <= MAX_LABEL_WIDTH_IN) parsedLabelWidthIn = w;
     }
 
     let parsedLabelHeightIn: number | undefined;
     if (labelHeightIn !== undefined) {
       const h = parseFloat(labelHeightIn);
-      if (!isNaN(h) && h > 0 && h <= 20) parsedLabelHeightIn = h;
+      if (!isNaN(h) && h > 0 && h <= MAX_LABEL_HEIGHT_IN) parsedLabelHeightIn = h;
     }
 
     // Parse orientation
@@ -80,7 +87,32 @@ export async function POST(req: Request) {
     let parsedMarginIn: number | undefined;
     if (marginIn !== undefined) {
       const m = parseFloat(marginIn);
-      if (!isNaN(m) && m >= 0 && m <= 1) parsedMarginIn = m;
+      if (!isNaN(m) && m >= 0.25 && m <= 2) parsedMarginIn = m;
+    }
+    
+    // Validate sheet configuration if label dimensions are provided
+    if (parsedLabelWidthIn !== undefined && parsedLabelHeightIn !== undefined) {
+      const validation = validateSheetConfig({
+        labelWidthIn: parsedLabelWidthIn,
+        labelHeightIn: parsedLabelHeightIn,
+        marginTopBottomIn: parsedMarginIn ?? DEFAULT_MARGIN_TOP_BOTTOM_IN,
+        quantity: parseInt(quantity, 10) || 1,
+      });
+      
+      if (!validation.valid) {
+        return NextResponse.json(
+          { error: formatValidationError(validation) },
+          { status: 400 }
+        );
+      }
+      
+      // Check that labels fit on sheet
+      if (validation.layout && validation.layout.perSheet === 0) {
+        return NextResponse.json(
+          { error: 'Label is too large to fit on a letter-size sheet with current margins' },
+          { status: 400 }
+        );
+      }
     }
 
     // Parse decorations

@@ -10,9 +10,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { renderSheetPdfBuffer } from '@/lib/services/sheetPdfService';
 import { PlaceableElement } from '@/lib/types/placement';
 import { SheetDecorations } from '@/lib/constants/sheet';
-
-// Maximum labels to prevent abuse
-const MAX_LABELS = 2000;
+import { 
+  validateSheetConfig, 
+  formatValidationError,
+  MAX_LABELS_PER_JOB,
+  MAX_LABEL_WIDTH_IN,
+  MAX_LABEL_HEIGHT_IN,
+  DEFAULT_MARGIN_TOP_BOTTOM_IN,
+} from '@/lib/utils/sheetValidation';
 
 interface SheetPdfRequestBody {
   quantity: number;
@@ -50,51 +55,43 @@ export async function POST(
       );
     }
     
-    // Validate quantity
     const { quantity, elements, labelWidthIn, labelHeightIn, decorations, entityType, entityId } = body;
     
-    if (typeof quantity !== 'number' || quantity < 1) {
+    // Use defaults for validation if not provided
+    const effectiveLabelWidth = labelWidthIn ?? 2;
+    const effectiveLabelHeight = labelHeightIn ?? 1;
+    const effectiveQuantity = typeof quantity === 'number' ? quantity : 1;
+    
+    // Validate using shared validation utility
+    const validation = validateSheetConfig({
+      labelWidthIn: effectiveLabelWidth,
+      labelHeightIn: effectiveLabelHeight,
+      marginTopBottomIn: DEFAULT_MARGIN_TOP_BOTTOM_IN,
+      quantity: effectiveQuantity,
+    });
+    
+    if (!validation.valid) {
       return NextResponse.json(
-        { error: 'quantity must be a positive number' },
+        { error: formatValidationError(validation) },
         { status: 400 }
       );
     }
     
-    if (quantity > MAX_LABELS) {
+    // Additional check: ensure labels fit on sheet
+    if (validation.layout && validation.layout.perSheet === 0) {
       return NextResponse.json(
-        { error: `quantity exceeds maximum of ${MAX_LABELS} labels` },
+        { error: 'Label is too large to fit on a letter-size sheet' },
         { status: 400 }
       );
     }
     
-    // Elements are validated by the service layer
-    
-    // Validate label dimensions if provided
-    if (labelWidthIn !== undefined && labelWidthIn !== null) {
-      if (typeof labelWidthIn !== 'number' || labelWidthIn <= 0 || labelWidthIn > 8.5) {
-        return NextResponse.json(
-          { error: 'labelWidthIn must be a positive number <= 8.5' },
-          { status: 400 }
-        );
-      }
-    }
-    
-    if (labelHeightIn !== undefined && labelHeightIn !== null) {
-      if (typeof labelHeightIn !== 'number' || labelHeightIn <= 0 || labelHeightIn > 11) {
-        return NextResponse.json(
-          { error: 'labelHeightIn must be a positive number <= 11' },
-          { status: 400 }
-        );
-      }
-    }
-    
-    // Generate PDF
+    // Generate PDF using clamped quantity
     const result = await renderSheetPdfBuffer({
       versionId,
-      quantity,
+      quantity: validation.clampedQuantity,
       elements,
-      labelWidthIn: labelWidthIn ?? undefined,
-      labelHeightIn: labelHeightIn ?? undefined,
+      labelWidthIn: effectiveLabelWidth,
+      labelHeightIn: effectiveLabelHeight,
       decorations,
       // Pass entity info for barcode rendering (product.barcodeValue ?? product.sku)
       entityType,
