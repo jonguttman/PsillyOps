@@ -68,6 +68,10 @@ import {
   SHEET_MARGIN_IN as LETTER_MARGIN_IN,
   SHEET_USABLE_WIDTH_IN as LETTER_USABLE_WIDTH_IN,
   SHEET_USABLE_HEIGHT_IN as LETTER_USABLE_HEIGHT_IN,
+  MARGIN_LEFT_IN,
+  MARGIN_RIGHT_IN,
+  MARGIN_TOP_IN,
+  MARGIN_BOTTOM_IN,
   SheetDecorations,
   DEFAULT_SHEET_DECORATIONS,
   REGISTRATION_MARK_LENGTH_IN,
@@ -1286,14 +1290,26 @@ export function computeLetterSheetLayout(
   sheetWidthIn: number;
   sheetHeightIn: number;
   marginIn: number;
+  // Asymmetric margins for registration marks
+  marginLeftIn: number;
+  marginRightIn: number;
+  marginTopIn: number;
+  marginBottomIn: number;
 } {
   // Sheet dimensions based on orientation
   const sheetWidthIn = orientation === 'portrait' ? LETTER_WIDTH_IN : LETTER_HEIGHT_IN;
   const sheetHeightIn = orientation === 'portrait' ? LETTER_HEIGHT_IN : LETTER_WIDTH_IN;
   
-  // Usable area after margins
-  const usableWidthIn = sheetWidthIn - 2 * marginIn;
-  const usableHeightIn = sheetHeightIn - 2 * marginIn;
+  // Use asymmetric margins: narrow left/right, wider top/bottom for registration marks
+  // The marginIn parameter is kept for backward compatibility but we use the asymmetric values
+  const marginLeftIn = MARGIN_LEFT_IN;
+  const marginRightIn = MARGIN_RIGHT_IN;
+  const marginTopIn = MARGIN_TOP_IN;
+  const marginBottomIn = MARGIN_BOTTOM_IN;
+  
+  // Usable area after asymmetric margins
+  const usableWidthIn = sheetWidthIn - marginLeftIn - marginRightIn;
+  const usableHeightIn = sheetHeightIn - marginTopIn - marginBottomIn;
 
   const cols0 = Math.floor(usableWidthIn / labelWidthIn);
   const rows0 = Math.floor(usableHeightIn / labelHeightIn);
@@ -1314,7 +1330,11 @@ export function computeLetterSheetLayout(
       cellHeightIn: labelHeightIn,
       sheetWidthIn,
       sheetHeightIn,
-      marginIn
+      marginIn,
+      marginLeftIn,
+      marginRightIn,
+      marginTopIn,
+      marginBottomIn,
     };
   }
 
@@ -1328,7 +1348,11 @@ export function computeLetterSheetLayout(
       cellHeightIn: labelWidthIn,
       sheetWidthIn,
       sheetHeightIn,
-      marginIn
+      marginIn,
+      marginLeftIn,
+      marginRightIn,
+      marginTopIn,
+      marginBottomIn,
     };
   }
 
@@ -1341,7 +1365,11 @@ export function computeLetterSheetLayout(
     cellHeightIn: labelHeightIn,
     sheetWidthIn,
     sheetHeightIn,
-    marginIn
+    marginIn,
+    marginLeftIn,
+    marginRightIn,
+    marginTopIn,
+    marginBottomIn,
   };
 }
 
@@ -1429,12 +1457,13 @@ export function composeLetterSheetsFromLabelSvgs(params: {
 
     // Build <use> references for each label position
     // Use transform="translate(x, y)" instead of x/y attributes to avoid bbox recalculation
+    // Use asymmetric margins: marginLeftIn for x, marginTopIn for y
     let useRefs = '';
     for (let i = 0; i < labelsOnThisSheet; i++) {
       const r = Math.floor(i / layout.columns);
       const c = i % layout.columns;
-      const x = layout.marginIn + c * layout.cellWidthIn;
-      const y = layout.marginIn + r * layout.cellHeightIn;
+      const x = layout.marginLeftIn + c * layout.cellWidthIn;
+      const y = layout.marginTopIn + r * layout.cellHeightIn;
 
       if (layout.rotationUsed) {
         // For rotated labels: translate to position, then rotate 90° around origin
@@ -1452,16 +1481,20 @@ export function composeLetterSheetsFromLabelSvgs(params: {
       decorations,
       layout.sheetWidthIn,
       layout.sheetHeightIn,
-      layout.marginIn,
+      layout.marginTopIn, // Use top margin for footer positioning
       s,
       totalSheets
     );
 
     // Render camera registration marks (3 marks for LightBurn alignment)
+    // Pass asymmetric margins for proper positioning
     const cameraMarksContent = renderCameraRegistrationMarks(
       layout.sheetWidthIn,
       layout.sheetHeightIn,
-      layout.marginIn
+      layout.marginLeftIn,
+      layout.marginRightIn,
+      layout.marginTopIn,
+      layout.marginBottomIn
     );
 
     // Build the sheet SVG with <defs> containing the label as a <g> (NOT <svg>)
@@ -1844,39 +1877,50 @@ function getCameraMarkDataUri(): string {
 /**
  * Render camera registration marks for LightBurn/overhead camera alignment.
  * Places exactly 3 marks: top-center, bottom-left, bottom-right.
- * These are in the margin area (between page edge and printable area).
+ * Marks are centered within the margin bands to prevent clipping.
+ * 
+ * Margin layout (asymmetric):
+ * - Top margin: 0.5in (larger for registration marks)
+ * - Bottom margin: 0.5in (larger for registration marks)
+ * - Left margin: 0.25in (narrow for max width)
+ * - Right margin: 0.25in (narrow for max width)
  */
 function renderCameraRegistrationMarks(
   sheetWidthIn: number,
   sheetHeightIn: number,
-  marginIn: number
+  marginLeftIn: number,
+  marginRightIn: number,
+  marginTopIn: number,
+  marginBottomIn: number
 ): string {
   const imageDataUri = getCameraMarkDataUri();
   if (!imageDataUri) {
     return ''; // Skip marks if image couldn't be loaded
   }
   
-  // Use smaller marks that fit in the margin area
-  const size = Math.min(CAMERA_MARK_SIZE_IN, marginIn * 0.8); // Fit within margin
-  const padding = 0.02; // Small padding from page edge
+  // Use mark size that fits in the narrowest margin
+  const minMargin = Math.min(marginLeftIn, marginRightIn, marginTopIn, marginBottomIn);
+  const size = Math.min(CAMERA_MARK_SIZE_IN, minMargin * 0.7); // Leave some padding
   
-  // Calculate positions (all marks are in the margin area, inside page bounds)
-  // Top-center: centered horizontally, in the top margin area
+  // Calculate positions - CENTER marks within their respective margin bands
+  // This ensures marks are fully inside the printable area with padding on both sides
+  
+  // Top-center: centered horizontally, centered vertically within top margin
   const topCenterX = (sheetWidthIn - size) / 2;
-  const topCenterY = padding; // Near top edge of page
+  const topCenterY = (marginTopIn - size) / 2; // Centered in top margin band
   
-  // Bottom-left: in the bottom-left margin corner
-  const bottomLeftX = padding; // Near left edge
-  const bottomLeftY = sheetHeightIn - size - padding; // Near bottom edge
+  // Bottom-left: centered within bottom-left margin corner
+  const bottomLeftX = (marginLeftIn - size) / 2; // Centered in left margin
+  const bottomLeftY = sheetHeightIn - marginBottomIn + (marginBottomIn - size) / 2; // Centered in bottom margin
   
-  // Bottom-right: in the bottom-right margin corner
-  const bottomRightX = sheetWidthIn - size - padding; // Near right edge
-  const bottomRightY = sheetHeightIn - size - padding; // Near bottom edge
+  // Bottom-right: centered within bottom-right margin corner
+  const bottomRightX = sheetWidthIn - marginRightIn + (marginRightIn - size) / 2; // Centered in right margin
+  const bottomRightY = sheetHeightIn - marginBottomIn + (marginBottomIn - size) / 2; // Centered in bottom margin
   
   // Use xlink:href for better compatibility with resvg and older SVG renderers
   return `
   <g id="camera-registration-marks">
-    <!-- Top-center mark -->
+    <!-- Top-center mark (centered in top margin) -->
     <image
       xlink:href="${imageDataUri}"
       x="${topCenterX}"
@@ -1884,7 +1928,7 @@ function renderCameraRegistrationMarks(
       width="${size}"
       height="${size}"
     />
-    <!-- Bottom-left mark -->
+    <!-- Bottom-left mark (centered in bottom-left margin corner) -->
     <image
       xlink:href="${imageDataUri}"
       x="${bottomLeftX}"
@@ -1892,7 +1936,7 @@ function renderCameraRegistrationMarks(
       width="${size}"
       height="${size}"
     />
-    <!-- Bottom-right mark -->
+    <!-- Bottom-right mark (centered in bottom-right margin corner) -->
     <image
       xlink:href="${imageDataUri}"
       x="${bottomRightX}"
@@ -1993,13 +2037,14 @@ export function composeLetterSheetPreview(params: {
   }
 
   // Build content: one real label + placeholder boxes
+  // Use asymmetric margins: marginLeftIn for x, marginTopIn for y
   let content = '';
   
   for (let i = 0; i < labelsOnFirstSheet; i++) {
     const r = Math.floor(i / layout.columns);
     const c = i % layout.columns;
-    const x = layout.marginIn + c * layout.cellWidthIn;
-    const y = layout.marginIn + r * layout.cellHeightIn;
+    const x = layout.marginLeftIn + c * layout.cellWidthIn;
+    const y = layout.marginTopIn + r * layout.cellHeightIn;
     
     // Determine label dimensions in cell (accounting for rotation)
     const cellLabelW = layout.rotationUsed ? labelHeightIn : labelWidthIn;
@@ -2057,7 +2102,7 @@ export function composeLetterSheetPreview(params: {
   const countText = totalLabels > 1 
     ? `
     <text 
-      x="${layout.sheetWidthIn - layout.marginIn}" 
+      x="${layout.sheetWidthIn - layout.marginRightIn}" 
       y="${layout.sheetHeightIn - 0.1}"
       font-size="0.12"
       font-family="system-ui, sans-serif"
@@ -2071,16 +2116,20 @@ export function composeLetterSheetPreview(params: {
     decorations,
     layout.sheetWidthIn,
     layout.sheetHeightIn,
-    layout.marginIn,
+    layout.marginTopIn, // Use top margin for footer positioning
     sheetIndex,
     totalSheets
   );
 
   // Render camera registration marks (3 marks for LightBurn alignment)
+  // Pass asymmetric margins for proper positioning
   const cameraMarksContent = renderCameraRegistrationMarks(
     layout.sheetWidthIn,
     layout.sheetHeightIn,
-    layout.marginIn
+    layout.marginLeftIn,
+    layout.marginRightIn,
+    layout.marginTopIn,
+    layout.marginBottomIn
   );
 
   const sheetSvg = `<svg xmlns="http://www.w3.org/2000/svg"

@@ -31,7 +31,6 @@ export async function generateBarcodeSvg(
   options: BarcodeOptions,
   widthPx: number
 ): Promise<string> {
-  
   // Validate EAN-13 code
   const cleanCode = ean13Code.replace(/\D/g, '');
   if (cleanCode.length < 12 || cleanCode.length > 13) {
