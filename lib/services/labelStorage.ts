@@ -70,9 +70,25 @@ export class LocalLabelStorage implements LabelStorage {
   }
 
   /**
-   * Load file from local filesystem
+   * Load file from local filesystem or HTTP URL
+   * Handles both local paths and remote URLs (for dev with production data)
    */
   async load(fileUrl: string): Promise<Buffer> {
+    // If it's an HTTP URL (e.g., Vercel Blob URL from production), fetch it directly
+    if (fileUrl.startsWith('http')) {
+      try {
+        const response = await fetch(fileUrl);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch: ${response.status}`);
+        }
+        const arrayBuffer = await response.arrayBuffer();
+        return Buffer.from(arrayBuffer);
+      } catch (error) {
+        throw new Error(`Label file not found: ${fileUrl}`);
+      }
+    }
+    
+    // Otherwise, load from local filesystem
     const filePath = path.join(this.basePath, fileUrl);
     
     try {

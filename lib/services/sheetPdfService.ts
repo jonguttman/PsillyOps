@@ -135,6 +135,7 @@ export async function renderSheetPdfBuffer(params: SheetPdfParams): Promise<Shee
     decorations = DEFAULT_SHEET_DECORATIONS,
   } = params;
   
+  
   // Validate and clamp quantity
   const clampedQuantity = Math.max(1, Math.min(MAX_LABELS, Math.floor(quantity)));
   

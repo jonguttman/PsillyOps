@@ -31,9 +31,6 @@ export async function generateBarcodeSvg(
   options: BarcodeOptions,
   widthPx: number
 ): Promise<string> {
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'barcodeService.ts:generateBarcodeSvg',message:'generateBarcodeSvg called',data:{ean13Code,widthPx,options},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H5'})}).catch(()=>{});
-  // #endregion
   
   // Validate EAN-13 code
   const cleanCode = ean13Code.replace(/\D/g, '');
@@ -49,9 +46,6 @@ export async function generateBarcodeSvg(
 
   try {
     // Generate barcode using bwip-js
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'barcodeService.ts:generateBarcodeSvg',message:'Calling bwipjs.toSVG',data:{cleanCode,barHeightPx},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H5'})}).catch(()=>{});
-    // #endregion
     const svg = await bwipjs.toSVG({
       bcid: 'ean13',
       text: cleanCode,
@@ -65,9 +59,6 @@ export async function generateBarcodeSvg(
 
     return svg;
   } catch (error) {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'barcodeService.ts:generateBarcodeSvg',message:'ERROR in bwipjs.toSVG',data:{error:String(error),stack:(error as Error)?.stack?.slice(0,500)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H5'})}).catch(()=>{});
-    // #endregion
     console.error('Barcode generation error:', error);
     throw new Error(`Failed to generate barcode: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
