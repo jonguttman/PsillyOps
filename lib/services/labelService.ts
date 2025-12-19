@@ -1296,6 +1296,10 @@ export function computeLetterSheetLayout(
   marginTopIn: number;
   marginBottomIn: number;
 } {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'labelService.ts:computeLetterSheetLayout',message:'Layout calculation',data:{labelWidthIn,labelHeightIn,orientation,marginInParam:marginIn,MARGIN_LEFT_IN,MARGIN_RIGHT_IN,MARGIN_TOP_IN,MARGIN_BOTTOM_IN},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1-margins'})}).catch(()=>{});
+  // #endregion
+  
   // Sheet dimensions based on orientation
   const sheetWidthIn = orientation === 'portrait' ? LETTER_WIDTH_IN : LETTER_HEIGHT_IN;
   const sheetHeightIn = orientation === 'portrait' ? LETTER_HEIGHT_IN : LETTER_WIDTH_IN;
@@ -1310,6 +1314,10 @@ export function computeLetterSheetLayout(
   // Usable area after asymmetric margins
   const usableWidthIn = sheetWidthIn - marginLeftIn - marginRightIn;
   const usableHeightIn = sheetHeightIn - marginTopIn - marginBottomIn;
+
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'labelService.ts:computeLetterSheetLayout',message:'Calculated usable area',data:{usableWidthIn,usableHeightIn,marginLeftIn,marginRightIn,marginTopIn,marginBottomIn},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1-margins'})}).catch(()=>{});
+  // #endregion
 
   const cols0 = Math.floor(usableWidthIn / labelWidthIn);
   const rows0 = Math.floor(usableHeightIn / labelHeightIn);
@@ -1893,29 +1901,37 @@ function renderCameraRegistrationMarks(
   marginTopIn: number,
   marginBottomIn: number
 ): string {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'labelService.ts:renderCameraRegistrationMarks',message:'Rendering marks',data:{sheetWidthIn,sheetHeightIn,marginLeftIn,marginRightIn,marginTopIn,marginBottomIn},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2-marks'})}).catch(()=>{});
+  // #endregion
+  
   const imageDataUri = getCameraMarkDataUri();
   if (!imageDataUri) {
     return ''; // Skip marks if image couldn't be loaded
   }
   
-  // Use mark size that fits in the narrowest margin
-  const minMargin = Math.min(marginLeftIn, marginRightIn, marginTopIn, marginBottomIn);
-  const size = Math.min(CAMERA_MARK_SIZE_IN, minMargin * 0.7); // Leave some padding
+  // Mark size - use standard size
+  const size = CAMERA_MARK_SIZE_IN;
   
-  // Calculate positions - CENTER marks within their respective margin bands
-  // This ensures marks are fully inside the printable area with padding on both sides
+  // Padding from page edges - increased to prevent clipping
+  const padding = 0.15; // 0.15in from page edge (was 0.05in, too close)
   
-  // Top-center: centered horizontally, centered vertically within top margin
+  // Calculate positions
+  // Top-center: centered horizontally, in the top margin (centered vertically)
   const topCenterX = (sheetWidthIn - size) / 2;
   const topCenterY = (marginTopIn - size) / 2; // Centered in top margin band
   
-  // Bottom-left: centered within bottom-left margin corner
-  const bottomLeftX = (marginLeftIn - size) / 2; // Centered in left margin
-  const bottomLeftY = sheetHeightIn - marginBottomIn + (marginBottomIn - size) / 2; // Centered in bottom margin
+  // Bottom-left: near bottom-left corner with padding
+  const bottomLeftX = padding;
+  const bottomLeftY = sheetHeightIn - marginBottomIn + (marginBottomIn - size) / 2;
   
-  // Bottom-right: centered within bottom-right margin corner
-  const bottomRightX = sheetWidthIn - marginRightIn + (marginRightIn - size) / 2; // Centered in right margin
-  const bottomRightY = sheetHeightIn - marginBottomIn + (marginBottomIn - size) / 2; // Centered in bottom margin
+  // Bottom-right: near bottom-right corner with padding
+  const bottomRightX = sheetWidthIn - size - padding;
+  const bottomRightY = sheetHeightIn - marginBottomIn + (marginBottomIn - size) / 2;
+
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'labelService.ts:renderCameraRegistrationMarks',message:'Mark positions',data:{size,topCenterX,topCenterY,bottomLeftX,bottomLeftY,bottomRightX,bottomRightY},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2-marks'})}).catch(()=>{});
+  // #endregion
   
   // Use xlink:href for better compatibility with resvg and older SVG renderers
   return `
