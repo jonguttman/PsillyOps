@@ -20,7 +20,7 @@ async function deactivateRule(formData: FormData) {
   const ruleId = formData.get('ruleId') as string;
   await deactivateRedirectRule(ruleId, session.user.id);
   
-  revalidatePath('/qr-redirects');
+  revalidatePath('/ops/qr-redirects');
 }
 
 export default async function QRRedirectsPage({
@@ -94,17 +94,17 @@ export default async function QRRedirectsPage({
             select: { name: true, sku: true }
           });
           entityName = product ? `${product.name} (${product.sku})` : rule.entityId;
-          entityLink = `/products/${rule.entityId}`;
+          entityLink = `/ops/products/${rule.entityId}`;
         } else if (rule.entityType === 'BATCH') {
           const batch = await prisma.batch.findUnique({
             where: { id: rule.entityId },
             select: { batchCode: true }
           });
           entityName = batch ? batch.batchCode : rule.entityId;
-          entityLink = `/batches/${rule.entityId}`;
+          entityLink = `/ops/batches/${rule.entityId}`;
         } else if (rule.entityType === 'INVENTORY') {
           entityName = rule.entityId;
-          entityLink = `/inventory/${rule.entityId}`;
+          entityLink = `/ops/inventory/${rule.entityId}`;
         } else {
           entityName = rule.entityId;
         }
@@ -114,7 +114,7 @@ export default async function QRRedirectsPage({
           include: { template: { select: { name: true } } }
         });
         entityName = version ? `${version.template.name} v${version.version}` : rule.versionId;
-        entityLink = `/labels`;
+        entityLink = `/ops/labels`;
       }
       
       return { ...rule, affectedTokens, entityName, entityLink };
@@ -169,7 +169,7 @@ export default async function QRRedirectsPage({
     if (domainVal) p.set('domain', domainVal);
     
     const query = p.toString();
-    return query ? `/qr-redirects?${query}` : '/qr-redirects';
+    return query ? `/ops/qr-redirects?${query}` : '/ops/qr-redirects';
   };
 
   return (
@@ -183,7 +183,7 @@ export default async function QRRedirectsPage({
           </p>
         </div>
         <Link
-          href="/qr-redirects/new"
+          href="/ops/qr-redirects/new"
           className="inline-flex items-center gap-2 px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
         >
           <Plus className="w-4 h-4" />
@@ -310,7 +310,7 @@ export default async function QRRedirectsPage({
         {/* Clear Filters */}
         {(scopeFilter || domainFilter || showInactive) && (
           <Link
-            href="/qr-redirects"
+            href="/ops/qr-redirects"
             className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
           >
             <XCircle className="w-3 h-3" />
@@ -357,7 +357,7 @@ export default async function QRRedirectsPage({
                   <div className="text-gray-500">
                     <p className="text-sm">No redirect rules found.</p>
                     <Link
-                      href="/qr-redirects/new"
+                      href="/ops/qr-redirects/new"
                       className="mt-2 inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
                     >
                       <Plus className="w-4 h-4" />

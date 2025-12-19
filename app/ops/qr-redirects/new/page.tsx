@@ -63,7 +63,7 @@ async function createRule(formData: FormData) {
     session.user.id
   );
 
-  revalidatePath('/qr-redirects');
+  revalidatePath('/ops/qr-redirects');
   redirect('/ops/qr-redirects');
 }
 
@@ -141,7 +141,7 @@ export default async function CreateRedirectRulePage() {
           </p>
         </div>
         <Link
-          href="/qr-redirects"
+          href="/ops/qr-redirects"
           className="text-sm text-blue-600 hover:text-blue-800"
         >
           ← Back to Rules
@@ -348,7 +348,7 @@ export default async function CreateRedirectRulePage() {
         {/* Actions */}
         <div className="flex justify-end gap-3 pt-4 border-t">
           <Link
-            href="/qr-redirects"
+            href="/ops/qr-redirects"
             className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             Cancel
