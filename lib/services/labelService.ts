@@ -15,6 +15,8 @@ import { logAction } from './loggingService';
 import { getLabelStorage, validateSvgPlaceholder, isAllowedFileType, getFileExtension } from './labelStorage';
 import { ActivityEntity, LabelEntityType } from '@prisma/client';
 import QRCode from 'qrcode';
+// Note: fs and path are used for camera registration marks in sheet preview
+// These are Node.js APIs available in Vercel serverless functions
 import * as fs from 'fs';
 import * as path from 'path';
 import { 
