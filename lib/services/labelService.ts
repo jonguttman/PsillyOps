@@ -1296,28 +1296,20 @@ export function computeLetterSheetLayout(
   marginTopIn: number;
   marginBottomIn: number;
 } {
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'labelService.ts:computeLetterSheetLayout',message:'Layout calculation',data:{labelWidthIn,labelHeightIn,orientation,marginInParam:marginIn,MARGIN_LEFT_IN,MARGIN_RIGHT_IN,MARGIN_TOP_IN,MARGIN_BOTTOM_IN},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1-margins'})}).catch(()=>{});
-  // #endregion
-  
   // Sheet dimensions based on orientation
   const sheetWidthIn = orientation === 'portrait' ? LETTER_WIDTH_IN : LETTER_HEIGHT_IN;
   const sheetHeightIn = orientation === 'portrait' ? LETTER_HEIGHT_IN : LETTER_WIDTH_IN;
   
-  // Use asymmetric margins: narrow left/right, wider top/bottom for registration marks
-  // The marginIn parameter is kept for backward compatibility but we use the asymmetric values
-  const marginLeftIn = MARGIN_LEFT_IN;
-  const marginRightIn = MARGIN_RIGHT_IN;
-  const marginTopIn = MARGIN_TOP_IN;
-  const marginBottomIn = MARGIN_BOTTOM_IN;
+  // Use the marginIn parameter from UI for left/right margins
+  // Top/bottom are fixed at 0.5in minimum for registration marks
+  const marginLeftIn = marginIn;
+  const marginRightIn = marginIn;
+  const marginTopIn = Math.max(marginIn, MARGIN_TOP_IN);  // At least 0.5in for marks
+  const marginBottomIn = Math.max(marginIn, MARGIN_BOTTOM_IN);  // At least 0.5in for marks
   
-  // Usable area after asymmetric margins
+  // Usable area after margins
   const usableWidthIn = sheetWidthIn - marginLeftIn - marginRightIn;
   const usableHeightIn = sheetHeightIn - marginTopIn - marginBottomIn;
-
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'labelService.ts:computeLetterSheetLayout',message:'Calculated usable area',data:{usableWidthIn,usableHeightIn,marginLeftIn,marginRightIn,marginTopIn,marginBottomIn},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1-margins'})}).catch(()=>{});
-  // #endregion
 
   const cols0 = Math.floor(usableWidthIn / labelWidthIn);
   const rows0 = Math.floor(usableHeightIn / labelHeightIn);
@@ -1901,10 +1893,6 @@ function renderCameraRegistrationMarks(
   marginTopIn: number,
   marginBottomIn: number
 ): string {
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'labelService.ts:renderCameraRegistrationMarks',message:'Rendering marks',data:{sheetWidthIn,sheetHeightIn,marginLeftIn,marginRightIn,marginTopIn,marginBottomIn},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2-marks'})}).catch(()=>{});
-  // #endregion
-  
   const imageDataUri = getCameraMarkDataUri();
   if (!imageDataUri) {
     return ''; // Skip marks if image couldn't be loaded
@@ -1928,10 +1916,6 @@ function renderCameraRegistrationMarks(
   // Bottom-right: near bottom-right corner with padding
   const bottomRightX = sheetWidthIn - size - padding;
   const bottomRightY = sheetHeightIn - marginBottomIn + (marginBottomIn - size) / 2;
-
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'labelService.ts:renderCameraRegistrationMarks',message:'Mark positions',data:{size,topCenterX,topCenterY,bottomLeftX,bottomLeftY,bottomRightX,bottomRightY},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2-marks'})}).catch(()=>{});
-  // #endregion
   
   // Use xlink:href for better compatibility with resvg and older SVG renderers
   return `
