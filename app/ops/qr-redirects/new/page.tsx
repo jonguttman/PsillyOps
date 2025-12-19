@@ -1,13 +1,15 @@
 // Create QR Redirect Rule Page
 // Admin-only page for creating new redirect rules
+// Phase 7.1: Visual scope selection with tabs for Products and Batches
 
 import { prisma } from '@/lib/db/prisma';
 import { auth } from '@/lib/auth/auth';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import Link from 'next/link';
-import { createRedirectRule, getActiveRuleForEntity } from '@/lib/services/qrRedirectService';
+import { createRedirectRule } from '@/lib/services/qrRedirectService';
 import { LabelEntityType } from '@prisma/client';
+import ScopeSelector, { ProductItem, BatchItem } from './ScopeSelector';
 
 async function createRule(formData: FormData) {
   'use server';
@@ -20,41 +22,37 @@ async function createRule(formData: FormData) {
   const scopeType = formData.get('scopeType') as string;
   const productId = formData.get('productId') as string;
   const batchId = formData.get('batchId') as string;
-  const inventoryId = formData.get('inventoryId') as string;
-  const versionId = formData.get('versionId') as string;
   const redirectUrl = formData.get('redirectUrl') as string;
   const reason = formData.get('reason') as string;
   const startsAt = formData.get('startsAt') as string;
   const endsAt = formData.get('endsAt') as string;
 
-  let entityType: LabelEntityType | undefined;
-  let entityId: string | undefined;
+  // Validate that a scope is selected
+  if (!scopeType || (scopeType !== 'PRODUCT' && scopeType !== 'BATCH')) {
+    throw new Error('Please select a product or batch');
+  }
 
-  switch (scopeType) {
-    case 'PRODUCT':
-      entityType = 'PRODUCT';
-      entityId = productId;
-      break;
-    case 'BATCH':
-      entityType = 'BATCH';
-      entityId = batchId;
-      break;
-    case 'INVENTORY':
-      entityType = 'INVENTORY';
-      entityId = inventoryId;
-      break;
-    case 'VERSION':
-      // versionId is handled separately
-      break;
-    default:
-      throw new Error('Invalid scope type');
+  let entityType: LabelEntityType;
+  let entityId: string;
+
+  if (scopeType === 'PRODUCT') {
+    if (!productId) {
+      throw new Error('Please select a product');
+    }
+    entityType = 'PRODUCT';
+    entityId = productId;
+  } else {
+    if (!batchId) {
+      throw new Error('Please select a batch');
+    }
+    entityType = 'BATCH';
+    entityId = batchId;
   }
 
   await createRedirectRule(
     {
       entityType,
       entityId,
-      versionId: scopeType === 'VERSION' ? versionId : undefined,
       redirectUrl,
       reason: reason || undefined,
       startsAt: startsAt ? new Date(startsAt) : undefined,
@@ -78,43 +76,65 @@ export default async function CreateRedirectRulePage() {
     redirect('/ops/dashboard');
   }
 
-  // Fetch available entities for selection
-  const [products, batches, labelVersions] = await Promise.all([
+  // Calculate date 30 days ago for recent batches
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  // Fetch products with active rule status
+  const [products, recentBatches, plannedBatches, activeRules] = await Promise.all([
+    // All active products
     prisma.product.findMany({
       where: { active: true },
       select: { id: true, name: true, sku: true },
       orderBy: { name: 'asc' }
     }),
+    
+    // Recent batches (last 30 days, all statuses except CANCELLED)
     prisma.batch.findMany({
       where: {
-        status: { in: ['IN_PROGRESS', 'QC_HOLD', 'RELEASED'] }
+        createdAt: { gte: thirtyDaysAgo },
+        status: { notIn: ['CANCELLED'] }
       },
-      select: { id: true, batchCode: true },
+      select: { 
+        id: true, 
+        batchCode: true, 
+        status: true,
+        product: { select: { name: true } }
+      },
       orderBy: { createdAt: 'desc' },
-      take: 100
+      take: 50
     }),
-    prisma.labelTemplateVersion.findMany({
-      where: { isActive: true },
-      include: {
-        template: { select: { name: true, entityType: true } }
+    
+    // Planned batches (PLANNED status)
+    prisma.batch.findMany({
+      where: {
+        status: 'PLANNED'
       },
-      orderBy: { createdAt: 'desc' }
+      select: { 
+        id: true, 
+        batchCode: true, 
+        status: true,
+        product: { select: { name: true } }
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50
+    }),
+    
+    // Active redirect rules to mark entities that already have rules
+    prisma.qRRedirectRule.findMany({
+      where: {
+        active: true,
+        entityType: { not: null }
+      },
+      select: { entityType: true, entityId: true }
     })
   ]);
 
-  // Check which entities already have active rules
+  // Build sets of entities with active rules
   const productsWithActiveRules = new Set<string>();
   const batchesWithActiveRules = new Set<string>();
   
-  const activeEntityRules = await prisma.qRRedirectRule.findMany({
-    where: {
-      active: true,
-      entityType: { not: null }
-    },
-    select: { entityType: true, entityId: true }
-  });
-
-  for (const rule of activeEntityRules) {
+  for (const rule of activeRules) {
     if (rule.entityType === 'PRODUCT' && rule.entityId) {
       productsWithActiveRules.add(rule.entityId);
     } else if (rule.entityType === 'BATCH' && rule.entityId) {
@@ -122,14 +142,33 @@ export default async function CreateRedirectRulePage() {
     }
   }
 
-  const activeVersionRules = await prisma.qRRedirectRule.findMany({
-    where: {
-      active: true,
-      versionId: { not: null }
-    },
-    select: { versionId: true }
-  });
-  const versionsWithActiveRules = new Set(activeVersionRules.map(r => r.versionId));
+  // Transform products for the selector
+  const productItems: ProductItem[] = products.map((p) => ({
+    id: p.id,
+    name: p.name,
+    sku: p.sku,
+    hasActiveRule: productsWithActiveRules.has(p.id)
+  }));
+
+  // Transform recent batches (exclude PLANNED since they're in the other section)
+  const recentBatchItems: BatchItem[] = recentBatches
+    .filter((b) => b.status !== 'PLANNED')
+    .map((b) => ({
+      id: b.id,
+      batchCode: b.batchCode,
+      productName: b.product.name,
+      status: b.status,
+      isPlanned: false
+    }));
+
+  // Transform planned batches
+  const plannedBatchItems: BatchItem[] = plannedBatches.map((b) => ({
+    id: b.id,
+    batchCode: b.batchCode,
+    productName: b.product.name,
+    status: b.status,
+    isPlanned: true
+  }));
 
   return (
     <div className="space-y-6">
@@ -137,7 +176,7 @@ export default async function CreateRedirectRulePage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Create Redirect Rule</h1>
           <p className="mt-1 text-sm text-gray-600">
-            Create a new QR redirect rule for a product, batch, or label version
+            Select a product or batch, then configure where QR scans should redirect
           </p>
         </div>
         <Link
@@ -149,121 +188,21 @@ export default async function CreateRedirectRulePage() {
       </div>
 
       <form action={createRule} className="bg-white shadow rounded-lg p-6 space-y-6">
-        {/* Scope Type Selection */}
+        {/* Visual Scope Selector (Phase 7.1) */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Scope Type <span className="text-red-500">*</span>
+          <label className="block text-sm font-medium text-gray-700 mb-3">
+            What should this rule affect? <span className="text-red-500">*</span>
           </label>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <label className="relative flex items-center justify-center px-4 py-3 border rounded-lg cursor-pointer hover:bg-gray-50 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50">
-              <input type="radio" name="scopeType" value="PRODUCT" className="sr-only peer" required defaultChecked />
-              <span className="text-sm font-medium peer-checked:text-blue-700">Product</span>
-            </label>
-            <label className="relative flex items-center justify-center px-4 py-3 border rounded-lg cursor-pointer hover:bg-gray-50 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50">
-              <input type="radio" name="scopeType" value="BATCH" className="sr-only peer" />
-              <span className="text-sm font-medium peer-checked:text-blue-700">Batch</span>
-            </label>
-            <label className="relative flex items-center justify-center px-4 py-3 border rounded-lg cursor-pointer hover:bg-gray-50 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50">
-              <input type="radio" name="scopeType" value="INVENTORY" className="sr-only peer" />
-              <span className="text-sm font-medium peer-checked:text-blue-700">Inventory</span>
-            </label>
-            <label className="relative flex items-center justify-center px-4 py-3 border rounded-lg cursor-pointer hover:bg-gray-50 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50">
-              <input type="radio" name="scopeType" value="VERSION" className="sr-only peer" />
-              <span className="text-sm font-medium peer-checked:text-blue-700">Template Version</span>
-            </label>
-          </div>
-          <p className="mt-2 text-xs text-gray-500">
-            Choose what type of entity this redirect rule will target
-          </p>
+          <ScopeSelector
+            products={productItems}
+            recentBatches={recentBatchItems}
+            plannedBatches={plannedBatchItems}
+          />
         </div>
 
-        {/* Entity Selection */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Product Selection */}
-          <div>
-            <label htmlFor="productId" className="block text-sm font-medium text-gray-700">
-              Product
-            </label>
-            <select
-              name="productId"
-              id="productId"
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-            >
-              <option value="">Select a product...</option>
-              {products.map((product) => (
-                <option 
-                  key={product.id} 
-                  value={product.id}
-                  disabled={productsWithActiveRules.has(product.id)}
-                >
-                  {product.name} ({product.sku})
-                  {productsWithActiveRules.has(product.id) && ' — Has active rule'}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Batch Selection */}
-          <div>
-            <label htmlFor="batchId" className="block text-sm font-medium text-gray-700">
-              Batch
-            </label>
-            <select
-              name="batchId"
-              id="batchId"
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-            >
-              <option value="">Select a batch...</option>
-              {batches.map((batch) => (
-                <option 
-                  key={batch.id} 
-                  value={batch.id}
-                  disabled={batchesWithActiveRules.has(batch.id)}
-                >
-                  {batch.batchCode}
-                  {batchesWithActiveRules.has(batch.id) && ' — Has active rule'}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Inventory ID (manual entry) */}
-          <div>
-            <label htmlFor="inventoryId" className="block text-sm font-medium text-gray-700">
-              Inventory ID
-            </label>
-            <input
-              type="text"
-              name="inventoryId"
-              id="inventoryId"
-              placeholder="Enter inventory item ID"
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-            />
-          </div>
-
-          {/* Version Selection */}
-          <div>
-            <label htmlFor="versionId" className="block text-sm font-medium text-gray-700">
-              Label Template Version
-            </label>
-            <select
-              name="versionId"
-              id="versionId"
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-            >
-              <option value="">Select a version...</option>
-              {labelVersions.map((version) => (
-                <option 
-                  key={version.id} 
-                  value={version.id}
-                  disabled={versionsWithActiveRules.has(version.id)}
-                >
-                  {version.template.name} v{version.version}
-                  {versionsWithActiveRules.has(version.id) && ' — Has active rule'}
-                </option>
-              ))}
-            </select>
-          </div>
+        {/* Divider */}
+        <div className="border-t border-gray-200 pt-6">
+          <h2 className="text-sm font-medium text-gray-900 mb-4">Redirect Settings</h2>
         </div>
 
         {/* Redirect URL */}
@@ -340,7 +279,7 @@ export default async function CreateRedirectRulePage() {
               <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
             </svg>
             <div className="text-sm text-amber-800">
-              <strong>Note:</strong> Only one active rule can exist per scope. If an active rule already exists for the selected entity, you must deactivate it first.
+              <strong>Note:</strong> Only one active rule can exist per scope. Items with active rules are marked and cannot be selected.
             </div>
           </div>
         </div>
@@ -364,4 +303,3 @@ export default async function CreateRedirectRulePage() {
     </div>
   );
 }
-
