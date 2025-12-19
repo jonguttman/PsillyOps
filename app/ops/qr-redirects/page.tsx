@@ -7,7 +7,7 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import Link from 'next/link';
 import { deactivateRedirectRule, countAffectedTokens } from '@/lib/services/qrRedirectService';
-import { AlertTriangle, Clock, ExternalLink, Plus, XCircle } from 'lucide-react';
+import { AlertTriangle, Clock, ExternalLink, Plus, XCircle, Shield, Settings } from 'lucide-react';
 
 async function deactivateRule(formData: FormData) {
   'use server';
@@ -49,7 +49,10 @@ export default async function QRRedirectsPage({
   const domainFilter = params.domain || '';
 
   // Build where clause with filters
-  const whereClause: any = {};
+  // Always exclude fallback rules from the normal list - they're managed in Settings
+  const whereClause: any = {
+    isFallback: false
+  };
   if (!showInactive) {
     whereClause.active = true;
   }
@@ -64,7 +67,7 @@ export default async function QRRedirectsPage({
     whereClause.redirectUrl = { contains: domainFilter };
   }
 
-  // Fetch redirect rules
+  // Fetch redirect rules (excluding fallback)
   const rules = await prisma.qRRedirectRule.findMany({
     where: whereClause,
     include: {
@@ -73,6 +76,11 @@ export default async function QRRedirectsPage({
       }
     },
     orderBy: { createdAt: 'desc' }
+  });
+
+  // Fetch the fallback redirect separately for status indicator
+  const fallbackRedirect = await prisma.qRRedirectRule.findFirst({
+    where: { isFallback: true }
   });
 
   // Get affected token counts for each rule
@@ -189,6 +197,35 @@ export default async function QRRedirectsPage({
           <Plus className="w-4 h-4" />
           Create Rule
         </Link>
+      </div>
+
+      {/* Default Redirect Status */}
+      <div className={`rounded-lg border p-4 ${
+        fallbackRedirect?.active 
+          ? 'bg-green-50 border-green-200' 
+          : 'bg-gray-50 border-gray-200'
+      }`}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Shield className={`w-5 h-5 ${fallbackRedirect?.active ? 'text-green-600' : 'text-gray-400'}`} />
+            <div>
+              <h3 className="text-sm font-medium text-gray-900">Default Redirect</h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {fallbackRedirect?.active 
+                  ? `Active: ${fallbackRedirect.redirectUrl}` 
+                  : 'Not configured — unmatched scans use default routing'
+                }
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/ops/settings"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+          >
+            <Settings className="w-4 h-4" />
+            {fallbackRedirect ? 'Configure' : 'Set Up'}
+          </Link>
+        </div>
       </div>
 
       {/* Warnings */}
@@ -513,12 +550,13 @@ export default async function QRRedirectsPage({
         <div className="mt-2 text-sm text-blue-700">
           <p>Redirect rules allow you to change where QR codes redirect without reprinting labels:</p>
           <ul className="mt-2 list-disc list-inside space-y-1">
-            <li><strong>Entity scope</strong>: Redirect all scans for a specific product, batch, or inventory item</li>
+            <li><strong>Batch scope</strong>: Redirect all scans for a specific batch (most specific)</li>
+            <li><strong>Product scope</strong>: Redirect all scans for a specific product</li>
             <li><strong>Version scope</strong>: Redirect all labels printed from a specific template version</li>
             <li><strong>Time windows</strong>: Schedule redirects for campaigns or temporary changes</li>
           </ul>
           <p className="mt-3 pt-2 border-t border-blue-200">
-            <strong>Resolution Order:</strong> Token-level overrides → Group rules → Default routing
+            <strong>Resolution Order:</strong> Token override → Batch → Product → Version → Default Redirect → No redirect
           </p>
         </div>
       </div>

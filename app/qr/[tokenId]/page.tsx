@@ -35,7 +35,7 @@ export default async function QRTokenResolverPage({ params }: Props) {
   // If token is active, determine redirect destination
   if (result.status === 'ACTIVE') {
     let destination: string;
-    let resolutionType: 'TOKEN' | 'GROUP' | 'DEFAULT';
+    let resolutionType: 'TOKEN' | 'BATCH' | 'PRODUCT' | 'ENTITY' | 'VERSION' | 'FALLBACK' | 'DEFAULT';
     let ruleId: string | null = null;
 
     // Get the full token record to check for token-level redirect
@@ -46,7 +46,7 @@ export default async function QRTokenResolverPage({ params }: Props) {
       destination = tokenRecord.redirectUrl;
       resolutionType = 'TOKEN';
     } else {
-      // 2. Check for active QRRedirectRule
+      // 2. Check for active QRRedirectRule (Batch → Product → Entity → Version → Fallback)
       const rule = await findActiveRedirectRule({
         entityType: result.entityType,
         entityId: result.entityId,
@@ -55,10 +55,10 @@ export default async function QRTokenResolverPage({ params }: Props) {
 
       if (rule) {
         destination = rule.redirectUrl;
-        resolutionType = 'GROUP';
+        resolutionType = rule.matchedBy; // BATCH, PRODUCT, ENTITY, VERSION, or FALLBACK
         ruleId = rule.id;
       } else {
-        // 3. Fallback to default entity routing
+        // 3. No rule matched - use default entity routing
         destination = getRedirectPath(result.entityType, result.entityId);
         resolutionType = 'DEFAULT';
       }

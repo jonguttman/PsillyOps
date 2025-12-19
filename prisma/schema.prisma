@@ -1002,9 +1002,16 @@ model QRRedirectRule {
   id          String   @id @default(cuid())
 
   // Scope selectors (exactly one set of selectors must be provided)
+  // For entity-scoped rules: entityType + entityId
+  // For version-scoped rules: versionId
+  // For fallback rule: isFallback = true (entityType, entityId, versionId all null)
   entityType  LabelEntityType?   // Target entity type (PRODUCT, BATCH, etc.)
   entityId    String?            // Target entity ID
   versionId   String?            // Target label template version
+  
+  // System-level fallback (exactly one can exist)
+  // Used only when no product/batch/version rule matches
+  isFallback  Boolean  @default(false)
 
   redirectUrl String             // Where to redirect matching scans
 
@@ -1020,10 +1027,12 @@ model QRRedirectRule {
   createdBy   User?    @relation(fields: [createdById], references: [id])
 
   createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@index([entityType, entityId])
   @@index([versionId])
   @@index([active])
+  @@index([isFallback])
 }
 
 model PrintJob {

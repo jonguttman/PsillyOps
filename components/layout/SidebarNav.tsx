@@ -21,6 +21,7 @@ import {
   HelpCircle,
   Users,
   Shield,
+  Settings,
   LucideIcon
 } from 'lucide-react';
 
@@ -99,6 +100,7 @@ export function SidebarNav({ userRole }: SidebarNavProps) {
   // SYSTEM section - Governance
   const systemItems: NavItem[] = [
     { href: '/ops/activity', label: 'Activity', icon: Activity },
+    ...(userRole === 'ADMIN' ? [{ href: '/ops/settings', label: 'Settings', icon: Settings }] : []),
     ...(userRole === 'ADMIN' ? [{ href: '/ops/security', label: 'Security', icon: Shield }] : []),
     ...(userRole === 'ADMIN' ? [{ href: '/ops/users', label: 'Users', icon: Users }] : []),
     { href: '/ops/strains', label: 'Strains', icon: Dna },
