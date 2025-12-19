@@ -108,6 +108,12 @@ export async function POST(req: Request) {
     // Default: return JSON with both SVG and metadata
     return NextResponse.json(result);
   } catch (error) {
+    // Log error for Vercel function logs
+    console.error('[PREVIEW_ERROR]', {
+      error: String(error),
+      stack: (error as Error)?.stack,
+      timestamp: new Date().toISOString()
+    });
     // #region agent log
     fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'preview/route.ts:POST',message:'ERROR in preview',data:{error:String(error),stack:(error as Error)?.stack?.slice(0,500)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(()=>{});
     // #endregion
