@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
-import { Check, Search, Package, Layers, Archive, X } from 'lucide-react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
+import { Check, Search, Package, Layers, Archive, X, ExternalLink, Calendar, FileText } from 'lucide-react';
 
 // Types for the data passed from server component
 export interface ProductItem {
@@ -20,18 +20,33 @@ export interface BatchItem {
   hasActiveRule?: boolean;
 }
 
+// Phase 7.3: Form values for preflight summary
+export interface FormValues {
+  redirectUrl: string;
+  reason: string;
+  startsAt: string;
+  endsAt: string;
+}
+
 interface ScopeSelectorProps {
   products: ProductItem[];
   recentBatches: BatchItem[];
   plannedBatches: BatchItem[];
+  formValues?: FormValues;
+  onSelectionChange?: (count: number, scopeType: 'PRODUCT' | 'BATCH' | null) => void;
 }
 
 type TabType = 'products' | 'batches' | 'inventory';
+
+// Large selection threshold for reduced color intensity
+const LARGE_SELECTION_THRESHOLD = 20;
 
 export default function ScopeSelector({
   products,
   recentBatches,
   plannedBatches,
+  formValues,
+  onSelectionChange,
 }: ScopeSelectorProps) {
   const [activeTab, setActiveTab] = useState<TabType>('products');
   const [searchQuery, setSearchQuery] = useState('');
@@ -46,6 +61,13 @@ export default function ScopeSelector({
     if (selectedBatchIds.size > 0) return 'BATCH';
     return null;
   }, [selectedProductIds.size, selectedBatchIds.size]);
+
+  // Phase 7.3: Notify parent of selection changes
+  const totalCount = selectedProductIds.size + selectedBatchIds.size;
+  
+  useEffect(() => {
+    onSelectionChange?.(totalCount, scopeType);
+  }, [totalCount, scopeType, onSelectionChange]);
 
   // Filter products by search query
   const filteredProducts = useMemo(() => {
@@ -92,16 +114,6 @@ export default function ScopeSelector({
   const selectedBatchesWithActiveRules = useMemo(() => {
     const allBatches = [...recentBatches, ...plannedBatches];
     return allBatches.filter(b => selectedBatchIds.has(b.id) && b.hasActiveRule);
-  }, [recentBatches, plannedBatches, selectedBatchIds]);
-
-  // Get selected items info for summary
-  const selectedProducts = useMemo(() => {
-    return products.filter(p => selectedProductIds.has(p.id));
-  }, [products, selectedProductIds]);
-
-  const selectedBatches = useMemo(() => {
-    const allBatches = [...recentBatches, ...plannedBatches];
-    return allBatches.filter(b => selectedBatchIds.has(b.id));
   }, [recentBatches, plannedBatches, selectedBatchIds]);
 
   // Handle product selection toggle
@@ -202,16 +214,31 @@ export default function ScopeSelector({
   const hasConflicts = selectedProductsWithActiveRules.length > 0 || selectedBatchesWithActiveRules.length > 0;
   const conflictCount = selectedProductsWithActiveRules.length + selectedBatchesWithActiveRules.length;
 
-  // Format skipped items list
-  const formatSkippedItems = () => {
-    const items = scopeType === 'PRODUCT' 
+  // Phase 7.3: Large selection detection for reduced color intensity
+  const isLargeSelection = totalSelectionCount >= LARGE_SELECTION_THRESHOLD;
+
+  // Get skipped items for display
+  const skippedItems = useMemo(() => {
+    return scopeType === 'PRODUCT' 
       ? selectedProductsWithActiveRules.map(p => p.name)
       : selectedBatchesWithActiveRules.map(b => b.batchCode);
-    
-    if (items.length <= 3) {
-      return items.join(', ');
+  }, [scopeType, selectedProductsWithActiveRules, selectedBatchesWithActiveRules]);
+
+  // Format date for display
+  const formatDateTime = (dateString: string) => {
+    if (!dateString) return null;
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      });
+    } catch {
+      return dateString;
     }
-    return `${items.slice(0, 3).join(', ')}, +${items.length - 3} more`;
   };
 
   return (
@@ -564,9 +591,9 @@ export default function ScopeSelector({
         )}
       </div>
 
-      {/* Selection Summary & Warnings */}
+      {/* Phase 7.3: Preflight Summary (replaces simple selection summary) */}
       <div className="space-y-3">
-        {/* No selection helper */}
+        {/* No selection helper - Phase 7.3: improved copy */}
         {totalSelectionCount === 0 && activeTab !== 'inventory' && (
           <p className="text-sm text-amber-600 flex items-center gap-2">
             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -576,40 +603,177 @@ export default function ScopeSelector({
                 clipRule="evenodd"
               />
             </svg>
-            Select at least one {activeTab === 'products' ? 'product' : 'batch'} to continue
+            Select one or more {activeTab === 'products' ? 'products' : 'batches'} to create redirect rules.
           </p>
         )}
 
-        {/* Selection summary */}
+        {/* Phase 7.3: Rich Preflight Summary Panel */}
         {totalSelectionCount > 0 && (
-          <div className="flex items-center gap-2 text-sm text-green-600">
-            <Check className="w-4 h-4" />
-            <span>
-              Creating rule for {totalSelectionCount} {scopeType === 'PRODUCT' ? (totalSelectionCount === 1 ? 'product' : 'products') : (totalSelectionCount === 1 ? 'batch' : 'batches')}
-            </span>
+          <div className={`rounded-lg border p-4 ${
+            isLargeSelection 
+              ? 'bg-green-25 border-green-100' // Softer colors for large selections
+              : 'bg-green-50 border-green-200'
+          }`}>
+            {/* Header with selection count */}
+            <div className="flex items-center gap-2 mb-3">
+              <Check className={`w-5 h-5 ${isLargeSelection ? 'text-green-500' : 'text-green-600'}`} />
+              <span className={`text-sm font-medium ${isLargeSelection ? 'text-green-700' : 'text-green-800'}`}>
+                Creating rule for {totalSelectionCount} {scopeType === 'PRODUCT' 
+                  ? (totalSelectionCount === 1 ? 'product' : 'products') 
+                  : (totalSelectionCount === 1 ? 'batch' : 'batches')}
+              </span>
+            </div>
+
+            {/* Preflight details grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+              {/* Scope type */}
+              <div className="flex items-center gap-2 text-gray-600">
+                {scopeType === 'PRODUCT' ? (
+                  <Package className="w-3.5 h-3.5 text-gray-400" />
+                ) : (
+                  <Layers className="w-3.5 h-3.5 text-gray-400" />
+                )}
+                <span>Scope: {scopeType === 'PRODUCT' ? 'Products' : 'Batches'}</span>
+              </div>
+
+              {/* Redirect URL */}
+              {formValues?.redirectUrl ? (
+                <div className="flex items-center gap-2 text-gray-600">
+                  <ExternalLink className="w-3.5 h-3.5 text-gray-400" />
+                  <span className="truncate" title={formValues.redirectUrl}>
+                    URL: {formValues.redirectUrl.length > 30 
+                      ? formValues.redirectUrl.substring(0, 30) + '...' 
+                      : formValues.redirectUrl}
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-gray-400">
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span className="italic">URL: Not set</span>
+                </div>
+              )}
+
+              {/* Reason (if set) */}
+              {formValues?.reason && (
+                <div className="flex items-center gap-2 text-gray-600">
+                  <FileText className="w-3.5 h-3.5 text-gray-400" />
+                  <span className="truncate" title={formValues.reason}>
+                    Reason: {formValues.reason.length > 25 
+                      ? formValues.reason.substring(0, 25) + '...' 
+                      : formValues.reason}
+                  </span>
+                </div>
+              )}
+
+              {/* Date range (if set) */}
+              {(formValues?.startsAt || formValues?.endsAt) && (
+                <div className="flex items-center gap-2 text-gray-600">
+                  <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                  <span>
+                    {formValues.startsAt && formValues.endsAt
+                      ? `${formatDateTime(formValues.startsAt)} → ${formatDateTime(formValues.endsAt)}`
+                      : formValues.startsAt
+                      ? `Starts: ${formatDateTime(formValues.startsAt)}`
+                      : `Ends: ${formatDateTime(formValues.endsAt)}`}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Skip behavior note */}
+            {hasConflicts ? null : (
+              <p className="text-xs text-gray-500 mt-3 pt-3 border-t border-green-100">
+                Items with existing active rules will be skipped.
+              </p>
+            )}
           </div>
         )}
 
-        {/* Conflict warning */}
+        {/* Conflict warning with skipped items */}
         {hasConflicts && (
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-            <div className="flex items-start gap-2">
-              <svg className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                <path
-                  fillRule="evenodd"
-                  d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
-                  clipRule="evenodd"
-                />
-              </svg>
-              <div className="text-sm text-amber-800">
-                <p className="font-medium">Some selected items already have active redirect rules and will be skipped.</p>
-                <p className="text-xs mt-1 text-amber-700">
-                  Skipped ({conflictCount}): {formatSkippedItems()}
-                </p>
-              </div>
-            </div>
-          </div>
+          <SkippedItemsWarning 
+            conflictCount={conflictCount} 
+            skippedItems={skippedItems}
+            isLargeSelection={isLargeSelection}
+          />
         )}
+      </div>
+    </div>
+  );
+}
+
+// Phase 7.3: Separate component for skipped items with expand/collapse
+function SkippedItemsWarning({ 
+  conflictCount, 
+  skippedItems,
+  isLargeSelection 
+}: { 
+  conflictCount: number; 
+  skippedItems: string[];
+  isLargeSelection: boolean;
+}) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  // Show first 2 items inline, rest behind toggle
+  const inlineItems = skippedItems.slice(0, 2);
+  const hiddenCount = skippedItems.length - 2;
+  const hasMoreItems = hiddenCount > 0;
+
+  return (
+    <div className={`rounded-lg p-3 ${
+      isLargeSelection 
+        ? 'bg-amber-25 border border-amber-100' 
+        : 'bg-amber-50 border border-amber-200'
+    }`}>
+      <div className="flex items-start gap-2">
+        <svg className={`w-4 h-4 mt-0.5 flex-shrink-0 ${isLargeSelection ? 'text-amber-400' : 'text-amber-500'}`} fill="currentColor" viewBox="0 0 20 20">
+          <path
+            fillRule="evenodd"
+            d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+            clipRule="evenodd"
+          />
+        </svg>
+        <div className="flex-1 min-w-0">
+          <p className={`text-sm font-medium ${isLargeSelection ? 'text-amber-700' : 'text-amber-800'}`}>
+            Some selected items already have active redirect rules and will be skipped.
+          </p>
+          
+          {/* Inline skipped items preview */}
+          <p className={`text-xs mt-1 ${isLargeSelection ? 'text-amber-600' : 'text-amber-700'}`}>
+            Skipped ({conflictCount}): {inlineItems.join(', ')}
+            {hasMoreItems && !isExpanded && (
+              <>
+                {', '}
+                <button
+                  type="button"
+                  onClick={() => setIsExpanded(true)}
+                  className="text-amber-600 hover:text-amber-800 underline"
+                >
+                  +{hiddenCount} more
+                </button>
+              </>
+            )}
+          </p>
+
+          {/* Expanded list */}
+          {isExpanded && hasMoreItems && (
+            <div className="mt-2 pt-2 border-t border-amber-200">
+              <p className="text-xs text-amber-700 mb-1">All skipped items:</p>
+              <ul className="text-xs text-amber-600 space-y-0.5">
+                {skippedItems.map((item, i) => (
+                  <li key={i}>• {item}</li>
+                ))}
+              </ul>
+              <button
+                type="button"
+                onClick={() => setIsExpanded(false)}
+                className="text-xs text-amber-600 hover:text-amber-800 underline mt-2"
+              >
+                Show less
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
