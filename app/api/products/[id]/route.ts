@@ -57,7 +57,11 @@ export async function PATCH(
 
     const { id } = await params;
     const body = await request.json();
-    const { name, sku, unitOfMeasure, reorderPoint, leadTimeDays, defaultBatchSize, wholesalePrice, strainId } = body;
+    const { 
+      name, sku, unitOfMeasure, reorderPoint, leadTimeDays, defaultBatchSize, wholesalePrice, strainId,
+      // Print settings (persisted per product)
+      labelPrintQuantity, labelWidthIn, labelHeightIn, sheetMarginTopBottomIn
+    } = body;
 
     // Check if product exists
     const existingProduct = await prisma.product.findUnique({
@@ -117,6 +121,19 @@ export async function PATCH(
           wholesalePrice: wholesalePrice !== null && wholesalePrice !== '' ? parseFloat(wholesalePrice) : null,
         }),
         ...(strainId !== undefined && { strainId: strainId || null }),
+        // Print settings (persisted per product)
+        ...(labelPrintQuantity !== undefined && {
+          labelPrintQuantity: labelPrintQuantity !== null && labelPrintQuantity !== '' ? parseInt(labelPrintQuantity, 10) : null,
+        }),
+        ...(labelWidthIn !== undefined && {
+          labelWidthIn: labelWidthIn !== null && labelWidthIn !== '' ? parseFloat(labelWidthIn) : null,
+        }),
+        ...(labelHeightIn !== undefined && {
+          labelHeightIn: labelHeightIn !== null && labelHeightIn !== '' ? parseFloat(labelHeightIn) : null,
+        }),
+        ...(sheetMarginTopBottomIn !== undefined && {
+          sheetMarginTopBottomIn: sheetMarginTopBottomIn !== null && sheetMarginTopBottomIn !== '' ? parseFloat(sheetMarginTopBottomIn) : null,
+        }),
       },
       include: {
         strain: { select: { id: true, name: true, shortCode: true } }

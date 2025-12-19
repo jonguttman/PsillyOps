@@ -1,12 +1,14 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
 interface LabelVersion {
   id: string;
   version: string;
   isActive: boolean;
   notes: string | null;
+  labelWidthIn?: number | null;
+  labelHeightIn?: number | null;
 }
 
 interface LabelTemplate {
@@ -14,6 +16,13 @@ interface LabelTemplate {
   name: string;
   entityType: string;
   versions: LabelVersion[];
+}
+
+interface ProductPrintSettings {
+  labelPrintQuantity: number | null;
+  labelWidthIn: number | null;
+  labelHeightIn: number | null;
+  sheetMarginTopBottomIn: number | null;
 }
 
 interface PrintLabelButtonProps {
@@ -25,6 +34,11 @@ interface PrintLabelButtonProps {
   // Label selection moved to Product Settings - passed in from parent
   selectedVersionId?: string;
 }
+
+// Default print settings
+const DEFAULT_MARGIN_TOP_BOTTOM = 0.5;
+const DEFAULT_LABEL_WIDTH = 2;
+const DEFAULT_LABEL_HEIGHT = 1;
 
 export default function PrintLabelButton({
   entityType,
@@ -39,7 +53,14 @@ export default function PrintLabelButton({
   // Use external version if provided, otherwise auto-select active
   const [internalVersionId, setInternalVersionId] = useState<string>('');
   const selectedVersionId = externalVersionId || internalVersionId;
+  
+  // Print settings (persisted per product)
   const [quantity, setQuantity] = useState(1);
+  const [labelWidthIn, setLabelWidthIn] = useState<number>(DEFAULT_LABEL_WIDTH);
+  const [labelHeightIn, setLabelHeightIn] = useState<number>(DEFAULT_LABEL_HEIGHT);
+  const [sheetMarginTopBottomIn, setSheetMarginTopBottomIn] = useState<number>(DEFAULT_MARGIN_TOP_BOTTOM);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  
   const [sheetSvgs, setSheetSvgs] = useState<string[]>([]);
   const [sheetMeta, setSheetMeta] = useState<{
     perSheet: number;
@@ -52,6 +73,7 @@ export default function PrintLabelButton({
   const [isLoading, setIsLoading] = useState(false);
   const [isRendering, setIsRendering] = useState(false);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showReprintModal, setShowReprintModal] = useState(false);
   const [paperUsedOnReprint, setPaperUsedOnReprint] = useState(false);
@@ -65,7 +87,6 @@ export default function PrintLabelButton({
 
   const getPreviewSvg = (sheetSvg: string) => {
     // Screen preview should be responsive; printing/download must keep exact physical sizing.
-    // We do this by adding CSS sizing + preserveAspectRatio on the outer <svg> only.
     return sheetSvg.replace(/<svg\b([^>]*)>/i, (match, attrs) => {
       const hasPreserve = /\bpreserveAspectRatio=/.test(attrs);
       const styleMatch = attrs.match(/\bstyle="([^"]*)"/i);
@@ -79,14 +100,76 @@ export default function PrintLabelButton({
     });
   };
 
+  // Save print settings to product
+  const savePrintSettings = useCallback(async () => {
+    if (entityType !== 'PRODUCT') return; // Only save for products
+    
+    setIsSavingSettings(true);
+    try {
+      await fetch(`/api/products/${entityId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          labelPrintQuantity: quantity,
+          labelWidthIn,
+          labelHeightIn,
+          sheetMarginTopBottomIn,
+        })
+      });
+    } catch (err) {
+      console.error('Failed to save print settings:', err);
+    } finally {
+      setIsSavingSettings(false);
+    }
+  }, [entityType, entityId, quantity, labelWidthIn, labelHeightIn, sheetMarginTopBottomIn]);
+
+  // Load saved print settings from product
+  const loadPrintSettings = useCallback(async () => {
+    if (entityType !== 'PRODUCT') {
+      setSettingsLoaded(true);
+      return;
+    }
+    
+    try {
+      const res = await fetch(`/api/products/${entityId}`);
+      if (res.ok) {
+        const product = await res.json();
+        const settings: ProductPrintSettings = {
+          labelPrintQuantity: product.labelPrintQuantity,
+          labelWidthIn: product.labelWidthIn,
+          labelHeightIn: product.labelHeightIn,
+          sheetMarginTopBottomIn: product.sheetMarginTopBottomIn,
+        };
+        
+        // Apply saved settings (fall back to defaults if null)
+        if (settings.labelPrintQuantity !== null) {
+          setQuantity(settings.labelPrintQuantity);
+        }
+        if (settings.labelWidthIn !== null) {
+          setLabelWidthIn(settings.labelWidthIn);
+        }
+        if (settings.labelHeightIn !== null) {
+          setLabelHeightIn(settings.labelHeightIn);
+        }
+        if (settings.sheetMarginTopBottomIn !== null) {
+          setSheetMarginTopBottomIn(settings.sheetMarginTopBottomIn);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load print settings:', err);
+    } finally {
+      setSettingsLoaded(true);
+    }
+  }, [entityType, entityId]);
+
   // Fetch available templates when modal opens
   useEffect(() => {
     if (isOpen) {
       fetchTemplates();
-      // Fetch product barcode info for guardrails
+      loadPrintSettings();
       checkBarcodeRequirements();
     }
-  }, [isOpen]);
+  }, [isOpen, loadPrintSettings]);
   
   // Check barcode requirements when version changes
   useEffect(() => {
@@ -94,6 +177,24 @@ export default function PrintLabelButton({
       checkBarcodeRequirements();
     }
   }, [selectedVersionId]);
+  
+  // Update label size from template version defaults when version changes
+  useEffect(() => {
+    if (selectedVersionId && templates.length > 0 && settingsLoaded) {
+      const allVersions = templates.flatMap(t => t.versions);
+      const version = allVersions.find(v => v.id === selectedVersionId);
+      if (version) {
+        // Only use template defaults if no saved settings exist
+        // (settingsLoaded ensures we've already tried to load from product)
+        if (version.labelWidthIn && labelWidthIn === DEFAULT_LABEL_WIDTH) {
+          setLabelWidthIn(version.labelWidthIn);
+        }
+        if (version.labelHeightIn && labelHeightIn === DEFAULT_LABEL_HEIGHT) {
+          setLabelHeightIn(version.labelHeightIn);
+        }
+      }
+    }
+  }, [selectedVersionId, templates, settingsLoaded]);
   
   // Check if label has barcode elements and if product has barcode value
   const checkBarcodeRequirements = async () => {
@@ -108,7 +209,6 @@ export default function PrintLabelButton({
       const versionRes = await fetch(`/api/labels/versions/${selectedVersionId}`);
       if (versionRes.ok) {
         const versionData = await versionRes.json();
-        // Elements are at the top level of the response
         const elements = versionData.elements || [];
         const hasBarcode = elements.some((el: { type: string }) => el.type === 'BARCODE');
         setLabelHasBarcode(hasBarcode);
@@ -119,14 +219,12 @@ export default function PrintLabelButton({
         const productRes = await fetch(`/api/products/${entityId}`);
         if (productRes.ok) {
           const productData = await productRes.json();
-          // barcodeValue defaults to SKU if not set
           const resolvedBarcode = productData.barcodeValue ?? productData.sku ?? null;
           setProductBarcodeValue(resolvedBarcode);
         }
       } else {
-        // For BATCH/INVENTORY, we'd need to fetch the linked product
-        // For now, assume barcode is available through the entity chain
-        setProductBarcodeValue(entityCode); // Use entityCode as fallback
+        // For BATCH/INVENTORY, assume barcode is available through the entity chain
+        setProductBarcodeValue(entityCode);
       }
     } catch (err) {
       console.error('Failed to check barcode requirements:', err);
@@ -177,6 +275,9 @@ export default function PrintLabelButton({
     setSheetSvgs([]);
     setSheetMeta(null);
 
+    // Save print settings when user previews
+    await savePrintSettings();
+
     try {
       const response = await fetch('/api/labels/render-letter-sheets', {
         method: 'POST',
@@ -211,8 +312,11 @@ export default function PrintLabelButton({
     }
   };
 
-  const handlePrint = (isReprint = false) => {
+  const handlePrint = async (isReprint = false) => {
     if (!sheetSvgs.length || !printContainerRef.current) return;
+
+    // Save print settings when user prints
+    await savePrintSettings();
 
     // If this is a reprint, show confirmation modal
     if (isReprint && printJobId) {
@@ -227,7 +331,6 @@ export default function PrintLabelButton({
   const executePrint = () => {
     if (!sheetSvgs.length) return;
 
-    // Create a new window for printing
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
       setError('Unable to open print window. Please allow popups.');
@@ -282,7 +385,6 @@ export default function PrintLabelButton({
 
     try {
       if (paperUsedOnReprint && printJobId && sheetMeta) {
-        // Mark paper as used
         await fetch(`/api/print-jobs/${printJobId}/mark-paper-used`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -290,7 +392,6 @@ export default function PrintLabelButton({
         });
       }
 
-      // Close modal and print
       setShowReprintModal(false);
       setPaperUsedOnReprint(false);
       executePrint();
@@ -311,13 +412,17 @@ export default function PrintLabelButton({
     setIsDownloadingPdf(true);
     setError(null);
 
+    // Save print settings when user downloads PDF
+    await savePrintSettings();
+
     try {
       const response = await fetch(`/api/labels/versions/${selectedVersionId}/sheet-pdf`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           quantity,
-          // Pass entity info for barcode rendering (product.barcodeValue ?? product.sku)
+          labelWidthIn,
+          labelHeightIn,
           entityType,
           entityId,
         })
@@ -328,7 +433,6 @@ export default function PrintLabelButton({
         throw new Error(data.error || 'Failed to generate PDF');
       }
 
-      // Download the PDF blob
       const blob = await response.blob();
       const safe = entityCode.replace(/[^a-z0-9]/gi, '_');
       const url = URL.createObjectURL(blob);
@@ -357,6 +461,9 @@ export default function PrintLabelButton({
   
   // Barcode guardrail: block printing if label has barcode but product doesn't have one
   const isBarcodeBlocked = labelHasBarcode && !productBarcodeValue;
+
+  // Calculate sheets needed based on quantity and current layout
+  const sheetsNeeded = sheetMeta ? Math.ceil(quantity / sheetMeta.perSheet) : null;
 
   return (
     <>
@@ -439,7 +546,7 @@ export default function PrintLabelButton({
                   <div className="grid grid-cols-2 gap-6">
                     {/* Controls */}
                     <div className="space-y-4">
-                      {/* Label selection only shown if not provided externally (from Product Settings) */}
+                      {/* Label selection only shown if not provided externally */}
                       {!externalVersionId && (
                         <div>
                           <label htmlFor="version" className="block text-sm font-medium text-gray-700">
@@ -482,6 +589,17 @@ export default function PrintLabelButton({
                         </div>
                       )}
 
+                      {/* Print Settings Section Header */}
+                      <div className="border-t pt-4 mt-4">
+                        <h4 className="text-sm font-medium text-gray-700 mb-3">
+                          Print settings
+                          {entityType === 'PRODUCT' && (
+                            <span className="font-normal text-gray-500 ml-1">(saved per product)</span>
+                          )}
+                        </h4>
+                      </div>
+
+                      {/* Quantity */}
                       <div>
                         <label htmlFor="quantity" className="block text-sm font-medium text-gray-700">
                           Quantity
@@ -490,12 +608,86 @@ export default function PrintLabelButton({
                           type="number"
                           id="quantity"
                           min="1"
-                          max="100"
+                          max="1000"
                           value={quantity}
-                          onChange={(e) => setQuantity(Math.min(100, Math.max(1, parseInt(e.target.value) || 1)))}
+                          onChange={(e) => {
+                            setQuantity(Math.min(1000, Math.max(1, parseInt(e.target.value) || 1)));
+                            setSheetSvgs([]);
+                            setSheetMeta(null);
+                          }}
                           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                         />
-                        <p className="mt-1 text-xs text-gray-500">Max 100 labels per print</p>
+                        {sheetMeta && (
+                          <p className="mt-1 text-xs text-gray-500">
+                            {sheetMeta.perSheet} labels/sheet → {sheetsNeeded} sheet{sheetsNeeded !== 1 ? 's' : ''} needed
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Label Size */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label htmlFor="labelWidth" className="block text-sm font-medium text-gray-700">
+                            Label Width (in)
+                          </label>
+                          <input
+                            type="number"
+                            id="labelWidth"
+                            min="0.5"
+                            max="8"
+                            step="0.125"
+                            value={labelWidthIn}
+                            onChange={(e) => {
+                              setLabelWidthIn(Math.min(8, Math.max(0.5, parseFloat(e.target.value) || DEFAULT_LABEL_WIDTH)));
+                              setSheetSvgs([]);
+                              setSheetMeta(null);
+                            }}
+                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="labelHeight" className="block text-sm font-medium text-gray-700">
+                            Label Height (in)
+                          </label>
+                          <input
+                            type="number"
+                            id="labelHeight"
+                            min="0.5"
+                            max="10"
+                            step="0.125"
+                            value={labelHeightIn}
+                            onChange={(e) => {
+                              setLabelHeightIn(Math.min(10, Math.max(0.5, parseFloat(e.target.value) || DEFAULT_LABEL_HEIGHT)));
+                              setSheetSvgs([]);
+                              setSheetMeta(null);
+                            }}
+                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Top/Bottom Margin */}
+                      <div>
+                        <label htmlFor="marginTopBottom" className="block text-sm font-medium text-gray-700">
+                          Top/Bottom Margin (in)
+                        </label>
+                        <input
+                          type="number"
+                          id="marginTopBottom"
+                          min="0.25"
+                          max="1"
+                          step="0.125"
+                          value={sheetMarginTopBottomIn}
+                          onChange={(e) => {
+                            setSheetMarginTopBottomIn(Math.min(1, Math.max(0.25, parseFloat(e.target.value) || DEFAULT_MARGIN_TOP_BOTTOM)));
+                            setSheetSvgs([]);
+                            setSheetMeta(null);
+                          }}
+                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                        />
+                        <p className="mt-1 text-xs text-gray-500">
+                          Left/right margins are maximized automatically
+                        </p>
                       </div>
 
                       <button
@@ -522,6 +714,9 @@ export default function PrintLabelButton({
                           <div>Layout: {sheetMeta.columns}×{sheetMeta.rows} ({sheetMeta.perSheet}/sheet)</div>
                           <div>Rotation: {sheetMeta.rotationUsed ? '90°' : 'none'}</div>
                           <div>Sheets: {sheetSvgs.length}</div>
+                          {isSavingSettings && (
+                            <div className="text-blue-600 mt-1">Saving settings...</div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -682,4 +877,3 @@ export default function PrintLabelButton({
     </>
   );
 }
-

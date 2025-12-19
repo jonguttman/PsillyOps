@@ -225,6 +225,12 @@ model Product {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   
+  // Print settings (persisted per product, used in Print Labels modal)
+  labelPrintQuantity      Int?    // Preferred number of labels per print run
+  labelWidthIn            Float?  // Preferred label width in inches for printing
+  labelHeightIn           Float?  // Preferred label height in inches for printing
+  sheetMarginTopBottomIn  Float?  // Preferred top/bottom margin in inches (default 0.5)
+  
   // Relations
   strain            Strain?  @relation(fields: [strainId], references: [id])
   bom               BOMItem[]
