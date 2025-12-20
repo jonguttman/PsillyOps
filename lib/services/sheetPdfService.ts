@@ -207,6 +207,9 @@ export async function renderSheetPdfBuffer(params: SheetPdfParams): Promise<Shee
     marginIn: LETTER_MARGIN_IN,
     decorations,
     uniqueLabels: true, // CRITICAL: Each label has a unique QR token
+    // Pass dimension overrides if provided
+    labelWidthInOverride: labelWidthIn,
+    labelHeightInOverride: labelHeightIn,
   });
   
   // Step 5: Convert each sheet SVG to PNG

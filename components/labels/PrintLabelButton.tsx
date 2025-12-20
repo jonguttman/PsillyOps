@@ -302,6 +302,9 @@ export default function PrintLabelButton({
           entityType,
           entityId,
           quantity: validation.clampedQuantity,
+          labelWidthIn,
+          labelHeightIn,
+          marginIn: sheetMarginTopBottomIn,
         })
       });
 

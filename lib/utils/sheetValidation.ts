@@ -132,18 +132,40 @@ export function validateSheetConfig(params: {
   
   // === HARD VALIDATION (Blocking) ===
   
-  // Label width validation
+  // Label dimension validation - check if label can fit in EITHER orientation
+  // A label can be rotated 90°, so we check both orientations
+  const minDimension = Math.min(labelWidthIn, labelHeightIn);
+  const maxDimension = Math.max(labelWidthIn, labelHeightIn);
+  
+  // Label width validation (basic)
   if (labelWidthIn <= 0) {
     errors.push({ field: 'labelWidthIn', message: 'Label width must be greater than 0' });
-  } else if (labelWidthIn > MAX_LABEL_WIDTH_IN) {
-    errors.push({ field: 'labelWidthIn', message: `Label width cannot exceed ${MAX_LABEL_WIDTH_IN} inches` });
   }
   
-  // Label height validation
+  // Label height validation (basic)
   if (labelHeightIn <= 0) {
     errors.push({ field: 'labelHeightIn', message: 'Label height must be greater than 0' });
-  } else if (labelHeightIn > MAX_LABEL_HEIGHT_IN) {
-    errors.push({ field: 'labelHeightIn', message: `Label height cannot exceed ${MAX_LABEL_HEIGHT_IN} inches` });
+  }
+  
+  // Check if label can fit on sheet in ANY orientation
+  // The smaller dimension must fit within usable width (8.5" - margins)
+  // The larger dimension must fit within usable height (11" - margins)
+  if (labelWidthIn > 0 && labelHeightIn > 0) {
+    const usableWidth = LETTER_WIDTH_IN - (2 * MIN_MARGIN_IN); // ~8" with min margins
+    const usableHeight = LETTER_HEIGHT_IN - (2 * DEFAULT_MARGIN_TOP_BOTTOM_IN); // ~10" with default margins
+    
+    // Check if it fits in normal orientation OR rotated
+    const fitsNormal = labelWidthIn <= usableWidth && labelHeightIn <= usableHeight;
+    const fitsRotated = labelHeightIn <= usableWidth && labelWidthIn <= usableHeight;
+    
+    if (!fitsNormal && !fitsRotated) {
+      // Label doesn't fit in either orientation - provide specific error
+      if (maxDimension > MAX_LABEL_HEIGHT_IN) {
+        errors.push({ field: 'labelSize', message: `Label dimension ${maxDimension}" exceeds maximum sheet dimension of ${MAX_LABEL_HEIGHT_IN}"` });
+      } else if (minDimension > usableWidth) {
+        errors.push({ field: 'labelSize', message: `Label is too large to fit on sheet even when rotated` });
+      }
+    }
   }
   
   // Margin validation

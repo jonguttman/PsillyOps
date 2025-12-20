@@ -37,11 +37,14 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { versionId, entityType, entityId, quantity = 1 } = body as {
+    const { versionId, entityType, entityId, quantity = 1, labelWidthIn, labelHeightIn, marginIn } = body as {
       versionId?: string;
       entityType: EntityType;
       entityId: string;
       quantity: number;
+      labelWidthIn?: number;
+      labelHeightIn?: number;
+      marginIn?: number;
     };
 
     if (!entityType || !VALID_ENTITY_TYPES.includes(entityType)) {
@@ -88,7 +91,13 @@ export async function POST(req: NextRequest) {
       baseUrl
     });
 
-    const { sheets, meta } = composeLetterSheetsFromLabelSvgs({ labelSvgs: rendered.svgs });
+    const { sheets, meta } = composeLetterSheetsFromLabelSvgs({ 
+      labelSvgs: rendered.svgs,
+      marginIn,
+      labelWidthInOverride: labelWidthIn,
+      labelHeightInOverride: labelHeightIn,
+    });
+    // #endregion
 
     // Create print job record
     const printJob = await createPrintJob({

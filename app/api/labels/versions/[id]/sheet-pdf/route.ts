@@ -70,9 +70,10 @@ export async function POST(
     const { quantity, elements, labelWidthIn, labelHeightIn, decorations, entityType, entityId } = body;
     
     // entityType and entityId are REQUIRED for QR token generation
+    // PDF generation creates real QR tokens that must be linked to an entity
     if (!entityType || !entityId) {
       return NextResponse.json(
-        { error: 'entityType and entityId are required for PDF generation' },
+        { error: 'PDF generation requires entity context. Please access this from a Product or Batch page to generate printable labels with unique QR codes.' },
         { status: 400 }
       );
     }

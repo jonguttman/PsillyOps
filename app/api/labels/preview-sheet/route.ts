@@ -68,10 +68,12 @@ export async function POST(req: Request) {
     }
 
     // Parse label size overrides (render-time only, non-destructive)
+    // Note: Allow dimensions up to MAX_LABEL_HEIGHT_IN (11") since labels can be rotated
+    // The actual fit check happens in validateSheetConfig which considers rotation
     let parsedLabelWidthIn: number | undefined;
     if (labelWidthIn !== undefined) {
       const w = parseFloat(labelWidthIn);
-      if (!isNaN(w) && w > 0 && w <= MAX_LABEL_WIDTH_IN) parsedLabelWidthIn = w;
+      if (!isNaN(w) && w > 0 && w <= MAX_LABEL_HEIGHT_IN) parsedLabelWidthIn = w;
     }
 
     let parsedLabelHeightIn: number | undefined;

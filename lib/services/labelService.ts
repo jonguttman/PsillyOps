@@ -791,6 +791,7 @@ export async function renderLabelsShared(params: RenderLabelsParams): Promise<Re
   
   // Check if label has BARCODE elements - if so, barcode value is required (print flow enforcement)
   const hasBarcodeElement = elements.some(el => el.type === 'BARCODE');
+  
   if (hasBarcodeElement && !barcodeValue) {
     throw new AppError(ErrorCodes.INVALID_INPUT, 'Barcode required but missing for this product. Set a barcode value in Product Settings.');
   }
@@ -1475,6 +1476,10 @@ export function composeLetterSheetsFromLabelSvgs(params: {
   decorations?: SheetDecorations;
   /** If true, each label SVG is unique (e.g., unique QR tokens) and must be embedded individually */
   uniqueLabels?: boolean;
+  /** Optional override for label width in inches (for custom sizing) */
+  labelWidthInOverride?: number;
+  /** Optional override for label height in inches (for custom sizing) */
+  labelHeightInOverride?: number;
 }): { sheets: string[]; meta: LetterSheetLayoutMeta } {
   const { 
     labelSvgs, 
@@ -1482,6 +1487,8 @@ export function composeLetterSheetsFromLabelSvgs(params: {
     marginIn = LETTER_MARGIN_IN,
     decorations = DEFAULT_SHEET_DECORATIONS,
     uniqueLabels = false,
+    labelWidthInOverride,
+    labelHeightInOverride,
   } = params;
   if (!labelSvgs.length) {
     return {
@@ -1499,7 +1506,10 @@ export function composeLetterSheetsFromLabelSvgs(params: {
   }
 
   const first = labelSvgs[0];
-  const { widthIn: labelWidthIn, heightIn: labelHeightIn } = getSvgPhysicalSizeInches(first);
+  const svgDimensions = getSvgPhysicalSizeInches(first);
+  // Use override dimensions if provided, otherwise use SVG's native dimensions
+  const labelWidthIn = labelWidthInOverride ?? svgDimensions.widthIn;
+  const labelHeightIn = labelHeightInOverride ?? svgDimensions.heightIn;
   const viewBox = extractViewBox(first);
 
   const layout = computeLetterSheetLayout(labelWidthIn, labelHeightIn, orientation, marginIn);
@@ -1533,17 +1543,73 @@ export function composeLetterSheetsFromLabelSvgs(params: {
   const templateVb = extractViewBox(prefixedTemplate) || viewBox;
   
   // Parse template viewBox to compute scaling factor
-  // The sheet uses inches as viewBox units, but the label uses its own viewBox units
+  // The sheet uses inches as viewBox units, but the label SVG uses pixel-based viewBox
   // We need to scale the label content to fit in labelWidthIn x labelHeightIn inches
+  // 
+  // The label SVG has:
+  //   - viewBox in pixels (e.g., "0 0 647 120")
+  //   - width/height in inches (e.g., width="6.74in" height="1.25in")
+  // 
+  // To embed in the sheet (which uses inches as viewBox units), we need:
+  //   scaleX = (targetWidthIn / svgWidthIn) * (svgWidthIn_pixels / vbW_pixels)
+  //          = targetWidthIn / vbW * (vbW / svgWidthIn_pixels) * svgWidthIn_pixels / vbW
+  //          = targetWidthIn / svgWidthIn * (1 / DPI_factor)
+  // 
+  // Simpler: Since sheet viewBox is in inches, and we want the label to appear at
+  // labelWidthIn x labelHeightIn inches, we scale from SVG's native inch size to target inch size,
+  // then convert the viewBox units to inches.
   let scaleX = 1;
   let scaleY = 1;
   if (templateVb) {
     const vbParts = templateVb.split(/\s+/).map(parseFloat);
     if (vbParts.length >= 4) {
       const [, , vbW, vbH] = vbParts;
-      // Scale from label viewBox units to inches (sheet viewBox uses inches)
+      // The SVG's native size in inches is svgDimensions.widthIn x svgDimensions.heightIn
+      // Its viewBox is vbW x vbH (in pixels, typically at 96 DPI)
+      // To render at labelWidthIn x labelHeightIn inches in a sheet with inch-based viewBox:
+      // 
+      // Scale = (targetInches / viewBoxPixels) = targetInches * (DPI / viewBoxPixels)
+      // But we need to account for the SVG's own scaling: viewBoxPixels / nativeInches = DPI
+      // So: Scale = targetInches / nativeInches * (nativeInches / viewBoxPixels)
+      //           = targetInches / viewBoxPixels * (viewBoxPixels / nativeInches) / (viewBoxPixels / nativeInches)
+      //           = targetInches / nativeInches * nativeInches / viewBoxPixels
+      //           = targetInches / viewBoxPixels
+      // 
+      // Wait, that's what we had. The issue is the sheet viewBox is in inches, so we need:
+      // Scale = targetInches * (pixels_per_inch / viewBoxPixels)
+      // 
+      // Actually, the correct formula: the label content is in viewBox units (pixels).
+      // To place it in a sheet with viewBox in inches, we need to convert:
+      // scaleX = labelWidthIn / vbW means 1 viewBox unit = (labelWidthIn/vbW) inches
+      // But that makes the label way too small because vbW is ~647 pixels.
+      //
+      // The FIX: We should use the SVG's native inch dimensions to get the implicit DPI,
+      // then scale from that to the target dimensions.
+      // Native DPI = vbW / svgDimensions.widthIn
+      // To render at labelWidthIn inches: scale = labelWidthIn / svgDimensions.widthIn
+      // Then convert viewBox units to sheet inches: multiply by (svgDimensions.widthIn / vbW)
+      // Combined: scale = (labelWidthIn / svgDimensions.widthIn) * (svgDimensions.widthIn / vbW)
+      //                 = labelWidthIn / vbW  <-- still wrong!
+      //
+      // The REAL issue: The sheet viewBox should NOT be in inches if we're embedding pixel-based content.
+      // OR we need to embed the label as a nested <svg> with its own viewBox, not as raw content.
+      //
+      // CORRECT APPROACH: Scale the content so that vbW pixels = labelWidthIn inches
+      // In a sheet with viewBox "0 0 8.5 11" (inches), to make something appear labelWidthIn inches wide,
+      // we need it to span labelWidthIn units in the viewBox.
+      // The label content spans vbW units in its own coordinate system.
+      // So we scale by: labelWidthIn / vbW (this is what we had)
+      //
+      // BUT the label content coordinates are in pixels, and we're placing them in an inch-based system.
+      // So 1 pixel in the label = (labelWidthIn / vbW) inches in the sheet.
+      // This IS correct mathematically, but the scale factor ~0.014 is tiny because vbW is large.
+      //
+      // The label content at scale 0.014 would be 647 * 0.014 = 9 inches wide. That's correct!
+      // The problem must be elsewhere - maybe the transform isn't being applied correctly.
+      
       scaleX = labelWidthIn / vbW;
       scaleY = labelHeightIn / vbH;
+      
     }
   }
 
@@ -1592,16 +1658,29 @@ export function composeLetterSheetsFromLabelSvgs(params: {
         const prefixedLabel = prefixSvgIds(labelSvg, `label_${labelIndex}`);
         const labelInner = stripOuterSvg(prefixedLabel);
         
+        
+        // Get the label's viewBox for proper nested SVG sizing
+        const labelVb = extractViewBox(labelSvg);
+        const vbParts = labelVb ? labelVb.split(/\s+/).map(parseFloat) : [0, 0, 100, 100];
+        const [vbMinX, vbMinY, vbW, vbH] = vbParts.length >= 4 ? vbParts : [0, 0, 100, 100];
+        
+        // Use nested <svg> with viewBox for proper scaling - more robust than <g> with scale transform
+        // This lets the SVG renderer handle the scaling internally which works better with resvg
+        // Parent viewBox is in inches (0 0 8.5 11), so child positions/sizes are in the same unit space
         if (layout.rotationUsed) {
+          // For rotated labels: wrap in a <g> for rotation, use nested <svg> for scaling
+          // The nested SVG is labelWidthIn x labelHeightIn, positioned and rotated
           labelContent += `
-    <g transform="translate(${x + labelHeightIn}, ${y}) rotate(90) scale(${scaleX}, ${scaleY})">
-      ${labelInner}
+    <g transform="translate(${x + labelHeightIn}, ${y}) rotate(90)">
+      <svg width="${labelWidthIn}" height="${labelHeightIn}" viewBox="${vbMinX} ${vbMinY} ${vbW} ${vbH}" preserveAspectRatio="none" overflow="visible">
+        ${labelInner}
+      </svg>
     </g>`;
         } else {
           labelContent += `
-    <g transform="translate(${x}, ${y}) scale(${scaleX}, ${scaleY})">
+    <svg x="${x}" y="${y}" width="${labelWidthIn}" height="${labelHeightIn}" viewBox="${vbMinX} ${vbMinY} ${vbW} ${vbH}" preserveAspectRatio="none" overflow="visible">
       ${labelInner}
-    </g>`;
+    </svg>`;
         }
       }
       
