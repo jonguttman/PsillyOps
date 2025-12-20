@@ -90,25 +90,35 @@ const DEFAULT_QR_SIZE_LARGE_IN = 0.75; // For labels >= 2in wide
 const DEFAULT_QR_SIZE_SMALL_IN = 0.5;  // For labels < 2in wide
 const DEFAULT_QR_MARGIN_IN = 0.125;
 
-export type RenderMode = 'embedded' | 'token';
+/**
+ * Render mode for label generation:
+ * - 'embedded': Uses provided QR payload (legacy)
+ * - 'token': Creates unique QR tokens per label (production print)
+ * - 'preview': Uses placeholder QR codes (design-time preview, no entity required)
+ */
+export type RenderMode = 'embedded' | 'token' | 'preview';
 
 export interface RenderLabelsParams {
   mode: RenderMode;
   versionId: string;
-  entityType: LabelEntityType;
-  entityId: string;
   quantity: number;
+  // Entity context - REQUIRED for 'token' and 'embedded' modes, OPTIONAL for 'preview'
+  entityType?: LabelEntityType;
+  entityId?: string;
   userId?: string;
   // For embedded mode
   qrPayload?: QRPayload;
   // For token mode (tokens are created internally)
   baseUrl?: string;
+  // For preview mode - custom QR payload text (defaults to PREVIEW-QR-NOT-ACTIVE)
+  previewQrPayload?: string;
 }
 
 export interface RenderLabelsResult {
   svgs: string[];
-  entityType: LabelEntityType;
-  entityId: string;
+  // Entity info - may be undefined in preview mode
+  entityType?: LabelEntityType;
+  entityId?: string;
   entityCode: string;
   versionId: string;
   // Only present in token mode
@@ -747,10 +757,22 @@ async function generateQrSvgFromUrl(url: string): Promise<string> {
 // ========================================
 
 /**
- * Shared helper for rendering labels in different modes
+ * Shared helper for rendering labels in different modes:
+ * 
+ * - 'embedded': Uses provided QR payload (legacy)
+ * - 'token': Creates unique QR tokens per label (production print)
+ * - 'preview': Uses placeholder QR codes (design-time preview, no entity required)
  */
 export async function renderLabelsShared(params: RenderLabelsParams): Promise<RenderLabelsResult> {
-  const { mode, versionId, entityType, entityId, quantity, userId, qrPayload, baseUrl } = params;
+  const { mode, versionId, entityType, entityId, quantity, userId, qrPayload, baseUrl, previewQrPayload } = params;
+
+  // Mode-specific validation
+  if (mode === 'token' || mode === 'embedded') {
+    if (!entityType || !entityId) {
+      throw new AppError(ErrorCodes.INVALID_INPUT, `entityType and entityId are required for ${mode} mode`);
+    }
+  }
+  // Preview mode does NOT require entity context
 
   const version = await prisma.labelTemplateVersion.findUnique({
     where: { id: versionId },
@@ -761,18 +783,24 @@ export async function renderLabelsShared(params: RenderLabelsParams): Promise<Re
     throw new AppError(ErrorCodes.NOT_FOUND, 'Label version not found');
   }
 
-  // Get entity code and barcode value
-  let entityCode: string;
+  // Get entity code and barcode value (only for non-preview modes)
+  let entityCode: string = 'PREVIEW';
   let barcodeValue: string | undefined;
-  try {
-    entityCode = await getEntityCode(entityType, entityId);
-  } catch (err) {
-    throw err;
-  }
-  try {
-    barcodeValue = await getEntityBarcodeValue(entityType, entityId);
-  } catch (err) {
-    throw err;
+  
+  if (mode !== 'preview' && entityType && entityId) {
+    try {
+      entityCode = await getEntityCode(entityType, entityId);
+    } catch (err) {
+      throw err;
+    }
+    try {
+      barcodeValue = await getEntityBarcodeValue(entityType, entityId);
+    } catch (err) {
+      throw err;
+    }
+  } else if (mode === 'preview') {
+    // Preview mode uses sample barcode value
+    barcodeValue = 'SAMPLE-BARCODE';
   }
 
   // Load the SVG template
@@ -789,14 +817,34 @@ export async function renderLabelsShared(params: RenderLabelsParams): Promise<Re
   // Get elements (or create default if none exist)
   const elements = getElementsOrDefault(version.elements as PlaceableElement[] | null, svgTemplate);
   
-  // Check if label has BARCODE elements - if so, barcode value is required (print flow enforcement)
+  // Check if label has BARCODE elements - if so, barcode value is required (except in preview mode)
   const hasBarcodeElement = elements.some(el => el.type === 'BARCODE');
   
-  if (hasBarcodeElement && !barcodeValue) {
+  if (mode !== 'preview' && hasBarcodeElement && !barcodeValue) {
     throw new AppError(ErrorCodes.INVALID_INPUT, 'Barcode required but missing for this product. Set a barcode value in Product Settings.');
   }
 
-  if (mode === 'embedded') {
+  // Handle each mode
+  if (mode === 'preview') {
+    // PREVIEW MODE: Use placeholder QR codes, no tokens created
+    // This is for design-time preview in the label editor
+    const previewPayload = previewQrPayload || 'PREVIEW-QR-NOT-ACTIVE';
+    const qrSvg = await generateQrSvgFromUrl(previewPayload);
+    
+    // Use editor preview mode for barcode (sample value)
+    const svg = injectElements(svgTemplate, elements, qrSvg, barcodeValue, true);
+    
+    // All labels are identical in preview mode
+    const svgs = Array(quantity).fill(svg);
+    
+    return {
+      svgs,
+      entityType,
+      entityId,
+      entityCode,
+      versionId
+    };
+  } else if (mode === 'embedded') {
     if (!qrPayload) {
       throw new AppError(ErrorCodes.INVALID_INPUT, 'qrPayload required for embedded mode');
     }
@@ -816,7 +864,7 @@ export async function renderLabelsShared(params: RenderLabelsParams): Promise<Re
       versionId
     };
   } else {
-    // Token mode: Create unique tokens and render each label
+    // TOKEN MODE: Create unique tokens and render each label
     if (!baseUrl) {
       throw new AppError(ErrorCodes.INVALID_INPUT, 'baseUrl required for token mode');
     }
@@ -824,8 +872,8 @@ export async function renderLabelsShared(params: RenderLabelsParams): Promise<Re
     const { createTokenBatch, buildTokenUrl } = await import('./qrTokenService');
 
     const createdTokens = await createTokenBatch({
-      entityType,
-      entityId,
+      entityType: entityType!,
+      entityId: entityId!,
       versionId,
       quantity,
       userId
@@ -1010,11 +1058,19 @@ function injectElements(
         qrInner = qrInner.replace(/<rect[^>]*fill="#FFFFFF"[^>]*\/?>/i, '');
         qrInner = qrInner.replace(/<rect[^>]*fill="white"[^>]*\/?>/i, '');
       }
+      
+      // Add "SAMPLE" watermark for preview mode to prevent accidental use
+      const watermark = isEditorPreview ? `
+        <rect x="0" y="${(qrVbSize * 0.4).toFixed(1)}" width="${qrVbSize}" height="${(qrVbSize * 0.2).toFixed(1)}" fill="white" fill-opacity="0.85"/>
+        <text x="${(qrVbSize / 2).toFixed(1)}" y="${(qrVbSize * 0.55).toFixed(1)}" 
+              font-family="Arial, sans-serif" font-size="${(qrVbSize * 0.15).toFixed(1)}" font-weight="bold" 
+              fill="#CC0000" text-anchor="middle" dominant-baseline="middle">SAMPLE</text>
+      ` : '';
 
       injectedContent += `
   <g ${rotateAttr}>
     <svg x="${x.toFixed(3)}" y="${y.toFixed(3)}" width="${w.toFixed(3)}" height="${h.toFixed(3)}"${qrVbSize ? ` viewBox="0 0 ${qrVbSize} ${qrVbSize}"` : ''} shape-rendering="crispEdges">
-      ${qrInner}
+      ${qrInner}${watermark}
     </svg>
   </g>`;
     } else if (el.type === 'BARCODE' && el.barcode) {

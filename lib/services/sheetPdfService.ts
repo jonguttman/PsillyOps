@@ -42,6 +42,16 @@ const PAGE_HEIGHT_PT = LETTER_HEIGHT_IN * POINTS_PER_INCH; // 792
 // Maximum labels to prevent abuse
 const MAX_LABELS = 2000;
 
+// Preview QR payload - non-routable, clearly marked as preview
+const PREVIEW_QR_PAYLOAD = 'PREVIEW-QR-NOT-ACTIVE';
+
+/**
+ * PDF generation mode:
+ * - 'preview': Design-time preview, uses placeholder QR codes, no entity context required
+ * - 'token': Production printing, generates unique QR tokens, entity context REQUIRED
+ */
+export type PdfRenderMode = 'preview' | 'token';
+
 export interface SheetPdfParams {
   versionId: string;
   quantity: number;
@@ -49,10 +59,16 @@ export interface SheetPdfParams {
   labelWidthIn?: number;
   labelHeightIn?: number;
   decorations?: SheetDecorations;
-  // REQUIRED entity info for token generation and barcode rendering
-  entityType: LabelEntityType;
-  entityId: string;
-  // Optional user ID for audit trail
+  /**
+   * PDF render mode - MUST be explicitly set by caller
+   * - 'preview': Label setup/editor preview, placeholder QR codes
+   * - 'token': Production print, unique QR tokens per label
+   */
+  mode: PdfRenderMode;
+  // Entity info - REQUIRED when mode === 'token', ignored when mode === 'preview'
+  entityType?: LabelEntityType;
+  entityId?: string;
+  // Optional user ID for audit trail (only used in token mode)
   userId?: string;
 }
 
@@ -126,15 +142,19 @@ function createPdfFromPngs(pngBuffers: Buffer[]): Promise<Buffer> {
 /**
  * Generates a print-ready PDF buffer from sheet parameters.
  * 
- * IMPORTANT: This function generates UNIQUE QR tokens for each label.
- * Each physical label gets its own token that resolves through the QR redirect system.
+ * Supports two modes:
  * 
- * This function:
- * 1. Uses renderLabelsShared with mode='token' to generate unique QR codes
- * 2. Computes sheet layout (labels per sheet, rotation, etc.)
- * 3. Generates sheet SVGs for each page
- * 4. Converts each sheet SVG to PNG at 300 DPI
- * 5. Combines PNGs into a multi-page PDF
+ * MODE: 'preview' (Label Setup / Editor)
+ * - No entity context required
+ * - QR codes are placeholder text (PREVIEW-QR-NOT-ACTIVE)
+ * - Visual "PREVIEW" watermark on QR codes
+ * - No tokens created in database
+ * 
+ * MODE: 'token' (Production Print)
+ * - Entity context REQUIRED (entityType + entityId)
+ * - Each label gets a unique QR token
+ * - Tokens are persisted in database
+ * - Used for Product/Batch printing
  */
 export async function renderSheetPdfBuffer(params: SheetPdfParams): Promise<SheetPdfResult> {
   const { 
@@ -143,6 +163,7 @@ export async function renderSheetPdfBuffer(params: SheetPdfParams): Promise<Shee
     labelWidthIn, 
     labelHeightIn,
     decorations = DEFAULT_SHEET_DECORATIONS,
+    mode,
     entityType,
     entityId,
     userId,
@@ -155,28 +176,46 @@ export async function renderSheetPdfBuffer(params: SheetPdfParams): Promise<Shee
     throw new Error(`Quantity exceeds maximum of ${MAX_LABELS} labels`);
   }
   
-  // entityType and entityId are now required in the interface
-  if (!entityType || !entityId) {
-    throw new Error('entityType and entityId are required for PDF generation');
+  // Mode-specific validation
+  if (mode === 'token') {
+    // Token mode REQUIRES entity context for QR token generation
+    if (!entityType || !entityId) {
+      throw new Error('Entity context (entityType and entityId) is required for production PDF generation. Please access this from a Product or Batch page.');
+    }
   }
+  // Preview mode does NOT require entity context - that's the whole point
   
-  // Get the base URL for QR codes - must be the production domain
+  // Get the base URL for QR codes (only used in token mode)
   const baseUrl = getBaseUrl();
   
-  // Step 1: Render ALL labels with UNIQUE QR tokens using token mode
-  // This creates one QR token per label in the database
-  const renderResult = await renderLabelsShared({
-    mode: 'token',
-    versionId,
-    entityType,
-    entityId,
-    quantity: clampedQuantity,
-    userId,
-    baseUrl,
-  });
+  // Step 1: Render labels based on mode
+  let labelSvgs: string[];
   
-  // Each SVG in renderResult.svgs has a unique QR code
-  const labelSvgs = renderResult.svgs;
+  if (mode === 'token') {
+    // TOKEN MODE: Generate unique QR tokens for each label
+    // This creates one QR token per label in the database
+    const renderResult = await renderLabelsShared({
+      mode: 'token',
+      versionId,
+      entityType: entityType!,
+      entityId: entityId!,
+      quantity: clampedQuantity,
+      userId,
+      baseUrl,
+    });
+    labelSvgs = renderResult.svgs;
+  } else {
+    // PREVIEW MODE: Use placeholder QR codes, no tokens created
+    // All labels are identical (same placeholder QR)
+    const renderResult = await renderLabelsShared({
+      mode: 'preview',
+      versionId,
+      quantity: clampedQuantity,
+      // Use the non-routable preview payload
+      previewQrPayload: PREVIEW_QR_PAYLOAD,
+    });
+    labelSvgs = renderResult.svgs;
+  }
   
   // Step 2: Compute layout to determine labels per sheet
   // Get dimensions from first SVG (all have same dimensions)
@@ -200,13 +239,14 @@ export async function renderSheetPdfBuffer(params: SheetPdfParams): Promise<Shee
   const pageCount = Math.ceil(clampedQuantity / layout.perSheet);
   
   // Step 4: Generate sheet SVGs for each page
-  // Each label SVG is unique (has its own QR token) - must use uniqueLabels mode
+  // In token mode: each label is unique (has its own QR token)
+  // In preview mode: all labels are identical (same placeholder QR) - can use instancing
   const { sheets } = composeLetterSheetsFromLabelSvgs({
     labelSvgs,
     orientation: 'portrait',
     marginIn: LETTER_MARGIN_IN,
     decorations,
-    uniqueLabels: true, // CRITICAL: Each label has a unique QR token
+    uniqueLabels: mode === 'token', // Only use unique labels in token mode
     // Pass dimension overrides if provided
     labelWidthInOverride: labelWidthIn,
     labelHeightInOverride: labelHeightIn,

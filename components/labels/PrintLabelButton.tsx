@@ -436,6 +436,7 @@ export default function PrintLabelButton({
     await savePrintSettings();
 
     try {
+      // Production print - always use 'token' mode for unique QR codes
       const response = await fetch(`/api/labels/versions/${selectedVersionId}/sheet-pdf`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -443,6 +444,7 @@ export default function PrintLabelButton({
           quantity: validation.clampedQuantity,
           labelWidthIn,
           labelHeightIn,
+          mode: 'token', // Production print ALWAYS uses token mode
           entityType,
           entityId,
         })

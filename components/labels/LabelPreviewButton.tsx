@@ -359,6 +359,11 @@ export default function LabelPreviewButton({
     setPdfError(null);
     
     try {
+      // Determine mode based on entity context
+      // If entityId is provided, use 'token' mode for production print
+      // Otherwise, use 'preview' mode for design-time preview
+      const pdfMode = entityId ? 'token' : 'preview';
+      
       const response = await fetch(`/api/labels/versions/${versionId}/sheet-pdf`, {
         method: 'POST',
         headers: {
@@ -370,8 +375,9 @@ export default function LabelPreviewButton({
           labelWidthIn: sheetSettings.labelWidthIn,
           labelHeightIn: sheetSettings.labelHeightIn,
           decorations: sheetDecorations,
-          entityType,
-          entityId,
+          mode: pdfMode,
+          // Only include entity context for token mode
+          ...(pdfMode === 'token' && { entityType, entityId }),
         }),
       });
       

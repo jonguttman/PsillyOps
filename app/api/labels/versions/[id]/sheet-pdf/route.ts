@@ -5,14 +5,16 @@
  * 
  * Generates a print-ready PDF of labels arranged on letter-size sheets.
  * 
- * IMPORTANT: This endpoint generates UNIQUE QR tokens for each label.
- * Each physical label gets its own token that resolves through the QR redirect system.
- * Tokens are persisted in the database for traceability.
+ * Supports two modes:
+ * - 'preview': Design-time preview with placeholder QR codes (no entity required)
+ * - 'token': Production print with unique QR tokens per label (entity required)
+ * 
+ * The mode MUST be explicitly specified by the caller.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/auth';
-import { renderSheetPdfBuffer } from '@/lib/services/sheetPdfService';
+import { renderSheetPdfBuffer, PdfRenderMode } from '@/lib/services/sheetPdfService';
 import { PlaceableElement } from '@/lib/types/placement';
 import { SheetDecorations } from '@/lib/constants/sheet';
 import { LabelEntityType } from '@prisma/client';
@@ -28,9 +30,15 @@ interface SheetPdfRequestBody {
   labelWidthIn?: number | null;
   labelHeightIn?: number | null;
   decorations?: SheetDecorations;
-  // REQUIRED entity info for QR token generation
-  entityType: LabelEntityType;
-  entityId: string;
+  /**
+   * PDF render mode - MUST be explicitly set
+   * - 'preview': Label setup/editor preview, placeholder QR codes, no entity required
+   * - 'token': Production print, unique QR tokens, entity required
+   */
+  mode: PdfRenderMode;
+  // Entity info - REQUIRED when mode === 'token', ignored when mode === 'preview'
+  entityType?: LabelEntityType;
+  entityId?: string;
 }
 
 export async function POST(
@@ -67,16 +75,27 @@ export async function POST(
       );
     }
     
-    const { quantity, elements, labelWidthIn, labelHeightIn, decorations, entityType, entityId } = body;
+    const { quantity, elements, labelWidthIn, labelHeightIn, decorations, mode, entityType, entityId } = body;
     
-    // entityType and entityId are REQUIRED for QR token generation
-    // PDF generation creates real QR tokens that must be linked to an entity
-    if (!entityType || !entityId) {
+    // Mode is REQUIRED - no silent defaults
+    if (!mode || (mode !== 'preview' && mode !== 'token')) {
       return NextResponse.json(
-        { error: 'PDF generation requires entity context. Please access this from a Product or Batch page to generate printable labels with unique QR codes.' },
+        { error: `mode is required and must be either "preview" or "token". Received: ${mode}` },
         { status: 400 }
       );
     }
+    
+    // Mode-specific validation
+    if (mode === 'token') {
+      // Token mode REQUIRES entity context for QR token generation
+      if (!entityType || !entityId) {
+        return NextResponse.json(
+          { error: 'Entity context (entityType and entityId) is required for production PDF generation. Please access this from a Product or Batch page.' },
+          { status: 400 }
+        );
+      }
+    }
+    // Preview mode does NOT require entity context - that's the whole point
     
     // Use defaults for validation if not provided
     const effectiveLabelWidth = labelWidthIn ?? 2;
@@ -106,16 +125,17 @@ export async function POST(
       );
     }
     
-    // Generate PDF with unique QR tokens per label
+    // Generate PDF based on mode
     const result = await renderSheetPdfBuffer({
       versionId,
       quantity: validation.clampedQuantity,
       labelWidthIn: effectiveLabelWidth,
       labelHeightIn: effectiveLabelHeight,
       decorations,
+      mode,
       entityType,
       entityId,
-      userId: session.user.id,
+      userId: mode === 'token' ? session.user.id : undefined,
     });
     
     // Return PDF as downloadable file
