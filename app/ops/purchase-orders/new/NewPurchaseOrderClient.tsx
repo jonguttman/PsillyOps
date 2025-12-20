@@ -147,7 +147,7 @@ export default function NewPurchaseOrderClient({ vendors, materials }: Props) {
       }
 
       const data = await res.json();
-      router.push(`/purchase-orders/${data.id}`);
+      router.push(`/ops/purchase-orders/${data.id}`);
     } catch (err: any) {
       setError(err.message);
     } finally {

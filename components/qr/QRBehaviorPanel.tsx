@@ -74,7 +74,7 @@ export function QRBehaviorPanel({
               </button>
             ) : (
               <Link
-                href={`/qr-redirects/new?entityType=${entityType}&entityId=${entityId}&entityName=${encodeURIComponent(entityName)}`}
+                href={`/ops/qr-redirects/new?entityType=${entityType}&entityId=${entityId}&entityName=${encodeURIComponent(entityName)}`}
                 className="inline-flex items-center px-3 py-1.5 border border-blue-300 text-sm font-medium rounded-md text-blue-700 bg-white hover:bg-blue-50"
               >
                 Create Redirect
