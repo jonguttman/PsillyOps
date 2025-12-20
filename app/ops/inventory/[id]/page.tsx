@@ -148,7 +148,7 @@ export default async function InventoryDetailPage({
               <dt className="text-sm font-medium text-gray-500">Batch</dt>
               <dd className="mt-1">
                 <Link 
-                  href={`/batches/${inventoryItem.batch.id}`}
+                  href={`/ops/batches/${inventoryItem.batch.id}`}
                   className="text-sm text-blue-600 hover:text-blue-900"
                 >
                   {inventoryItem.batch.batchCode}
@@ -277,7 +277,7 @@ export default async function InventoryDetailPage({
         <div className="space-y-2">
           {inventoryItem.product && (
             <Link
-              href={`/products/${inventoryItem.product.id}`}
+              href={`/ops/products/${inventoryItem.product.id}`}
               className="block text-sm text-blue-600 hover:text-blue-900 hover:underline"
             >
               → View Product: {inventoryItem.product.name}
@@ -285,7 +285,7 @@ export default async function InventoryDetailPage({
           )}
           {inventoryItem.material && (
             <Link
-              href={`/materials/${inventoryItem.material.id}`}
+              href={`/ops/materials/${inventoryItem.material.id}`}
               className="block text-sm text-blue-600 hover:text-blue-900 hover:underline"
             >
               → View Material: {inventoryItem.material.name}
@@ -293,7 +293,7 @@ export default async function InventoryDetailPage({
           )}
           {inventoryItem.batch && (
             <Link
-              href={`/batches/${inventoryItem.batch.id}`}
+              href={`/ops/batches/${inventoryItem.batch.id}`}
               className="block text-sm text-blue-600 hover:text-blue-900 hover:underline"
             >
               → View Batch: {inventoryItem.batch.batchCode}

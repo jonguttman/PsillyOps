@@ -544,7 +544,7 @@ export default async function ProductDetailPage({
               {product.productionOrders.map((order) => (
                 <tr key={order.id}>
                   <td className="py-2 text-sm text-blue-600 hover:text-blue-900">
-                    <Link href={`/production/${order.id}`}>{order.orderNumber}</Link>
+                    <Link href={`/ops/production/${order.id}`}>{order.orderNumber}</Link>
                   </td>
                   <td className="py-2 text-sm text-gray-900">{order.quantityToMake}</td>
                   <td className="py-2">

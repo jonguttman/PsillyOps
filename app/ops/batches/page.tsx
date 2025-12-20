@@ -174,12 +174,12 @@ export default async function BatchesPage({
             {batches.map((batch) => (
               <tr key={batch.id} className="hover:bg-gray-50">
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <Link href={`/batches/${batch.id}`} className="text-sm font-medium text-blue-600 hover:text-blue-900">
+                  <Link href={`/ops/batches/${batch.id}`} className="text-sm font-medium text-blue-600 hover:text-blue-900">
                     {batch.batchCode}
                   </Link>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <Link href={`/products/${batch.productId}`} className="text-sm text-gray-900 hover:text-blue-600">
+                  <Link href={`/ops/products/${batch.productId}`} className="text-sm text-gray-900 hover:text-blue-600">
                     {batch.product.name}
                   </Link>
                 </td>
@@ -201,7 +201,7 @@ export default async function BatchesPage({
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   {batch.productionOrder ? (
-                    <Link href={`/production/${batch.productionOrder.id}`} className="text-sm text-blue-600 hover:text-blue-900">
+                    <Link href={`/ops/production/${batch.productionOrder.id}`} className="text-sm text-blue-600 hover:text-blue-900">
                       {batch.productionOrder.orderNumber}
                     </Link>
                   ) : (
@@ -213,7 +213,7 @@ export default async function BatchesPage({
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                   <Link
-                    href={`/batches/${batch.id}`}
+                    href={`/ops/batches/${batch.id}`}
                     className="text-blue-600 hover:text-blue-900"
                   >
                     View

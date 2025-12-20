@@ -326,7 +326,7 @@ export default function PurchaseOrderDetailClient({
                       <tr key={item.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3">
                           <Link
-                            href={`/materials/${item.material.id}`}
+                            href={`/ops/materials/${item.material.id}`}
                             className="text-sm font-medium text-blue-600 hover:text-blue-800"
                           >
                             {item.material.name}
@@ -428,7 +428,7 @@ export default function PurchaseOrderDetailClient({
             </h3>
             <div className="space-y-2">
               <Link
-                href={`/vendors/${purchaseOrder.vendor.id}`}
+                href={`/ops/vendors/${purchaseOrder.vendor.id}`}
                 className="text-sm font-medium text-blue-600 hover:text-blue-800"
               >
                 {purchaseOrder.vendor.name}

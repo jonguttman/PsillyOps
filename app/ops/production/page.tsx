@@ -148,7 +148,7 @@ export default async function ProductionPage() {
                 return (
                   <Link
                     key={order.id}
-                    href={`/production/${order.id}`}
+                    href={`/ops/production/${order.id}`}
                     className={`block bg-white rounded-lg border-2 p-4 hover:shadow-md transition-shadow ${STATUS_COLORS[status]}`}
                   >
                     <div className="flex items-start justify-between">

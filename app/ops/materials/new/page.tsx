@@ -65,7 +65,7 @@ async function createMaterial(formData: FormData) {
     }
   });
 
-  revalidatePath("/materials");
+  revalidatePath("/ops/materials");
   redirect("/ops/materials");
 }
 

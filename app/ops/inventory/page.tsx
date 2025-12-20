@@ -213,7 +213,7 @@ export default async function InventoryPage({
               return (
                 <tr key={item.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <Link href={`/inventory/${item.id}`} className="block hover:bg-gray-50 -mx-2 px-2 py-1 rounded">
+                    <Link href={`/ops/inventory/${item.id}`} className="block hover:bg-gray-50 -mx-2 px-2 py-1 rounded">
                       <div className="text-sm font-medium text-gray-900 hover:text-blue-600">{itemName}</div>
                       <div className="text-xs text-gray-500">{itemSku}</div>
                     </Link>
@@ -237,7 +237,7 @@ export default async function InventoryPage({
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     {item.batch ? (
-                      <Link href={`/batches/${item.batch.id}`} className="text-sm text-blue-600 hover:text-blue-900">
+                      <Link href={`/ops/batches/${item.batch.id}`} className="text-sm text-blue-600 hover:text-blue-900">
                         {item.batch.batchCode}
                       </Link>
                     ) : item.lotNumber ? (
@@ -260,7 +260,7 @@ export default async function InventoryPage({
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <Link
-                      href={`/inventory/${item.id}`}
+                      href={`/ops/inventory/${item.id}`}
                       className="text-blue-600 hover:text-blue-900"
                     >
                       View

@@ -132,7 +132,7 @@ export function VendorRelationshipRow({
     <tr>
       <td className="py-2 text-sm">
         <Link
-          href={`/vendors/${materialVendor.vendorId}`}
+          href={`/ops/vendors/${materialVendor.vendorId}`}
           className="text-blue-600 hover:text-blue-900"
         >
           {materialVendor.vendor.name}

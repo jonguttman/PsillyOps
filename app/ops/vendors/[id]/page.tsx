@@ -285,7 +285,7 @@ export default async function VendorDetailPage({
               {vendor.materials.map((mv) => (
                 <tr key={mv.id}>
                   <td className="py-2 text-sm">
-                    <Link href={`/materials/${mv.materialId}`} className="text-blue-600 hover:text-blue-900">
+                    <Link href={`/ops/materials/${mv.materialId}`} className="text-blue-600 hover:text-blue-900">
                       {mv.material.name}
                     </Link>
                   </td>
@@ -335,7 +335,7 @@ export default async function VendorDetailPage({
               {vendor.purchaseOrders.map((po) => (
                 <tr key={po.id}>
                   <td className="py-2 text-sm text-blue-600">
-                    <Link href={`/purchase-orders/${po.id}`}>{po.poNumber}</Link>
+                    <Link href={`/ops/purchase-orders/${po.id}`}>{po.poNumber}</Link>
                   </td>
                   <td className="py-2">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${

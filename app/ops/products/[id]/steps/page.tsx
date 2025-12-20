@@ -41,7 +41,7 @@ export default async function ProductStepsPage({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Link href={`/products/${productId}`} className="text-sm text-gray-600 hover:text-gray-900">
+          <Link href={`/ops/products/${productId}`} className="text-sm text-gray-600 hover:text-gray-900">
             ← Back to product
           </Link>
         </div>

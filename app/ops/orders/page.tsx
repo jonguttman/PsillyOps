@@ -106,7 +106,7 @@ export default async function OrdersPage() {
               <tr key={order.id} className="hover:bg-gray-50">
                 <td className="px-6 py-4 whitespace-nowrap">
                   <Link
-                    href={`/orders/${order.id}`}
+                    href={`/ops/orders/${order.id}`}
                     className="text-sm font-medium text-blue-600 hover:text-blue-900"
                   >
                     {order.orderNumber}

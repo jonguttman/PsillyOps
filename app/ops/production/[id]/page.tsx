@@ -29,7 +29,7 @@ async function handleStart(formData: FormData) {
   if (!session) throw new Error('Not authenticated');
   const orderId = formData.get('orderId') as string;
   await startProductionOrder(orderId, session.user.id);
-  revalidatePath(`/production/${orderId}`);
+  revalidatePath(`/ops/production/${orderId}`);
 }
 
 async function handleBlock(formData: FormData) {
@@ -39,7 +39,7 @@ async function handleBlock(formData: FormData) {
   const orderId = formData.get('orderId') as string;
   const reason = formData.get('reason') as string;
   await blockProductionOrder(orderId, reason, session.user.id);
-  revalidatePath(`/production/${orderId}`);
+  revalidatePath(`/ops/production/${orderId}`);
 }
 
 async function handleComplete(formData: FormData) {
@@ -48,8 +48,8 @@ async function handleComplete(formData: FormData) {
   if (!session) throw new Error('Not authenticated');
   const orderId = formData.get('orderId') as string;
   await completeProductionOrder(orderId, session.user.id);
-  revalidatePath(`/production/${orderId}`);
-  revalidatePath('/production');
+  revalidatePath(`/ops/production/${orderId}`);
+  revalidatePath('/ops/production');
 }
 
 async function handleCreateBatch(formData: FormData) {
@@ -67,7 +67,7 @@ async function handleCreateBatch(formData: FormData) {
     userId: session.user.id
   });
   
-  revalidatePath(`/production/${orderId}`);
+  revalidatePath(`/ops/production/${orderId}`);
 }
 
 export default async function ProductionOrderDetailPage({
@@ -195,7 +195,7 @@ export default async function ProductionOrderDetailPage({
           <div>
             <dt className="text-sm font-medium text-gray-500">Product</dt>
             <dd className="mt-1 text-sm text-gray-900">
-              <Link href={`/products/${order.productId}`} className="text-blue-600 hover:text-blue-900">
+                      <Link href={`/ops/products/${order.productId}`} className="text-blue-600 hover:text-blue-900">
                 {order.product.name}
               </Link>
             </dd>
@@ -284,7 +284,7 @@ export default async function ProductionOrderDetailPage({
                 return (
                   <tr key={mat.id} className={mat.shortage > 0 ? 'bg-red-50' : ''}>
                     <td className="py-2 text-sm">
-                      <Link href={`/materials/${mat.materialId}`} className="text-blue-600 hover:text-blue-900">
+                      <Link href={`/ops/materials/${mat.materialId}`} className="text-blue-600 hover:text-blue-900">
                         {mat.material.name}
                       </Link>
                     </td>
@@ -352,7 +352,7 @@ export default async function ProductionOrderDetailPage({
               {order.batches.map(batch => (
                 <tr key={batch.id}>
                   <td className="py-2 text-sm">
-                    <Link href={`/batches/${batch.id}`} className="text-blue-600 hover:text-blue-900 font-medium">
+                    <Link href={`/ops/batches/${batch.id}`} className="text-blue-600 hover:text-blue-900 font-medium">
                       {batch.batchCode}
                     </Link>
                   </td>
@@ -370,7 +370,7 @@ export default async function ProductionOrderDetailPage({
                     }
                   </td>
                   <td className="py-2 text-right">
-                    <Link href={`/batches/${batch.id}`} className="text-sm text-blue-600 hover:text-blue-900">
+                    <Link href={`/ops/batches/${batch.id}`} className="text-sm text-blue-600 hover:text-blue-900">
                       View
                     </Link>
                   </td>

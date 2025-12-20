@@ -62,7 +62,7 @@ export default async function StrainDetailPage({
                     <div className="text-sm font-medium text-gray-900">{p.name}</div>
                     <div className="text-xs text-gray-500">{p.sku}</div>
                   </div>
-                  <Link href={`/products/${p.id}`} className="text-sm text-blue-600 hover:text-blue-800">
+                  <Link href={`/ops/products/${p.id}`} className="text-sm text-blue-600 hover:text-blue-800">
                     View
                   </Link>
                 </li>

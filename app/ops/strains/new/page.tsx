@@ -47,8 +47,8 @@ async function createStrain(formData: FormData) {
     },
   });
 
-  revalidatePath('/strains');
-  redirect(`/strains/${created.id}`);
+  revalidatePath('/ops/strains');
+  redirect(`/ops/strains/${created.id}`);
 }
 
 export default async function NewStrainPage({

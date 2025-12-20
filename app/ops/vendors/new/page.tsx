@@ -30,7 +30,7 @@ async function createVendor(formData: FormData) {
     }
   });
 
-  revalidatePath("/vendors");
+  revalidatePath("/ops/vendors");
   redirect("/ops/vendors");
 }
 

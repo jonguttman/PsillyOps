@@ -41,7 +41,7 @@ async function archiveStrain(formData: FormData) {
     data: { active: false }
   });
 
-  revalidatePath('/strains');
+  revalidatePath('/ops/strains');
 }
 
 async function restoreStrain(formData: FormData) {
@@ -60,7 +60,7 @@ async function restoreStrain(formData: FormData) {
     data: { active: true }
   });
 
-  revalidatePath('/strains');
+  revalidatePath('/ops/strains');
 }
 
 export default async function StrainsPage({
@@ -88,7 +88,7 @@ export default async function StrainsPage({
     const qs = new URLSearchParams();
     if (params.prefill) qs.set('prefill', params.prefill);
     if (params.aiToast) qs.set('aiToast', params.aiToast);
-    redirect(`/strains/new?${qs.toString()}`);
+    redirect(`/ops/strains/new?${qs.toString()}`);
   }
 
   const prismaWithStrain = prisma as unknown as { strain: { findMany: (args: unknown) => Promise<unknown[]> } };
@@ -182,7 +182,7 @@ export default async function StrainsPage({
               strainsWithAliases.map((strain) => (
                 <tr key={strain.id} className={`hover:bg-gray-50 ${!strain.active ? 'opacity-50' : ''}`}>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <Link href={`/strains/${strain.id}`} className="text-sm font-medium text-blue-700 hover:text-blue-900">
+                    <Link href={`/ops/strains/${strain.id}`} className="text-sm font-medium text-blue-700 hover:text-blue-900">
                       {strain.name}
                     </Link>
                   </td>
