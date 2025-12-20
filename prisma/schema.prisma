@@ -925,7 +925,7 @@ model LabelTemplateVersion {
   templateId  String
   version     String        // e.g., "1.0", "1.1", "2.0"
   fileUrl     String        // Relative path to SVG file
-  qrTemplate  String?       // e.g., https://psillyops.app/qr/batch/{{id}}
+  qrTemplate  String?       // e.g., https://ops.originalpsilly.com/qr/batch/{{id}}
   
   // Unified Placement System
   // Stores PlaceableElement[] - all QR codes and barcodes with absolute inch positions

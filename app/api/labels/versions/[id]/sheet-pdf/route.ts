@@ -4,18 +4,21 @@
  * POST /api/labels/versions/[id]/sheet-pdf
  * 
  * Generates a print-ready PDF of labels arranged on letter-size sheets.
+ * 
+ * IMPORTANT: This endpoint generates UNIQUE QR tokens for each label.
+ * Each physical label gets its own token that resolves through the QR redirect system.
+ * Tokens are persisted in the database for traceability.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@/lib/auth/auth';
 import { renderSheetPdfBuffer } from '@/lib/services/sheetPdfService';
 import { PlaceableElement } from '@/lib/types/placement';
 import { SheetDecorations } from '@/lib/constants/sheet';
+import { LabelEntityType } from '@prisma/client';
 import { 
   validateSheetConfig, 
   formatValidationError,
-  MAX_LABELS_PER_JOB,
-  MAX_LABEL_WIDTH_IN,
-  MAX_LABEL_HEIGHT_IN,
   DEFAULT_MARGIN_TOP_BOTTOM_IN,
 } from '@/lib/utils/sheetValidation';
 
@@ -25,9 +28,9 @@ interface SheetPdfRequestBody {
   labelWidthIn?: number | null;
   labelHeightIn?: number | null;
   decorations?: SheetDecorations;
-  // Optional entity info for barcode rendering
-  entityType?: 'PRODUCT' | 'BATCH' | 'INVENTORY' | 'CUSTOM';
-  entityId?: string;
+  // REQUIRED entity info for QR token generation
+  entityType: LabelEntityType;
+  entityId: string;
 }
 
 export async function POST(
@@ -35,6 +38,15 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Authentication required - tokens are persisted with user audit trail
+    const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+    
     const { id: versionId } = await params;
     
     if (!versionId) {
@@ -56,6 +68,14 @@ export async function POST(
     }
     
     const { quantity, elements, labelWidthIn, labelHeightIn, decorations, entityType, entityId } = body;
+    
+    // entityType and entityId are REQUIRED for QR token generation
+    if (!entityType || !entityId) {
+      return NextResponse.json(
+        { error: 'entityType and entityId are required for PDF generation' },
+        { status: 400 }
+      );
+    }
     
     // Use defaults for validation if not provided
     const effectiveLabelWidth = labelWidthIn ?? 2;
@@ -85,17 +105,16 @@ export async function POST(
       );
     }
     
-    // Generate PDF using clamped quantity
+    // Generate PDF with unique QR tokens per label
     const result = await renderSheetPdfBuffer({
       versionId,
       quantity: validation.clampedQuantity,
-      elements,
       labelWidthIn: effectiveLabelWidth,
       labelHeightIn: effectiveLabelHeight,
       decorations,
-      // Pass entity info for barcode rendering (product.barcodeValue ?? product.sku)
       entityType,
       entityId,
+      userId: session.user.id,
     });
     
     // Return PDF as downloadable file

@@ -8,11 +8,14 @@
 import { Resvg } from '@resvg/resvg-js';
 import PDFDocument from 'pdfkit';
 import { 
-  renderLabelPreviewWithMeta, 
+  renderLabelsShared,
+  getBaseUrl,
   composeLetterSheetsFromLabelSvgs,
-  computeLetterSheetLayout
+  computeLetterSheetLayout,
+  getSvgPhysicalSizeInches
 } from './labelService';
 import { PlaceableElement } from '../types/placement';
+import { LabelEntityType } from '@prisma/client';
 import { 
   SHEET_WIDTH_IN, 
   SHEET_HEIGHT_IN, 
@@ -46,9 +49,11 @@ export interface SheetPdfParams {
   labelWidthIn?: number;
   labelHeightIn?: number;
   decorations?: SheetDecorations;
-  // Optional entity info for barcode rendering (product.barcodeValue ?? product.sku)
-  entityType?: 'PRODUCT' | 'BATCH' | 'INVENTORY' | 'CUSTOM';
-  entityId?: string;
+  // REQUIRED entity info for token generation and barcode rendering
+  entityType: LabelEntityType;
+  entityId: string;
+  // Optional user ID for audit trail
+  userId?: string;
 }
 
 export interface SheetPdfResult {
@@ -121,8 +126,11 @@ function createPdfFromPngs(pngBuffers: Buffer[]): Promise<Buffer> {
 /**
  * Generates a print-ready PDF buffer from sheet parameters.
  * 
+ * IMPORTANT: This function generates UNIQUE QR tokens for each label.
+ * Each physical label gets its own token that resolves through the QR redirect system.
+ * 
  * This function:
- * 1. Renders the label SVG with elements
+ * 1. Uses renderLabelsShared with mode='token' to generate unique QR codes
  * 2. Computes sheet layout (labels per sheet, rotation, etc.)
  * 3. Generates sheet SVGs for each page
  * 4. Converts each sheet SVG to PNG at 300 DPI
@@ -132,12 +140,12 @@ export async function renderSheetPdfBuffer(params: SheetPdfParams): Promise<Shee
   const { 
     versionId, 
     quantity, 
-    elements, 
     labelWidthIn, 
     labelHeightIn,
     decorations = DEFAULT_SHEET_DECORATIONS,
     entityType,
     entityId,
+    userId,
   } = params;
   
   // Validate and clamp quantity
@@ -147,23 +155,35 @@ export async function renderSheetPdfBuffer(params: SheetPdfParams): Promise<Shee
     throw new Error(`Quantity exceeds maximum of ${MAX_LABELS} labels`);
   }
   
-  // Build entity info for barcode rendering - REQUIRED for PDF generation
+  // entityType and entityId are now required in the interface
   if (!entityType || !entityId) {
     throw new Error('entityType and entityId are required for PDF generation');
   }
-  const entityInfo = { entityType: entityType as 'PRODUCT' | 'BATCH' | 'INVENTORY' | 'CUSTOM', entityId };
   
-  // Step 1: Render a single label to get the SVG template
-  // Pass entity info for barcode rendering (product.barcodeValue ?? product.sku)
-  const labelResult = await renderLabelPreviewWithMeta(versionId, {
-    elements,
-    labelWidthIn,
-    labelHeightIn,
-  }, entityInfo);
+  // Get the base URL for QR codes - must be the production domain
+  const baseUrl = getBaseUrl();
+  
+  // Step 1: Render ALL labels with UNIQUE QR tokens using token mode
+  // This creates one QR token per label in the database
+  const renderResult = await renderLabelsShared({
+    mode: 'token',
+    versionId,
+    entityType,
+    entityId,
+    quantity: clampedQuantity,
+    userId,
+    baseUrl,
+  });
+  
+  // Each SVG in renderResult.svgs has a unique QR code
+  const labelSvgs = renderResult.svgs;
   
   // Step 2: Compute layout to determine labels per sheet
-  const effectiveWidthIn = labelWidthIn ?? labelResult.meta.widthIn;
-  const effectiveHeightIn = labelHeightIn ?? labelResult.meta.heightIn;
+  // Get dimensions from first SVG (all have same dimensions)
+  const firstSvg = labelSvgs[0];
+  const { widthIn: svgWidthIn, heightIn: svgHeightIn } = getSvgPhysicalSizeInches(firstSvg);
+  const effectiveWidthIn = labelWidthIn ?? svgWidthIn;
+  const effectiveHeightIn = labelHeightIn ?? svgHeightIn;
   
   const layout = computeLetterSheetLayout(
     effectiveWidthIn,
@@ -180,15 +200,13 @@ export async function renderSheetPdfBuffer(params: SheetPdfParams): Promise<Shee
   const pageCount = Math.ceil(clampedQuantity / layout.perSheet);
   
   // Step 4: Generate sheet SVGs for each page
-  // For PDF, we render ALL labels (not placeholders like in preview)
-  // Create an array of identical label SVGs for the full quantity
-  const labelSvgs: string[] = Array(clampedQuantity).fill(labelResult.svg);
-  
+  // Each label SVG is unique (has its own QR token) - must use uniqueLabels mode
   const { sheets } = composeLetterSheetsFromLabelSvgs({
     labelSvgs,
     orientation: 'portrait',
     marginIn: LETTER_MARGIN_IN,
     decorations,
+    uniqueLabels: true, // CRITICAL: Each label has a unique QR token
   });
   
   // Step 5: Convert each sheet SVG to PNG

@@ -1260,7 +1260,7 @@ function parseLengthToInches(raw: string): number | null {
  * SINGLE SOURCE OF TRUTH for SVG physical dimensions
  * All inch conversions must go through this function
  */
-function getSvgPhysicalSizeInches(svg: string): { widthIn: number; heightIn: number } {
+export function getSvgPhysicalSizeInches(svg: string): { widthIn: number; heightIn: number } {
   const rootMatch = svg.match(/<svg([^>]*)>/i);
   if (!rootMatch) {
     throw new AppError(ErrorCodes.INVALID_INPUT, 'Invalid SVG: No root <svg> tag found');
@@ -1473,12 +1473,15 @@ export function composeLetterSheetsFromLabelSvgs(params: {
   orientation?: 'portrait' | 'landscape';
   marginIn?: number;
   decorations?: SheetDecorations;
+  /** If true, each label SVG is unique (e.g., unique QR tokens) and must be embedded individually */
+  uniqueLabels?: boolean;
 }): { sheets: string[]; meta: LetterSheetLayoutMeta } {
   const { 
     labelSvgs, 
     orientation = 'portrait', 
     marginIn = LETTER_MARGIN_IN,
     decorations = DEFAULT_SHEET_DECORATIONS,
+    uniqueLabels = false,
   } = params;
   if (!labelSvgs.length) {
     return {
@@ -1550,27 +1553,6 @@ export function composeLetterSheetsFromLabelSvgs(params: {
     const end = Math.min(start + layout.perSheet, labelSvgs.length);
     const labelsOnThisSheet = end - start;
 
-    // Build <use> references for each label position
-    // Use transform="translate(x, y)" instead of x/y attributes to avoid bbox recalculation
-    // Use asymmetric margins: marginLeftIn for x, marginTopIn for y
-    let useRefs = '';
-    for (let i = 0; i < labelsOnThisSheet; i++) {
-      const r = Math.floor(i / layout.columns);
-      const c = i % layout.columns;
-      const x = layout.marginLeftIn + c * layout.cellWidthIn;
-      const y = layout.marginTopIn + r * layout.cellHeightIn;
-
-      if (layout.rotationUsed) {
-        // For rotated labels: translate to position, then rotate 90° around origin
-        // The label is rotated so its width becomes height and vice versa
-        useRefs += `
-    <use href="#label-instance" transform="translate(${x + labelHeightIn}, ${y}) rotate(90)"/>`;
-      } else {
-        useRefs += `
-    <use href="#label-instance" transform="translate(${x}, ${y})"/>`;
-      }
-    }
-
     // Render decorations for this sheet
     const decorationsContent = renderSheetDecorations(
       decorations,
@@ -1592,9 +1574,65 @@ export function composeLetterSheetsFromLabelSvgs(params: {
       layout.marginBottomIn
     );
 
-    // Build the sheet SVG with <defs> containing the label as a <g> (NOT <svg>)
-    // The <g> is pre-scaled so each <use> just needs translation
-    const sheetSvg = `<svg xmlns="http://www.w3.org/2000/svg"
+    let sheetSvg: string;
+    
+    if (uniqueLabels) {
+      // UNIQUE LABELS MODE: Each label is different (e.g., unique QR tokens)
+      // Must embed each SVG individually - cannot use <defs>/<use> instancing
+      let labelContent = '';
+      for (let i = 0; i < labelsOnThisSheet; i++) {
+        const labelIndex = start + i;
+        const labelSvg = labelSvgs[labelIndex];
+        const r = Math.floor(i / layout.columns);
+        const c = i % layout.columns;
+        const x = layout.marginLeftIn + c * layout.cellWidthIn;
+        const y = layout.marginTopIn + r * layout.cellHeightIn;
+        
+        // Prefix IDs to avoid conflicts between labels
+        const prefixedLabel = prefixSvgIds(labelSvg, `label_${labelIndex}`);
+        const labelInner = stripOuterSvg(prefixedLabel);
+        
+        if (layout.rotationUsed) {
+          labelContent += `
+    <g transform="translate(${x + labelHeightIn}, ${y}) rotate(90) scale(${scaleX}, ${scaleY})">
+      ${labelInner}
+    </g>`;
+        } else {
+          labelContent += `
+    <g transform="translate(${x}, ${y}) scale(${scaleX}, ${scaleY})">
+      ${labelInner}
+    </g>`;
+        }
+      }
+      
+      sheetSvg = `<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="${layout.sheetWidthIn}in"
+     height="${layout.sheetHeightIn}in"
+     viewBox="0 0 ${layout.sheetWidthIn} ${layout.sheetHeightIn}">
+  <g id="sheet-layout">${labelContent}
+  </g>${decorationsContent}${cameraMarksContent}
+</svg>`;
+    } else {
+      // INSTANCED MODE: All labels are identical (preview mode)
+      // Use <defs>/<use> for performance optimization
+      let useRefs = '';
+      for (let i = 0; i < labelsOnThisSheet; i++) {
+        const r = Math.floor(i / layout.columns);
+        const c = i % layout.columns;
+        const x = layout.marginLeftIn + c * layout.cellWidthIn;
+        const y = layout.marginTopIn + r * layout.cellHeightIn;
+
+        if (layout.rotationUsed) {
+          useRefs += `
+    <use href="#label-instance" transform="translate(${x + labelHeightIn}, ${y}) rotate(90)"/>`;
+        } else {
+          useRefs += `
+    <use href="#label-instance" transform="translate(${x}, ${y})"/>`;
+        }
+      }
+
+      sheetSvg = `<svg xmlns="http://www.w3.org/2000/svg"
      xmlns:xlink="http://www.w3.org/1999/xlink"
      width="${layout.sheetWidthIn}in"
      height="${layout.sheetHeightIn}in"
@@ -1607,6 +1645,8 @@ export function composeLetterSheetsFromLabelSvgs(params: {
   <g id="sheet-layout">${useRefs}
   </g>${decorationsContent}${cameraMarksContent}
 </svg>`;
+    }
+    
     sheets.push(sheetSvg);
   }
 
@@ -1819,8 +1859,9 @@ export async function renderLabelPreviewWithMeta(
   // Compute pxPerInch from the final SVG (after any size override)
   const { pxPerInchX, pxPerInchY } = computePxPerInch(svgContent, finalWidthIn, finalHeightIn);
 
-  // Generate placeholder QR for preview
-  const placeholderQrSvg = await generateQrSvgFromUrl('https://psillyops.app/preview');
+  // Generate placeholder QR for preview (editor preview only - not for print)
+  // This is a non-functional placeholder that will never be scanned
+  const placeholderQrSvg = await generateQrSvgFromUrl('https://ops.originalpsilly.com/preview');
   
   // Determine if this is editor preview (no entity context) or print preview (with entity)
   const isEditorPreview = !entityInfo;
@@ -2506,7 +2547,12 @@ export function buildInventoryQRPayload(
 
 /**
  * Get the base URL for QR codes
+ * 
+ * IMPORTANT: This MUST return the production domain for QR codes to work.
+ * QR codes are printed on physical labels and must resolve to the production URL.
  */
 export function getBaseUrl(): string {
-  return process.env.NEXT_PUBLIC_APP_URL || 'https://psillyops.app';
+  // Use NEXT_PUBLIC_APP_URL if set, otherwise default to production domain
+  // NEVER fall back to psillyops.app - that domain is deprecated
+  return process.env.NEXT_PUBLIC_APP_URL || 'https://ops.originalpsilly.com';
 }

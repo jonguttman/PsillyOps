@@ -2653,7 +2653,7 @@ PsillyOps uses a tokenized QR code system where each printed label has a unique,
 ### How It Works
 
 1. **Printing**: When you print labels, the system generates unique tokens (e.g., `qr_2x7kP9mN4vBcRtYz8LqW5j`)
-2. **QR Content**: Each QR code contains only a short URL like `https://psillyops.app/qr/qr_xxx`
+2. **QR Content**: Each QR code contains only a short URL like `https://ops.originalpsilly.com/qr/qr_xxx`
 3. **Scanning**: When scanned, the system looks up the token and redirects to the appropriate page
 4. **Tracking**: Each scan is counted and timestamped
 
