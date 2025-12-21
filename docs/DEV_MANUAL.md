@@ -237,6 +237,7 @@ Most enums are defined in both `prisma/schema.prisma` and `lib/types/enums.ts`:
 - **InventoryStatus**: AVAILABLE, RESERVED, DAMAGED, SCRAPPED
 - **PurchaseOrderStatus**: DRAFT, SENT, PARTIALLY_RECEIVED, RECEIVED, CANCELLED
 - **ActivityEntity**: PRODUCT, MATERIAL, BATCH, ORDER, PRODUCTION_ORDER, PURCHASE_ORDER
+- **ExperienceMode**: MICRO, MACRO (TripDAR experience data collection)
 
 ### Material Categories
 
@@ -463,6 +464,76 @@ const result = await applyDocumentImport(importId, userId);
 await rejectDocumentImport(importId, 'Incorrect data', userId);
 ```
 
+### TripDAR Services (Experience Data Collection)
+
+#### predictionService.ts
+**Prediction profile management with ExperienceMode support**
+
+```typescript
+// Create or update prediction profile for a product and mode
+createPredictionProfile(productId, weights, userId, experienceMode);
+
+// Get active prediction for a product and mode
+const prediction = await getActivePrediction(productId, experienceMode);
+
+// Get both MICRO and MACRO predictions for a product
+const predictions = await getActivePredictionsByMode(productId);
+```
+
+**Key features:**
+- Products can have separate prediction profiles for MICRO and MACRO modes
+- Each profile stores vibe weights (transcend, energize, create, transform, connect) as percentages
+- Only one active profile per product per mode (enforced by unique constraint)
+- Profiles are versioned via `archivedAt` timestamp
+
+#### vibeVocabularyService.ts
+**Mode-specific vibe label mapping**
+
+```typescript
+// Get mode-specific labels for vibe sliders
+const labels = getVibeLabels(ExperienceMode.MICRO);
+// Returns: { transcend: "Subtle uplift", energize: "Clarity / energy", ... }
+```
+
+**Implementation:**
+- Default labels defined in code for MICRO and MACRO modes
+- Designed to be overrideable via `SystemConfig` (future enhancement)
+- Used by `PredictionEditor` and `ExperienceSurvey` components
+
+#### experienceService.ts
+**Experience review submission and analytics**
+
+```typescript
+// Submit a review (public-facing)
+const review = await submitReview({
+  productId,
+  batchId: null,
+  experienceMode: ExperienceMode.MACRO,
+  overallMatch: 3,
+  vibeDeltas: { transcend: 1, energize: 0, ... },
+  context: { firstTime: false, doseBandGrams: '0.75-1.5g', setting: 'social' },
+  note: 'Great experience...'
+}, deviceHash);
+
+// Get review statistics (ops dashboard)
+const stats = await getReviewStats();
+// Returns: { total, weeklySubmissions, completionRate, neutralRate, byMode: {...} }
+
+// Export reviews for ML pipelines
+const reviews = await getReviewsForExport({ experienceMode: ExperienceMode.MACRO });
+```
+
+**Privacy-first design:**
+- No PII collection (no names, emails, accounts, precise location)
+- Server-side `deviceHash` generation (short-lived, rotated ~48h)
+- Integrity flags for abuse detection (never blocks users)
+- All questions are skippable
+
+**Data model:**
+- `PredictionProfile`: Immutable prediction snapshots per product/mode
+- `ExperienceReview`: Anonymous feedback with vibe deltas and optional context
+- `DeviceScanLog`: Ephemeral device session tracking (integrity only)
+
 ---
 
 ## Label Sheet Composition & QR Strategy
@@ -570,6 +641,35 @@ API routes catch and convert:
 ```typescript
 return handleApiError(error);  // Returns proper JSON + status
 ```
+
+### TripDAR API Routes
+
+#### Public Routes (No Authentication)
+
+- `POST /api/experience/submit`
+  - Submit an experience review (public-facing)
+  - Accepts: `productId`, `batchId` (optional), `experienceMode`, `overallMatch`, `vibeDeltas`, `context`, `note`
+  - Returns: `{ success: true, reviewId: string }`
+  - Server generates `deviceHash` automatically (no client identifier sent)
+
+#### Ops Routes (ANALYST or ADMIN)
+
+- `GET /api/insights/tripdar/stats`
+  - Get review statistics for dashboard
+  - Returns: `{ total, weeklySubmissions, completionRate, neutralRate, byMode: { MICRO: {...}, MACRO: {...} } }`
+  - Requires: ANALYST or ADMIN role
+
+- `GET /api/insights/tripdar/reviews`
+  - List reviews with filtering
+  - Query params: `experienceMode`, `productId`, `batchId`, `page`, `limit`
+  - Returns: `{ reviews: [...], total, page, limit }`
+  - Requires: ANALYST or ADMIN role
+
+- `GET /api/insights/tripdar/export`
+  - Export reviews as CSV or JSON for ML pipelines
+  - Query params: `format` (csv|json), `experienceMode`, `productId`, `batchId`
+  - Returns: CSV file or JSON array
+  - Requires: ADMIN role
 
 ---
 
