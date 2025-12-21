@@ -1062,3 +1062,58 @@ model PrintJob {
   @@index([createdAt])
 }
 
+// ========================================
+// PRODUCT TRANSPARENCY SYSTEM
+// ========================================
+
+enum TransparencyResult {
+  PASS
+  PENDING
+  FAIL
+}
+
+model Lab {
+  id                   String               @id @default(cuid())
+  name                 String
+  location             String
+  description          String?
+  active               Boolean              @default(true)
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  transparencyRecords  TransparencyRecord[]
+}
+
+model TransparencyRecord {
+  id                String              @id @default(cuid())
+  entityType        ActivityEntity
+  entityId          String
+  
+  productionDate    DateTime
+  batchCode         String?
+  
+  // Lab relation + snapshot for historical accuracy
+  labId             String?
+  lab               Lab?                @relation(fields: [labId], references: [id])
+  labNameSnapshot   String              // Populated on save, preserves name if lab changes
+  
+  testDate          DateTime?
+  testResult        TransparencyResult?
+  
+  rawMaterialLinked Boolean             @default(true)
+  publicDescription String?
+  
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  
+  // No unique constraint - allows retests. Latest testDate wins for public display.
+  @@index([entityType, entityId, testDate])
+  @@index([labId])
+}
+
+model SystemConfig {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt
+}
+

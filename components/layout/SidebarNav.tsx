@@ -103,6 +103,7 @@ export function SidebarNav({ userRole }: SidebarNavProps) {
     ...(userRole === 'ADMIN' ? [{ href: '/ops/settings', label: 'Settings', icon: Settings }] : []),
     ...(userRole === 'ADMIN' ? [{ href: '/ops/security', label: 'Security', icon: Shield }] : []),
     ...(userRole === 'ADMIN' ? [{ href: '/ops/users', label: 'Users', icon: Users }] : []),
+    ...(userRole === 'ADMIN' ? [{ href: '/ops/transparency', label: 'Transparency', icon: Shield }] : []),
     { href: '/ops/strains', label: 'Strains', icon: Dna },
     { href: '/ops/vendors', label: 'Vendors', icon: Building2 },
     { href: '/ops/help', label: 'Help', icon: HelpCircle },
