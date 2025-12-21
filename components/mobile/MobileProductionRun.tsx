@@ -73,13 +73,22 @@ export interface ProductionRunData {
 
 interface MobileProductionRunProps {
   run: ProductionRunData;
-  onRefresh?: () => void;
+  onRefresh?: () => void | Promise<void>;
 }
 
 type ViewState = 'overview' | 'step' | 'complete' | 'hold';
 
 export function MobileProductionRun({ run, onRefresh }: MobileProductionRunProps) {
   const router = useRouter();
+  
+  // Refresh handler
+  const handleRefresh = useCallback(async () => {
+    if (onRefresh) {
+      await onRefresh();
+    } else {
+      router.refresh();
+    }
+  }, [onRefresh, router]);
   const [viewState, setViewState] = useState<ViewState>('overview');
   const [activeStepIndex, setActiveStepIndex] = useState(() => {
     const inProgressIdx = run.steps.findIndex(s => s.status === 'IN_PROGRESS');
@@ -89,7 +98,6 @@ export function MobileProductionRun({ run, onRefresh }: MobileProductionRunProps
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [quantityInput, setQuantityInput] = useState(run.actualQuantity || run.quantity);
 
   const activeStep = run.steps[activeStepIndex];
   const completedSteps = run.steps.filter(s => s.status === 'COMPLETED').length;
@@ -123,17 +131,20 @@ export function MobileProductionRun({ run, onRefresh }: MobileProductionRunProps
     }
   }, []);
 
-  // Start the production run
+  // Start the production run (by starting the first step)
   const handleStartRun = useCallback(async () => {
-    trackEvent('run_started', { runId: run.id });
+    const firstStep = run.steps.find(s => s.status === 'PENDING');
+    if (!firstStep) return;
+    
+    trackEvent('run_started', { runId: run.id, stepId: firstStep.id });
     
     try {
-      await apiCall(`/api/production-runs/${run.id}/start`, {});
-      onRefresh?.();
+      await apiCall(`/api/production-runs/steps/${firstStep.id}/start`, {});
+      await handleRefresh();
     } catch {
       // Error already set
     }
-  }, [run.id, apiCall, onRefresh]);
+  }, [run.id, run.steps, apiCall, onRefresh]);
 
   // Start a step
   const handleStartStep = useCallback(async () => {
@@ -141,8 +152,8 @@ export function MobileProductionRun({ run, onRefresh }: MobileProductionRunProps
     trackEvent('step_started', { runId: run.id, stepId: activeStep.id });
     
     try {
-      await apiCall(`/api/production-runs/${run.id}/steps/${activeStep.id}/start`, {});
-      onRefresh?.();
+      await apiCall(`/api/production-runs/steps/${activeStep.id}/start`, {});
+      await handleRefresh();
     } catch {
       // Error already set
     }
@@ -154,16 +165,19 @@ export function MobileProductionRun({ run, onRefresh }: MobileProductionRunProps
     trackEvent('step_completed', { runId: run.id, stepId: activeStep.id });
     
     try {
-      await apiCall(`/api/production-runs/${run.id}/steps/${activeStep.id}/complete`, {});
+      const data = await apiCall(`/api/production-runs/steps/${activeStep.id}/complete`, {});
       
-      // Move to next step or complete view
-      if (activeStepIndex < run.steps.length - 1) {
-        setActiveStepIndex(activeStepIndex + 1);
-      } else {
+      // If run was completed, show completion view
+      if (data.runCompleted) {
         setViewState('complete');
+      } else {
+        // Move to next step
+        if (activeStepIndex < run.steps.length - 1) {
+          setActiveStepIndex(activeStepIndex + 1);
+        }
       }
       
-      onRefresh?.();
+      await handleRefresh();
     } catch {
       // Error already set
     }
@@ -175,7 +189,7 @@ export function MobileProductionRun({ run, onRefresh }: MobileProductionRunProps
     trackEvent('step_skipped', { runId: run.id, stepId: activeStep.id });
     
     try {
-      await apiCall(`/api/production-runs/${run.id}/steps/${activeStep.id}/skip`, {});
+      await apiCall(`/api/production-runs/steps/${activeStep.id}/skip`, { reason: 'Skipped via mobile' });
       
       // Move to next step or complete view
       if (activeStepIndex < run.steps.length - 1) {
@@ -184,39 +198,24 @@ export function MobileProductionRun({ run, onRefresh }: MobileProductionRunProps
         setViewState('complete');
       }
       
-      onRefresh?.();
+      await handleRefresh();
     } catch {
       // Error already set
     }
   }, [run.id, activeStep, activeStepIndex, run.steps.length, apiCall, onRefresh]);
 
-  // Put run on hold
+  // Put run on hold (not implemented yet - would need a new API)
   const handlePutOnHold = useCallback(async (reason: string) => {
     trackEvent('run_on_hold', { runId: run.id });
-    
-    try {
-      await apiCall(`/api/production-runs/${run.id}/hold`, { reason });
-      onRefresh?.();
-      setViewState('overview');
-    } catch {
-      // Error already set
-    }
-  }, [run.id, apiCall, onRefresh]);
+    // TODO: Implement hold API endpoint
+    setError('Hold functionality not yet implemented');
+  }, [run.id]);
 
-  // Complete the run
-  const handleCompleteRun = useCallback(async () => {
-    trackEvent('run_completed', { runId: run.id, quantity: quantityInput });
-    
-    try {
-      await apiCall(`/api/production-runs/${run.id}/complete`, {
-        actualQuantity: quantityInput,
-      });
-      onRefresh?.();
-      router.push('/ops/work');
-    } catch {
-      // Error already set
-    }
-  }, [run.id, quantityInput, apiCall, onRefresh, router]);
+  // Complete the run (already handled by completing last step, but show confirmation)
+  const handleCompleteRun = useCallback(() => {
+    trackEvent('run_completed_confirmed', { runId: run.id });
+    router.push('/ops/work');
+  }, [run.id, router]);
 
   // Render overview (run info + step list)
   if (viewState === 'overview') {
@@ -469,7 +468,7 @@ export function MobileProductionRun({ run, onRefresh }: MobileProductionRunProps
     );
   }
 
-  // Render complete run view
+  // Render complete run view (run completion is automatic when last step completes)
   if (viewState === 'complete') {
     return (
       <div className="space-y-4">
@@ -478,59 +477,29 @@ export function MobileProductionRun({ run, onRefresh }: MobileProductionRunProps
             <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mb-4">
               <CheckCircle2 className="w-8 h-8 text-green-600" />
             </div>
-            <p className="text-lg font-semibold text-gray-900">Complete Run</p>
+            <p className="text-lg font-semibold text-gray-900">Run Complete!</p>
             <p className="text-sm text-gray-500 mt-1">{run.product.name}</p>
+            <p className="text-xs text-gray-400 mt-2">
+              All production steps have been completed.
+            </p>
           </div>
         </CeramicCard>
 
         <GlassCard>
-          <p className="text-xs font-medium text-gray-500 mb-4 text-center">
-            Final Quantity Produced
-          </p>
-          
-          <div className="flex items-center justify-center">
-            <input
-              type="number"
-              value={quantityInput}
-              onChange={(e) => setQuantityInput(Math.max(0, parseInt(e.target.value) || 0))}
-              className="w-32 text-center text-3xl font-semibold text-gray-900 bg-transparent border-b-2 border-gray-300 focus:border-blue-500 focus:outline-none"
-            />
+          <div className="flex justify-between py-2">
+            <span className="text-sm text-gray-500">Quantity</span>
+            <span className="text-sm font-semibold text-gray-900">{run.quantity} units</span>
           </div>
-          
-          <p className="text-xs text-gray-500 text-center mt-2">
-            Planned: {run.quantity} units
-          </p>
         </GlassCard>
 
-        {/* Error display */}
-        {error && (
-          <CeramicCard variant="warning">
-            <div className="flex items-start gap-3">
-              <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
-              <p className="text-sm text-amber-700">{error}</p>
-            </div>
-          </CeramicCard>
-        )}
-
-        <div className="space-y-2">
-          <PillButton 
-            variant="ceramic" 
-            onClick={handleCompleteRun}
-            disabled={isSubmitting}
-            icon={<Check className="w-4 h-4" />}
-            className="w-full"
-          >
-            {isSubmitting ? 'Completing...' : 'Complete Run'}
-          </PillButton>
-          <PillButton 
-            variant="glass" 
-            onClick={() => setViewState('overview')}
-            disabled={isSubmitting}
-            className="w-full"
-          >
-            Back
-          </PillButton>
-        </div>
+        <PillButton 
+          variant="ceramic" 
+          onClick={handleCompleteRun}
+          icon={<Check className="w-4 h-4" />}
+          className="w-full"
+        >
+          Back to My Work
+        </PillButton>
       </div>
     );
   }

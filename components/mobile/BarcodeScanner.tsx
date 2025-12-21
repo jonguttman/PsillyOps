@@ -67,15 +67,25 @@ export default function BarcodeScanner({
     return readerRef.current;
   }, []);
 
-  // Stop camera stream
+  // Stop camera stream and reader
   const stopStream = useCallback(() => {
+    // Stop all camera tracks (stopping the stream stops ZXing decoding automatically)
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current.getTracks().forEach(track => {
+        track.stop();
+        track.enabled = false;
+      });
       streamRef.current = null;
     }
+    
+    // Clear video element
     if (videoRef.current) {
       videoRef.current.srcObject = null;
+      videoRef.current.pause();
     }
+    
+    // Clear reader reference (ZXing will stop when stream stops)
+    readerRef.current = null;
   }, []);
 
   // Start scanning

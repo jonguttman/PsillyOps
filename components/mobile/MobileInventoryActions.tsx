@@ -124,8 +124,9 @@ export function MobileInventoryActions({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          adjustment: adjustmentValue,
-          reason: adjustmentReason,
+          deltaQty: adjustmentValue,
+          reason: adjustmentReason || 'Mobile adjustment',
+          adjustmentType: adjustmentValue > 0 ? 'ADD' : 'REMOVE',
         }),
       });
       
@@ -169,11 +170,14 @@ export function MobileInventoryActions({
     setError(null);
     
     try {
-      const res = await fetch(`/api/inventory/${item.id}/move`, {
+      const res = await fetch(`/api/inventory/move`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          locationId: selectedLocationId,
+          inventoryId: item.id,
+          toLocationId: selectedLocationId,
+          quantity: item.quantityOnHand, // Move all quantity
+          reason: 'Mobile location transfer',
         }),
       });
       
@@ -220,9 +224,9 @@ export function MobileInventoryActions({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          adjustment,
+          deltaQty: adjustment,
           reason: 'Count confirmation',
-          isCountConfirmation: true,
+          adjustmentType: adjustment > 0 ? 'ADD' : 'REMOVE',
         }),
       });
       

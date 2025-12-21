@@ -5,6 +5,7 @@ import { getProductionRun } from '@/lib/services/productionRunService';
 import { getBaseUrl } from '@/lib/services/qrTokenService';
 import ProductionRunClient from '@/components/production/ProductionRunClient';
 import type { ProductionRunApiDetail } from '@/components/production/ProductionRunClient';
+import { MobileProductionRun, type ProductionRunData } from '@/components/mobile';
 
 export default async function ProductionRunDetailPage({
   params,
@@ -64,21 +65,58 @@ export default async function ProductionRunDetailPage({
     currentStep: null,
   };
 
+  // Convert to mobile format
+  const mobileRunData: ProductionRunData = {
+    id: run.id,
+    status: run.status as ProductionRunData['status'],
+    quantity: run.quantity,
+    actualQuantity: undefined, // Not stored on run
+    product: {
+      id: run.product.id,
+      name: run.product.name,
+      sku: run.product.sku,
+    },
+    steps: run.steps.map((s) => ({
+      id: s.id,
+      key: s.templateKey,
+      label: s.label,
+      order: s.order,
+      status: s.status as ProductionRunData['steps'][number]['status'],
+      notes: s.skipReason || undefined,
+      startedAt: s.startedAt ? s.startedAt.toISOString() : undefined,
+      completedAt: s.completedAt ? s.completedAt.toISOString() : undefined,
+    })),
+    batchCode: undefined, // Not on run
+    notes: undefined,
+    startedAt: run.startedAt ? run.startedAt.toISOString() : undefined,
+    completedAt: run.completedAt ? run.completedAt.toISOString() : undefined,
+  };
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <Link href="/ops/dashboard" className="text-sm text-gray-600 hover:text-gray-900">
-          ← Back
-        </Link>
+    <>
+      {/* Desktop view */}
+      <div className="hidden md:block space-y-4">
+        <div className="flex items-center justify-between">
+          <Link href="/ops/dashboard" className="text-sm text-gray-600 hover:text-gray-900">
+            ← Back
+          </Link>
+        </div>
+
+        <ProductionRunClient
+          runId={run.id}
+          initial={initial}
+          userRole={session.user.role}
+          userId={session.user.id}
+        />
       </div>
 
-      <ProductionRunClient
-        runId={run.id}
-        initial={initial}
-        userRole={session.user.role}
-        userId={session.user.id}
-      />
-    </div>
+      {/* Mobile view */}
+      <div className="block md:hidden">
+        <MobileProductionRun 
+          run={mobileRunData}
+        />
+      </div>
+    </>
   );
 }
 

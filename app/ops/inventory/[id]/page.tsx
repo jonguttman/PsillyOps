@@ -8,6 +8,8 @@ import TooltipWrapper, { TooltipIcon } from '@/components/ui/TooltipWrapper';
 import { QRBehaviorPanelServer } from '@/components/qr/QRBehaviorPanelServer';
 import { QRTokenInspector } from '@/components/qr/QRTokenInspector';
 import InventoryAdjustClient from './InventoryAdjustClient';
+import MobileInventoryActionsWrapper from './MobileInventoryActionsWrapper';
+import type { InventoryItemData, LocationOption } from '@/components/mobile';
 
 const STATUS_COLORS: Record<string, string> = {
   AVAILABLE: 'bg-green-100 text-green-800',
@@ -44,7 +46,7 @@ export default async function InventoryDetailPage({
 
   const { id } = await params;
 
-  const [inventoryItem, movementsData] = await Promise.all([
+  const [inventoryItem, movementsData, locations] = await Promise.all([
     prisma.inventoryItem.findUnique({
       where: { id },
       include: {
@@ -66,6 +68,11 @@ export default async function InventoryDetailPage({
       where: { inventoryId: id },
       orderBy: { createdAt: 'desc' },
       take: 20
+    }),
+    prisma.location.findMany({
+      where: { active: true },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' }
     })
   ]);
 
@@ -91,8 +98,39 @@ export default async function InventoryDetailPage({
 
   const expiryStatus = getExpiryStatus(inventoryItem.expiryDate);
 
+  // Mobile inventory data
+  const mobileInventoryData: InventoryItemData = {
+    id: inventoryItem.id,
+    quantityOnHand: inventoryItem.quantityOnHand,
+    quantityReserved: inventoryItem.quantityReserved,
+    unitOfMeasure: inventoryItem.unitOfMeasure,
+    location: inventoryItem.location ? {
+      id: inventoryItem.location.id,
+      name: inventoryItem.location.name,
+    } : undefined,
+    product: inventoryItem.product ? {
+      id: inventoryItem.product.id,
+      name: inventoryItem.product.name,
+      sku: inventoryItem.product.sku,
+    } : undefined,
+    material: inventoryItem.material ? {
+      id: inventoryItem.material.id,
+      name: inventoryItem.material.name,
+      sku: inventoryItem.material.sku,
+    } : undefined,
+    lotNumber: inventoryItem.lotNumber || undefined,
+    expiryDate: inventoryItem.expiryDate ? inventoryItem.expiryDate.toISOString() : undefined,
+  };
+
+  const locationOptions: LocationOption[] = locations.map(l => ({
+    id: l.id,
+    name: l.name,
+  }));
+
   return (
-    <div className="space-y-6">
+    <>
+      {/* Desktop view */}
+      <div className="hidden md:block space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -301,6 +339,15 @@ export default async function InventoryDetailPage({
           )}
         </div>
       </div>
-    </div>
+      </div>
+
+      {/* Mobile view */}
+      <div className="block md:hidden space-y-4">
+        <MobileInventoryActionsWrapper
+          item={mobileInventoryData}
+          locations={locationOptions}
+        />
+      </div>
+    </>
   );
 }
