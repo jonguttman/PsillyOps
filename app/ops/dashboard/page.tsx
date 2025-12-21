@@ -10,6 +10,7 @@ import SupplyWatchCard from "@/components/dashboard/SupplyWatchCard";
 import ProductionAttentionCard from "@/components/dashboard/ProductionAttentionCard";
 import { getLowStockMaterials } from "@/lib/services/inventoryService";
 import { getRecentAdjustments } from "@/lib/services/inventoryAdjustmentService";
+import { MobileDashboard } from "@/components/mobile";
 
 export default async function AdminDashboardPage() {
   const session = await auth();
@@ -135,64 +136,99 @@ export default async function AdminDashboardPage() {
       )
     : null;
 
+  // Calculate alerts count for mobile
+  const alertsCount = 
+    lowStockMaterials.length + 
+    blockedOrders.length + 
+    qcHoldBatches.length + 
+    ordersWithShortages.length + 
+    ordersAwaitingInvoice.length;
+
+  // Mobile dashboard data
+  const mobileDashboardData = {
+    lowStockMaterials: lowStockMaterials.map((m) => ({
+      id: m.id,
+      name: m.name,
+      currentStockQty: m.currentStockQty,
+      reorderPoint: m.reorderPoint,
+    })),
+    blockedOrders,
+    qcHoldBatches,
+    activeProductionOrders,
+    recentActivity,
+    alertsCount,
+  };
+
   return (
-    <div className="space-y-4">
-      {/* AI Command Input - Primary */}
-      <DashboardAiInput userRole={session.user.role} />
+    <>
+      {/* ========================================
+          Desktop Dashboard - hidden on mobile
+          ======================================== */}
+      <div className="hidden md:block space-y-4">
+        {/* AI Command Input - Primary */}
+        <DashboardAiInput userRole={session.user.role} />
 
-      {/* Stats Strip - Context Only */}
-      <StatsStrip
-        lowStockCount={lowStockMaterials.length}
-        activeProductionOrders={activeProductionOrders}
-        openRetailerOrders={openRetailerOrders}
-        pendingPurchaseOrders={pendingPurchaseOrders}
-        awaitingInvoiceCount={awaitingInvoiceCount}
-      />
+        {/* Stats Strip - Context Only */}
+        <StatsStrip
+          lowStockCount={lowStockMaterials.length}
+          activeProductionOrders={activeProductionOrders}
+          openRetailerOrders={openRetailerOrders}
+          pendingPurchaseOrders={pendingPurchaseOrders}
+          awaitingInvoiceCount={awaitingInvoiceCount}
+        />
 
-      {/* Actionable Alerts */}
-      <AlertsPanel
-        lowStockMaterials={lowStockMaterials}
-        blockedOrders={blockedOrders}
-        qcHoldBatches={qcHoldBatches}
-        ordersWithShortages={ordersWithShortages}
-        ordersAwaitingInvoice={ordersAwaitingInvoice}
-      />
+        {/* Actionable Alerts */}
+        <AlertsPanel
+          lowStockMaterials={lowStockMaterials}
+          blockedOrders={blockedOrders}
+          qcHoldBatches={qcHoldBatches}
+          ordersWithShortages={ordersWithShortages}
+          ordersAwaitingInvoice={ordersAwaitingInvoice}
+        />
 
-      {/* Supply Watch */}
-      <SupplyWatchCard
-        lowStockMaterials={lowStockMaterials.map((m) => ({
-          id: m.id,
-          name: m.name,
-          currentStockQty: m.currentStockQty,
-          reorderPoint: m.reorderPoint,
-        }))}
-        recentManualAdjustments={(recentManualAdjustments.adjustments || [])
-          .filter((a: (typeof recentManualAdjustments.adjustments)[number]) => a.inventory.type === "MATERIAL")
-          .map((a: (typeof recentManualAdjustments.adjustments)[number]) => ({
-            id: a.id,
-            createdAt: a.createdAt,
-            deltaQty: a.deltaQty,
-            reason: a.reason,
-            inventory: {
-              id: a.inventory.id,
-              type: a.inventory.type,
-              product: a.inventory.product,
-              material: a.inventory.material,
-            },
+        {/* Supply Watch */}
+        <SupplyWatchCard
+          lowStockMaterials={lowStockMaterials.map((m) => ({
+            id: m.id,
+            name: m.name,
+            currentStockQty: m.currentStockQty,
+            reorderPoint: m.reorderPoint,
           }))}
-        openPOsCount={openPurchaseOrders}
-        daysSinceLastReceipt={daysSinceLastReceipt}
-      />
+          recentManualAdjustments={(recentManualAdjustments.adjustments || [])
+            .filter((a: (typeof recentManualAdjustments.adjustments)[number]) => a.inventory.type === "MATERIAL")
+            .map((a: (typeof recentManualAdjustments.adjustments)[number]) => ({
+              id: a.id,
+              createdAt: a.createdAt,
+              deltaQty: a.deltaQty,
+              reason: a.reason,
+              inventory: {
+                id: a.inventory.id,
+                type: a.inventory.type,
+                product: a.inventory.product,
+                material: a.inventory.material,
+              },
+            }))}
+          openPOsCount={openPurchaseOrders}
+          daysSinceLastReceipt={daysSinceLastReceipt}
+        />
 
-      {/* Production Attention */}
-      <ProductionAttentionCard />
+        {/* Production Attention */}
+        <ProductionAttentionCard />
 
-      {/* Recent QR Scans */}
-      <RecentQRScans />
+        {/* Recent QR Scans */}
+        <RecentQRScans />
 
-      {/* Recent Activity Feed */}
-      <ActivityFeed activities={recentActivity} />
-    </div>
+        {/* Recent Activity Feed */}
+        <ActivityFeed activities={recentActivity} />
+      </div>
+
+      {/* ========================================
+          Mobile Dashboard - hidden on desktop
+          ======================================== */}
+      <div className="block md:hidden">
+        <MobileDashboard data={mobileDashboardData} />
+      </div>
+    </>
   );
 }
 

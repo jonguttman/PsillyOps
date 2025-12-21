@@ -2,6 +2,15 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { QrCode, Clipboard, ArrowRight, Camera } from 'lucide-react';
+import { GlassCard, CeramicCard, PillButton } from '@/components/mobile';
+
+// Analytics hook placeholder
+function trackEvent(event: string, data?: Record<string, unknown>) {
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[Analytics]', event, data);
+  }
+}
 
 function extractToken(input: string): string | null {
   const raw = input.trim();
@@ -32,9 +41,11 @@ export default function MobileScanPage() {
     const t = extractToken(value);
     if (!t) {
       setError('Paste a /qr/{token} URL or a qr_ token.');
+      trackEvent('scan_failure', { error: 'invalid_token' });
       return;
     }
 
+    trackEvent('scan_success', { tokenId: t });
     // Canonical scan flow: /qr/{token} → resolver → destination (logs + overrides)
     router.push(`/qr/${t}`);
   }, [router, value]);
@@ -44,47 +55,109 @@ export default function MobileScanPage() {
       const text = await navigator.clipboard.readText();
       setValue(text);
       setError(null);
+      trackEvent('scan_paste', { hasContent: !!text });
     } catch {
       setError('Unable to read clipboard. Please paste manually.');
+      trackEvent('scan_failure', { error: 'clipboard_access' });
     }
   }, []);
 
   return (
-    <div className="max-w-md mx-auto space-y-4">
-      <div>
-        <h1 className="text-xl font-bold text-gray-900">Scan</h1>
-        <p className="mt-1 text-sm text-gray-600">
-          Paste a run QR link or token. You’ll be redirected through the QR resolver.
-        </p>
-      </div>
+    <div className="space-y-4">
+      {/* Camera placeholder - Phase 2 will implement actual camera */}
+      <GlassCard className="!p-8">
+        <div className="flex flex-col items-center justify-center text-center">
+          <div className="
+            w-20 h-20 mb-4
+            rounded-2xl
+            bg-gray-100
+            flex items-center justify-center
+          ">
+            <Camera className="w-10 h-10 text-gray-400" />
+          </div>
+          <p className="text-sm text-gray-500">
+            Camera scanning coming soon
+          </p>
+          <p className="text-xs text-gray-400 mt-1">
+            For now, paste a QR link below
+          </p>
+        </div>
+      </GlassCard>
 
-      <div className="bg-white shadow rounded-lg p-4 space-y-3">
-        <label className="block text-xs font-medium text-gray-500">QR URL or token</label>
+      {/* Error state - replaces content when present */}
+      {error ? (
+        <CeramicCard variant="warning">
+          <div className="flex items-start gap-3">
+            <QrCode className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-amber-900">{error}</p>
+              <p className="text-xs text-amber-700 mt-1">
+                Try copying the full URL from your QR code scan.
+              </p>
+            </div>
+          </div>
+        </CeramicCard>
+      ) : null}
+
+      {/* Input card */}
+      <GlassCard>
+        <label className="block text-xs font-medium text-gray-500 mb-2">
+          QR URL or token
+        </label>
         <input
           value={value}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(e) => {
+            setValue(e.target.value);
+            if (error) setError(null);
+          }}
           placeholder="https://…/qr/qr_… or qr_…"
-          className="w-full px-3 py-3 border border-gray-300 rounded-md text-sm"
+          className="
+            w-full px-4 py-3
+            min-h-[48px]
+            border border-gray-200 rounded-xl
+            text-sm text-gray-900
+            placeholder:text-gray-400
+            focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500
+            transition-all duration-[var(--transition-fast)]
+          "
+          // No autoFocus - causes keyboard issues on mobile
         />
 
-        {error ? <div className="text-sm text-red-700">{error}</div> : null}
+        {/* Token preview */}
+        {token && (
+          <div className="mt-3 flex items-center gap-2 text-xs text-gray-500">
+            <QrCode className="w-3.5 h-3.5" />
+            <span>Token detected: <code className="font-mono text-gray-700">{token.slice(0, 20)}…</code></span>
+          </div>
+        )}
 
-        <div className="grid grid-cols-2 gap-2">
-          <button
+        {/* Action buttons - 8px gap, 44px min height */}
+        <div className="flex gap-2 mt-4">
+          <PillButton
+            variant="glass"
             onClick={paste}
-            className="inline-flex items-center justify-center px-3 py-3 rounded-md bg-gray-100 text-gray-800 text-sm font-semibold"
+            icon={<Clipboard className="w-4 h-4" />}
+            className="flex-1"
           >
             Paste
-          </button>
-          <button
+          </PillButton>
+          <PillButton
+            variant="ceramic"
             onClick={go}
             disabled={!token}
-            className="inline-flex items-center justify-center px-3 py-3 rounded-md bg-blue-600 text-white text-sm font-semibold disabled:opacity-50"
+            iconRight={<ArrowRight className="w-4 h-4" />}
+            className="flex-1"
           >
             Go
-          </button>
+          </PillButton>
         </div>
-      </div>
+      </GlassCard>
+
+      {/* Help text */}
+      <p className="text-xs text-gray-400 text-center px-4">
+        Scan a QR code with your camera app, then paste the link here.
+        You&apos;ll be redirected through the QR resolver.
+      </p>
     </div>
   );
 }
