@@ -17,7 +17,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Camera, CameraOff, RefreshCw, X } from 'lucide-react';
-import { GlassCard, CeramicCard, PillButton } from '@/components/mobile';
+import { GlassCard, CeramicCard, PillButton, LiquidGlassSwitch } from '@/components/mobile';
 
 // Lazy import ZXing to avoid SSR issues
 let BrowserMultiFormatReader: typeof import('@zxing/browser').BrowserMultiFormatReader | null = null;
@@ -31,14 +31,16 @@ interface BarcodeScannerProps {
   autoStart?: boolean;
 }
 
-// Extend MediaTrackCapabilities to include zoom (not in standard TS types)
-interface ZoomCapabilities extends MediaTrackCapabilities {
+// Extend MediaTrackCapabilities to include zoom and torch (not in standard TS types)
+interface CameraCapabilities extends MediaTrackCapabilities {
   zoom?: { min: number; max: number; step?: number };
+  torch?: boolean;
 }
 
-// Extend MediaTrackConstraintSet to include zoom
-interface ZoomConstraintSet extends MediaTrackConstraintSet {
+// Combined constraint set for zoom and torch (extends MediaTrackConstraintSet for type compatibility)
+interface CameraConstraintSet extends MediaTrackConstraintSet {
   zoom?: number;
+  torch?: boolean;
 }
 
 // Analytics hook placeholder
@@ -70,6 +72,10 @@ export default function BarcodeScanner({
   const [minZoom, setMinZoom] = useState(1);
   const [maxZoom, setMaxZoom] = useState(1);
   const [currentZoom, setCurrentZoom] = useState(1);
+  
+  // Torch state
+  const [supportsTorch, setSupportsTorch] = useState(false);
+  const [torchOn, setTorchOn] = useState(false);
 
   // Compute preset zoom values (clamped to maxZoom)
   const presets = useMemo(() => {
@@ -107,13 +113,29 @@ export default function BarcodeScanner({
     
     try {
       await videoTrackRef.current.applyConstraints({
-        advanced: [{ zoom: clamped } as ZoomConstraintSet],
+        advanced: [{ zoom: clamped } as CameraConstraintSet],
       });
       setCurrentZoom(clamped);
     } catch (err) {
       console.error('Failed to apply zoom:', err);
     }
   }, [supportsZoom, minZoom, maxZoom]);
+
+  // Toggle torch (flashlight)
+  const toggleTorch = useCallback(async (next?: boolean) => {
+    if (!videoTrackRef.current || !supportsTorch) return;
+    
+    const target = typeof next === 'boolean' ? next : !torchOn;
+    
+    try {
+      await videoTrackRef.current.applyConstraints({
+        advanced: [{ torch: target } as CameraConstraintSet],
+      });
+      setTorchOn(target);
+    } catch (err) {
+      console.error('Failed to toggle torch:', err);
+    }
+  }, [supportsTorch, torchOn]);
 
   // Debounced slider handler (75ms debounce to prevent constraint thrashing)
   const handleSliderChange = useCallback((value: number) => {
@@ -174,10 +196,10 @@ export default function BarcodeScanner({
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
       
-      // Detect zoom capability
+      // Detect zoom and torch capabilities
       const track = stream.getVideoTracks()[0];
       videoTrackRef.current = track;
-      const capabilities = track.getCapabilities?.() as ZoomCapabilities | undefined;
+      const capabilities = track.getCapabilities?.() as CameraCapabilities | undefined;
       
       if (capabilities && 
           typeof capabilities.zoom?.min === 'number' && 
@@ -188,6 +210,14 @@ export default function BarcodeScanner({
         setCurrentZoom(capabilities.zoom.min);
       } else {
         setSupportsZoom(false);
+      }
+      
+      // Detect torch capability
+      if (capabilities?.torch === true) {
+        setSupportsTorch(true);
+        setTorchOn(false);
+      } else {
+        setSupportsTorch(false);
       }
       
       if (videoRef.current) {
@@ -202,7 +232,7 @@ export default function BarcodeScanner({
       reader.decodeFromVideoDevice(
         undefined, // Use default device
         videoRef.current!,
-        (result) => {
+        async (result) => {
           if (result) {
             const value = result.getText();
             const format = result.getBarcodeFormat().toString();
@@ -212,9 +242,21 @@ export default function BarcodeScanner({
               setLastScannedValue(value);
               setState('paused');
               
+              // Reset torch before stopping stream (while track is still valid)
+              if (supportsTorch && torchOn && videoTrackRef.current) {
+                try {
+                  await videoTrackRef.current.applyConstraints({
+                    advanced: [{ torch: false } as CameraConstraintSet],
+                  });
+                  setTorchOn(false);
+                } catch (err) {
+                  console.error('Failed to reset torch:', err);
+                }
+              }
+              
               // Reset zoom before stopping stream (while track is still valid)
               if (supportsZoom && videoTrackRef.current) {
-                applyZoom(minZoom);
+                await applyZoom(minZoom);
               }
               
               stopStream();
@@ -232,7 +274,7 @@ export default function BarcodeScanner({
       trackEvent('scanner_error', { error: message });
       onError?.(message);
     }
-  }, [initReader, facingMode, lastScannedValue, onScan, onError, stopStream, supportsZoom, minZoom, applyZoom]);
+  }, [initReader, facingMode, lastScannedValue, onScan, onError, stopStream, supportsZoom, minZoom, applyZoom, supportsTorch, torchOn]);
 
   // Resume scanning after a successful scan
   const resumeScanning = useCallback(() => {
@@ -241,8 +283,12 @@ export default function BarcodeScanner({
     if (supportsZoom) {
       setCurrentZoom(minZoom);
     }
+    // Reset torch state for next scan
+    if (supportsTorch) {
+      setTorchOn(false);
+    }
     startScanning();
-  }, [startScanning, supportsZoom, minZoom]);
+  }, [startScanning, supportsZoom, minZoom, supportsTorch]);
 
   // Switch camera (front/back)
   const switchCamera = useCallback(() => {
@@ -375,70 +421,91 @@ export default function BarcodeScanner({
         )}
       </div>
       
-      {/* Zoom Controls - Only show when scanning and zoom is supported */}
-      {state === 'scanning' && supportsZoom && (
-        <GlassCard className="!p-4">
-          {/* Preset Buttons - Only show if maxZoom >= 2 */}
-          {showPresets && presets && (
-            <div className="flex gap-2 mb-4">
-              <button
-                onClick={() => applyZoom(presets.x2)}
-                className={`
-                  flex-1 px-4 py-3 rounded-full text-sm font-medium
-                  min-h-[44px] flex items-center justify-center
-                  transition-colors
-                  ${Math.abs(currentZoom - presets.x2) < 0.15
-                    ? 'bg-blue-600 text-white'
-                    : 'surface-glass text-gray-700'}
-                `}
-              >
-                2×
-              </button>
-              <button
-                onClick={() => applyZoom(presets.x4)}
-                className={`
-                  flex-1 px-4 py-3 rounded-full text-sm font-medium
-                  min-h-[44px] flex items-center justify-center
-                  transition-colors
-                  ${Math.abs(currentZoom - presets.x4) < 0.15
-                    ? 'bg-blue-600 text-white'
-                    : 'surface-glass text-gray-700'}
-                `}
-              >
-                4×
-              </button>
-              <button
-                onClick={() => applyZoom(presets.max)}
-                className={`
-                  flex-1 px-4 py-3 rounded-full text-sm font-medium
-                  min-h-[44px] flex items-center justify-center
-                  transition-colors
-                  ${Math.abs(currentZoom - presets.max) < 0.15
-                    ? 'bg-blue-600 text-white'
-                    : 'surface-glass text-gray-700'}
-                `}
-              >
-                MAX
-              </button>
-            </div>
+      {/* Camera Controls - Only show when scanning and zoom or torch is supported */}
+      {state === 'scanning' && (supportsZoom || supportsTorch) && (
+        <GlassCard className="!p-4 space-y-4">
+          {/* Zoom Controls - Only show if zoom is supported */}
+          {supportsZoom && (
+            <>
+              {/* Preset Buttons - Only show if maxZoom >= 2 */}
+              {showPresets && presets && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => applyZoom(presets.x2)}
+                    className={`
+                      flex-1 px-4 py-3 rounded-full text-sm font-medium
+                      min-h-[44px] flex items-center justify-center
+                      transition-colors
+                      ${Math.abs(currentZoom - presets.x2) < 0.15
+                        ? 'bg-blue-600 text-white'
+                        : 'surface-glass text-gray-700'}
+                    `}
+                  >
+                    2×
+                  </button>
+                  <button
+                    onClick={() => applyZoom(presets.x4)}
+                    className={`
+                      flex-1 px-4 py-3 rounded-full text-sm font-medium
+                      min-h-[44px] flex items-center justify-center
+                      transition-colors
+                      ${Math.abs(currentZoom - presets.x4) < 0.15
+                        ? 'bg-blue-600 text-white'
+                        : 'surface-glass text-gray-700'}
+                    `}
+                  >
+                    4×
+                  </button>
+                  <button
+                    onClick={() => applyZoom(presets.max)}
+                    className={`
+                      flex-1 px-4 py-3 rounded-full text-sm font-medium
+                      min-h-[44px] flex items-center justify-center
+                      transition-colors
+                      ${Math.abs(currentZoom - presets.max) < 0.15
+                        ? 'bg-blue-600 text-white'
+                        : 'surface-glass text-gray-700'}
+                    `}
+                  >
+                    MAX
+                  </button>
+                </div>
+              )}
+              
+              {/* Zoom Slider */}
+              <div className="space-y-2">
+                <div className="flex justify-between text-xs text-gray-500">
+                  <span>{minZoom.toFixed(1)}×</span>
+                  <span>{maxZoom.toFixed(1)}×</span>
+                </div>
+                <input
+                  type="range"
+                  min={minZoom}
+                  max={maxZoom}
+                  step={0.1}
+                  value={currentZoom}
+                  onChange={(e) => handleSliderChange(parseFloat(e.target.value))}
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                />
+              </div>
+            </>
           )}
           
-          {/* Zoom Slider */}
-          <div className="space-y-2">
-            <div className="flex justify-between text-xs text-gray-500">
-              <span>{minZoom.toFixed(1)}×</span>
-              <span>{maxZoom.toFixed(1)}×</span>
+          {/* Divider - Only show if both zoom and torch are supported */}
+          {supportsZoom && supportsTorch && (
+            <div className="h-px bg-white/20" />
+          )}
+          
+          {/* Light Switch - Only show if torch is supported */}
+          {supportsTorch && (
+            <div className="flex items-center justify-between min-h-[44px]">
+              <span className="text-sm text-gray-600">Light</span>
+              <LiquidGlassSwitch
+                checked={torchOn}
+                onChange={(next) => toggleTorch(next)}
+              />
             </div>
-            <input
-              type="range"
-              min={minZoom}
-              max={maxZoom}
-              step={0.1}
-              value={currentZoom}
-              onChange={(e) => handleSliderChange(parseFloat(e.target.value))}
-              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-            />
-          </div>
+          )}
         </GlassCard>
       )}
       

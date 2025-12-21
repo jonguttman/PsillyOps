@@ -7,6 +7,7 @@ export { CeramicCard } from './CeramicCard';
 
 // Controls
 export { PillButton } from './PillButton';
+export { default as LiquidGlassSwitch } from './LiquidGlassSwitch';
 
 // Layout
 export { MobileHeader } from './MobileHeader';
