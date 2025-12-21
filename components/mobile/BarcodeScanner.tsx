@@ -15,7 +15,7 @@
  * - Works in iOS Safari (HTTPS required)
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Camera, CameraOff, RefreshCw, X } from 'lucide-react';
 import { GlassCard, CeramicCard, PillButton } from '@/components/mobile';
 
@@ -29,6 +29,16 @@ interface BarcodeScannerProps {
   onError?: (error: string) => void;
   onClose?: () => void;
   autoStart?: boolean;
+}
+
+// Extend MediaTrackCapabilities to include zoom (not in standard TS types)
+interface ZoomCapabilities extends MediaTrackCapabilities {
+  zoom?: { min: number; max: number; step?: number };
+}
+
+// Extend MediaTrackConstraintSet to include zoom
+interface ZoomConstraintSet extends MediaTrackConstraintSet {
+  zoom?: number;
 }
 
 // Analytics hook placeholder
@@ -47,11 +57,33 @@ export default function BarcodeScanner({
   const videoRef = useRef<HTMLVideoElement>(null);
   const readerRef = useRef<InstanceType<typeof import('@zxing/browser').BrowserMultiFormatReader> | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const videoTrackRef = useRef<MediaStreamTrack | null>(null);
+  const debounceTimerRef = useRef<number | null>(null);
   
   const [state, setState] = useState<ScannerState>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [lastScannedValue, setLastScannedValue] = useState<string | null>(null);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
+  
+  // Zoom state
+  const [supportsZoom, setSupportsZoom] = useState(false);
+  const [minZoom, setMinZoom] = useState(1);
+  const [maxZoom, setMaxZoom] = useState(1);
+  const [currentZoom, setCurrentZoom] = useState(1);
+
+  // Compute preset zoom values (clamped to maxZoom)
+  const presets = useMemo(() => {
+    if (!supportsZoom) return null;
+    
+    return {
+      x2: Math.min(2, maxZoom),
+      x4: Math.min(4, maxZoom),
+      max: maxZoom,
+    };
+  }, [supportsZoom, maxZoom]);
+
+  // Only show presets if maxZoom >= 2
+  const showPresets = presets && maxZoom >= 2;
 
   // Initialize ZXing reader
   const initReader = useCallback(async () => {
@@ -66,6 +98,37 @@ export default function BarcodeScanner({
     
     return readerRef.current;
   }, []);
+
+  // Apply zoom to video track
+  const applyZoom = useCallback(async (value: number) => {
+    if (!videoTrackRef.current || !supportsZoom) return;
+    
+    const clamped = Math.min(Math.max(value, minZoom), maxZoom);
+    
+    try {
+      await videoTrackRef.current.applyConstraints({
+        advanced: [{ zoom: clamped } as ZoomConstraintSet],
+      });
+      setCurrentZoom(clamped);
+    } catch (err) {
+      console.error('Failed to apply zoom:', err);
+    }
+  }, [supportsZoom, minZoom, maxZoom]);
+
+  // Debounced slider handler (75ms debounce to prevent constraint thrashing)
+  const handleSliderChange = useCallback((value: number) => {
+    // Update UI immediately for responsive feel
+    setCurrentZoom(value);
+    
+    // Debounce actual zoom application
+    if (debounceTimerRef.current) {
+      window.clearTimeout(debounceTimerRef.current);
+    }
+    
+    debounceTimerRef.current = window.setTimeout(() => {
+      applyZoom(value);
+    }, 75);
+  }, [applyZoom]);
 
   // Stop camera stream and reader
   const stopStream = useCallback(() => {
@@ -86,6 +149,9 @@ export default function BarcodeScanner({
     
     // Clear reader reference (ZXing will stop when stream stops)
     readerRef.current = null;
+    
+    // Clear video track reference (will be recreated on next start)
+    videoTrackRef.current = null;
   }, []);
 
   // Start scanning
@@ -108,6 +174,22 @@ export default function BarcodeScanner({
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
       
+      // Detect zoom capability
+      const track = stream.getVideoTracks()[0];
+      videoTrackRef.current = track;
+      const capabilities = track.getCapabilities?.() as ZoomCapabilities | undefined;
+      
+      if (capabilities && 
+          typeof capabilities.zoom?.min === 'number' && 
+          typeof capabilities.zoom?.max === 'number') {
+        setSupportsZoom(true);
+        setMinZoom(capabilities.zoom.min);
+        setMaxZoom(capabilities.zoom.max);
+        setCurrentZoom(capabilities.zoom.min);
+      } else {
+        setSupportsZoom(false);
+      }
+      
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
@@ -120,7 +202,7 @@ export default function BarcodeScanner({
       reader.decodeFromVideoDevice(
         undefined, // Use default device
         videoRef.current!,
-        (result, error) => {
+        (result) => {
           if (result) {
             const value = result.getText();
             const format = result.getBarcodeFormat().toString();
@@ -129,6 +211,12 @@ export default function BarcodeScanner({
             if (value !== lastScannedValue) {
               setLastScannedValue(value);
               setState('paused');
+              
+              // Reset zoom before stopping stream (while track is still valid)
+              if (supportsZoom && videoTrackRef.current) {
+                applyZoom(minZoom);
+              }
+              
               stopStream();
               trackEvent('scan_success', { format, valueLength: value.length });
               onScan(value, format);
@@ -144,13 +232,17 @@ export default function BarcodeScanner({
       trackEvent('scanner_error', { error: message });
       onError?.(message);
     }
-  }, [initReader, facingMode, lastScannedValue, onScan, onError, stopStream]);
+  }, [initReader, facingMode, lastScannedValue, onScan, onError, stopStream, supportsZoom, minZoom, applyZoom]);
 
   // Resume scanning after a successful scan
   const resumeScanning = useCallback(() => {
     setLastScannedValue(null);
+    // Reset zoom state for next scan
+    if (supportsZoom) {
+      setCurrentZoom(minZoom);
+    }
     startScanning();
-  }, [startScanning]);
+  }, [startScanning, supportsZoom, minZoom]);
 
   // Switch camera (front/back)
   const switchCamera = useCallback(() => {
@@ -179,6 +271,11 @@ export default function BarcodeScanner({
       stopStream();
       // BrowserMultiFormatReader doesn't have a reset method, just stop the stream
       readerRef.current = null;
+      
+      // Clear debounce timer
+      if (debounceTimerRef.current) {
+        window.clearTimeout(debounceTimerRef.current);
+      }
     };
   }, [stopStream]);
 
@@ -277,6 +374,73 @@ export default function BarcodeScanner({
           </button>
         )}
       </div>
+      
+      {/* Zoom Controls - Only show when scanning and zoom is supported */}
+      {state === 'scanning' && supportsZoom && (
+        <GlassCard className="!p-4">
+          {/* Preset Buttons - Only show if maxZoom >= 2 */}
+          {showPresets && presets && (
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() => applyZoom(presets.x2)}
+                className={`
+                  flex-1 px-4 py-3 rounded-full text-sm font-medium
+                  min-h-[44px] flex items-center justify-center
+                  transition-colors
+                  ${Math.abs(currentZoom - presets.x2) < 0.15
+                    ? 'bg-blue-600 text-white'
+                    : 'surface-glass text-gray-700'}
+                `}
+              >
+                2×
+              </button>
+              <button
+                onClick={() => applyZoom(presets.x4)}
+                className={`
+                  flex-1 px-4 py-3 rounded-full text-sm font-medium
+                  min-h-[44px] flex items-center justify-center
+                  transition-colors
+                  ${Math.abs(currentZoom - presets.x4) < 0.15
+                    ? 'bg-blue-600 text-white'
+                    : 'surface-glass text-gray-700'}
+                `}
+              >
+                4×
+              </button>
+              <button
+                onClick={() => applyZoom(presets.max)}
+                className={`
+                  flex-1 px-4 py-3 rounded-full text-sm font-medium
+                  min-h-[44px] flex items-center justify-center
+                  transition-colors
+                  ${Math.abs(currentZoom - presets.max) < 0.15
+                    ? 'bg-blue-600 text-white'
+                    : 'surface-glass text-gray-700'}
+                `}
+              >
+                MAX
+              </button>
+            </div>
+          )}
+          
+          {/* Zoom Slider */}
+          <div className="space-y-2">
+            <div className="flex justify-between text-xs text-gray-500">
+              <span>{minZoom.toFixed(1)}×</span>
+              <span>{maxZoom.toFixed(1)}×</span>
+            </div>
+            <input
+              type="range"
+              min={minZoom}
+              max={maxZoom}
+              step={0.1}
+              value={currentZoom}
+              onChange={(e) => handleSliderChange(parseFloat(e.target.value))}
+              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+            />
+          </div>
+        </GlassCard>
+      )}
       
       {/* Error state */}
       {state === 'error' && errorMessage && (
