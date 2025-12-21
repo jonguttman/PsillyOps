@@ -214,6 +214,7 @@ model Product {
   id                String   @id @default(cuid())
   name              String
   sku               String   @unique
+  upc               String?  // External UPC/EAN-13 identifier for scanning (not unique - vendors reuse across pack sizes)
   barcodeValue      String?  // Barcode value for label printing (defaults to SKU if null)
   unitOfMeasure     String
   defaultBatchSize  Int?
@@ -243,6 +244,7 @@ model Product {
   productionStepTemplates ProductionStepTemplate[]
   
   @@index([sku])
+  @@index([upc])
   @@index([active])
   @@index([strainId])
 }
@@ -323,6 +325,7 @@ model RawMaterial {
   id                String           @id @default(cuid())
   name              String
   sku               String           @unique
+  upc               String?          // External UPC/EAN-13 identifier for scanning (not unique - vendors reuse across pack sizes)
   unitOfMeasure     String
   category          String
   description       String?
@@ -352,6 +355,7 @@ model RawMaterial {
   productionOrderMaterials  ProductionOrderMaterial[]
   
   @@index([sku])
+  @@index([upc])
   @@index([active])
   @@index([preferredVendorId])
   @@index([category])
