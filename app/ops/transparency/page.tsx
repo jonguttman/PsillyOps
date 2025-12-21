@@ -211,7 +211,14 @@ export default async function TransparencyRecordsPage() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {new Date(record.createdAt).toLocaleDateString()}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm space-x-3">
+                    <Link
+                      href={`/qr/transparency/preview?entityType=${record.entityType}&entityId=${record.entityId}`}
+                      className="text-gray-500 hover:text-gray-700 font-medium"
+                      target="_blank"
+                    >
+                      Preview
+                    </Link>
                     <Link
                       href={`/ops/transparency/records/${record.id}`}
                       className="text-blue-600 hover:text-blue-800 font-medium"

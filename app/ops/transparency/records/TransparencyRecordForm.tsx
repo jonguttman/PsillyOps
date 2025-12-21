@@ -9,7 +9,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Shield, ArrowLeft, Save, Trash2 } from 'lucide-react';
+import { Shield, ArrowLeft, Save, Trash2, Eye } from 'lucide-react';
 
 interface Product {
   id: string;
@@ -164,7 +164,7 @@ export default function TransparencyRecordForm({
         >
           <ArrowLeft className="w-5 h-5" />
         </Link>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-1">
           <Shield className="w-8 h-8 text-blue-600" />
           <div>
             <h1 className="text-2xl font-bold text-gray-900">
@@ -177,6 +177,17 @@ export default function TransparencyRecordForm({
             </p>
           </div>
         </div>
+        {isEditing && record && (
+          <a
+            href={`/qr/transparency/preview?entityType=${record.entityType}&entityId=${record.entityId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+          >
+            <Eye className="w-4 h-4" />
+            Preview
+          </a>
+        )}
       </div>
 
       {error && (

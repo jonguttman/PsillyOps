@@ -1,69 +1,120 @@
 /**
- * Public Transparency Page
+ * Admin Preview: Transparency Page
  * 
- * Customer-facing page that displays product transparency information.
- * Accessed via QR code scan - no authentication required.
+ * Allows admins to preview the public transparency page without creating a token.
+ * Uses the same renderer as the public page.
+ * 
+ * Route: /qr/transparency/preview?entityType=PRODUCT&entityId=xxx
  */
 
-import { notFound } from 'next/navigation';
-import { resolveToken } from '@/lib/services/qrTokenService';
+import { auth } from '@/lib/auth/auth';
+import { redirect, notFound } from 'next/navigation';
 import {
   getPublicTransparencyRecord,
   getTransparencyCopy,
   getEntityDetails,
   isPubliclyVisible,
 } from '@/lib/services/transparencyService';
-import { Shield, CheckCircle, Clock, FlaskConical, Leaf, Package } from 'lucide-react';
+import { ActivityEntity } from '@prisma/client';
+import { Shield, CheckCircle, Clock, FlaskConical, Leaf, Package, Eye, ArrowLeft } from 'lucide-react';
+import Link from 'next/link';
 
 interface PageProps {
-  params: Promise<{ token: string }>;
+  searchParams: Promise<{ entityType?: string; entityId?: string }>;
 }
 
-export default async function TransparencyPage({ params }: PageProps) {
-  const { token } = await params;
-
-  // Resolve the token to get entity info
-  const tokenResult = await resolveToken(token);
-
-  if (!tokenResult || tokenResult.status !== 'ACTIVE') {
-    // Token not found or not active
-    return <FallbackPage message="This QR code is not valid or has expired." />;
+export default async function TransparencyPreviewPage({ searchParams }: PageProps) {
+  // Require admin authentication
+  const session = await auth();
+  if (!session?.user) {
+    redirect('/login');
+  }
+  if (session.user.role !== 'ADMIN') {
+    redirect('/ops/dashboard');
   }
 
-  // Map LabelEntityType to ActivityEntity
-  const entityType = tokenResult.entityType === 'PRODUCT' ? 'PRODUCT' : 
-                     tokenResult.entityType === 'BATCH' ? 'BATCH' : null;
+  const params = await searchParams;
+  const { entityType, entityId } = params;
 
-  if (!entityType) {
-    return <FallbackPage message="Transparency information is not available for this item type." />;
+  // Validate parameters
+  if (!entityType || !entityId) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 max-w-sm w-full text-center">
+          <Shield className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+          <h1 className="text-xl font-bold text-gray-900 mb-2">Preview Error</h1>
+          <p className="text-gray-600 mb-4">Missing entityType or entityId parameter.</p>
+          <Link
+            href="/ops/transparency"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to Transparency
+          </Link>
+        </div>
+      </div>
+    );
   }
 
-  // Fetch transparency record
-  const record = await getPublicTransparencyRecord(entityType, tokenResult.entityId);
+  // Validate entity type
+  if (entityType !== 'PRODUCT' && entityType !== 'BATCH') {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 max-w-sm w-full text-center">
+          <Shield className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+          <h1 className="text-xl font-bold text-gray-900 mb-2">Invalid Entity Type</h1>
+          <p className="text-gray-600">Only PRODUCT and BATCH are supported.</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Fetch transparency record (including FAIL for admin preview)
+  const record = await getPublicTransparencyRecord(entityType as ActivityEntity, entityId);
 
   if (!record) {
-    return <FallbackPage message="Transparency information is not yet available for this product." />;
-  }
-
-  // Use centralized visibility policy
-  if (!isPubliclyVisible(record)) {
-    return <FallbackPage message="Transparency information is not available for this product." />;
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100">
+        <PreviewBanner />
+        <div className="flex items-center justify-center p-4 pt-20">
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 max-w-sm w-full text-center">
+            <Shield className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            <h1 className="text-xl font-bold text-gray-900 mb-2">No Record Found</h1>
+            <p className="text-gray-600 mb-4">
+              No transparency record exists for this {entityType.toLowerCase()}.
+            </p>
+            <Link
+              href="/ops/transparency/records/new"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Create Record
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   // Fetch copy and entity details
   const [copy, entityDetails] = await Promise.all([
     getTransparencyCopy(),
-    getEntityDetails(entityType, tokenResult.entityId),
+    getEntityDetails(entityType as ActivityEntity, entityId),
   ]);
 
   const productName = entityDetails?.name || 'Unknown Product';
   const sku = entityDetails?.sku;
   const batchCode = record.batchCode || entityDetails?.batchCode;
 
+  // Check visibility status for admin notice
+  const isVisible = isPubliclyVisible(record);
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100">
+      {/* Admin Preview Banner */}
+      <PreviewBanner isVisible={isVisible} testResult={record.testResult} />
+
       {/* Header */}
-      <header className="bg-white/80 backdrop-blur-md border-b border-gray-200 sticky top-0 z-10">
+      <header className="bg-white/80 backdrop-blur-md border-b border-gray-200 sticky top-12 z-10">
         <div className="max-w-lg mx-auto px-4 py-4 flex items-center gap-3">
           <Shield className="w-6 h-6 text-blue-600" />
           <h1 className="text-lg font-semibold text-gray-900">Product Transparency</h1>
@@ -99,7 +150,11 @@ export default async function TransparencyPage({ params }: PageProps) {
         {/* Test Status Banner */}
         <TestStatusBanner 
           result={record.testResult} 
-          copy={record.testResult === 'PASS' ? copy.TRANSPARENCY_PASS_COPY : copy.TRANSPARENCY_PENDING_COPY}
+          copy={
+            record.testResult === 'PASS' ? copy.TRANSPARENCY_PASS_COPY :
+            record.testResult === 'FAIL' ? copy.TRANSPARENCY_FAIL_COPY :
+            copy.TRANSPARENCY_PENDING_COPY
+          }
         />
 
         {/* Lab Info */}
@@ -161,6 +216,30 @@ export default async function TransparencyPage({ params }: PageProps) {
   );
 }
 
+function PreviewBanner({ isVisible = true, testResult }: { isVisible?: boolean; testResult?: string | null }) {
+  return (
+    <div className={`fixed top-0 left-0 right-0 z-20 px-4 py-2 text-center text-sm font-medium ${
+      isVisible 
+        ? 'bg-blue-600 text-white' 
+        : 'bg-red-600 text-white'
+    }`}>
+      <div className="flex items-center justify-center gap-2">
+        <Eye className="w-4 h-4" />
+        <span>
+          Admin Preview
+          {!isVisible && testResult === 'FAIL' && ' — This record is NOT publicly visible (FAIL status)'}
+        </span>
+        <Link 
+          href="/ops/transparency" 
+          className="ml-4 underline hover:no-underline"
+        >
+          Back to Admin
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 function TestStatusBanner({ result, copy }: { result: string | null; copy: string }) {
   if (result === 'PASS') {
     return (
@@ -170,6 +249,18 @@ function TestStatusBanner({ result, copy }: { result: string | null; copy: strin
           <span className="text-lg font-bold">Testing Passed</span>
         </div>
         <p className="text-green-50 text-sm">{copy}</p>
+      </div>
+    );
+  }
+
+  if (result === 'FAIL') {
+    return (
+      <div className="bg-gradient-to-r from-red-500 to-rose-500 rounded-2xl p-5 text-white">
+        <div className="flex items-center gap-3 mb-2">
+          <Shield className="w-6 h-6" />
+          <span className="text-lg font-bold">Testing Failed</span>
+        </div>
+        <p className="text-red-50 text-sm">{copy}</p>
       </div>
     );
   }
@@ -194,20 +285,6 @@ function TestStatusBanner({ result, copy }: { result: string | null; copy: strin
         <span className="text-lg font-bold">Testing Status</span>
       </div>
       <p className="text-gray-600 text-sm">Testing information is being processed.</p>
-    </div>
-  );
-}
-
-function FallbackPage({ message }: { message: string }) {
-  return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 max-w-sm w-full text-center">
-        <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
-          <Shield className="w-8 h-8 text-gray-400" />
-        </div>
-        <h1 className="text-xl font-bold text-gray-900 mb-2">Transparency Info</h1>
-        <p className="text-gray-600">{message}</p>
-      </div>
     </div>
   );
 }

@@ -60,6 +60,18 @@ export interface TransparencyRecordFilters {
 }
 
 // ============================================
+// VISIBILITY POLICY
+// ============================================
+
+/**
+ * Check if a transparency record is publicly visible.
+ * Centralizes visibility policy for easy future changes (recall banners, warning states).
+ */
+export function isPubliclyVisible(record: { testResult: TransparencyResult | null }): boolean {
+  return record.testResult !== 'FAIL';
+}
+
+// ============================================
 // TRANSPARENCY RECORDS
 // ============================================
 
