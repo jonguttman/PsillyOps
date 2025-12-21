@@ -37,8 +37,8 @@ export default async function QRTokenResolverPage({ params }: Props) {
 
   // If token is active, determine redirect destination
   if (result.status === 'ACTIVE') {
-    let destination: string;
-    let resolutionType: 'TOKEN' | 'BATCH' | 'PRODUCT' | 'ENTITY' | 'VERSION' | 'FALLBACK' | 'TRANSPARENCY' | 'DEFAULT';
+    let destination: string = '';
+    let resolutionType: 'TOKEN' | 'BATCH' | 'PRODUCT' | 'ENTITY' | 'VERSION' | 'FALLBACK' | 'TRANSPARENCY' | 'DEFAULT' = 'DEFAULT';
     let ruleId: string | null = null;
 
     // Get the full token record to check for token-level redirect
@@ -67,7 +67,7 @@ export default async function QRTokenResolverPage({ params }: Props) {
       }
 
       // 3. If no transparency record, check for active QRRedirectRule
-      if (!destination!) {
+      if (!destination) {
         const rule = await findActiveRedirectRule({
           entityType: result.entityType,
           entityId: result.entityId,

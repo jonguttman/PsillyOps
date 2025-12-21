@@ -9,6 +9,7 @@ interface MobileShellProps {
   showBack?: boolean;
   backHref?: string;
   title?: string;
+  userRole?: string;
 }
 
 /**
@@ -29,7 +30,8 @@ export function MobileShell({
   children, 
   showBack = false,
   backHref,
-  title 
+  title,
+  userRole = 'USER'
 }: MobileShellProps) {
   return (
     <div 
@@ -58,8 +60,7 @@ export function MobileShell({
         {children}
       </main>
       
-      <MobileBottomNav />
+      <MobileBottomNav userRole={userRole} />
     </div>
   );
 }
-

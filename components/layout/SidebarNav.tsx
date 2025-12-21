@@ -22,7 +22,8 @@ import {
   Users,
   Shield,
   Settings,
-  LucideIcon
+  LucideIcon,
+  ArrowRightLeft
 } from 'lucide-react';
 
 interface NavItem {
@@ -65,6 +66,13 @@ export function SidebarNav({ userRole }: SidebarNavProps) {
     if (href === '/ops/dashboard') {
       return pathname === '/ops/dashboard' || pathname === '/ops' || pathname === '/';
     }
+    // Special handling for QR section to avoid conflicts
+    if (href === '/ops/qr/redirects') {
+      return pathname.startsWith('/ops/qr/redirects');
+    }
+    if (href === '/ops/qr/fallback') {
+      return pathname === '/ops/qr/fallback';
+    }
     return pathname.startsWith(href);
   };
 
@@ -87,10 +95,11 @@ export function SidebarNav({ userRole }: SidebarNavProps) {
     { href: '/ops/labels', label: 'Templates', icon: Tags },
   ];
 
-  // QR section - Identity & traceability
-  const qrItems: NavItem[] = [
-    ...(userRole === 'ADMIN' ? [{ href: '/ops/qr-redirects', label: 'Redirect Rules', icon: QrCode }] : []),
-  ];
+  // QR section - QR code management (ADMIN only)
+  const qrItems: NavItem[] = userRole === 'ADMIN' ? [
+    { href: '/ops/qr/redirects', label: 'Redirects', icon: ArrowRightLeft },
+    { href: '/ops/qr/fallback', label: 'Defaults', icon: QrCode },
+  ] : [];
 
   // Mobile tools - lightweight pages for phone workflows
   const mobileItems: NavItem[] = [
@@ -137,7 +146,7 @@ export function SidebarNav({ userRole }: SidebarNavProps) {
         ))}
       </SidebarSection>
 
-      {/* QR - Identity & traceability (only show if there are items) */}
+      {/* QR - QR code management (only show if there are items) */}
       {qrItems.length > 0 && (
         <SidebarSection title="QR" defaultExpanded={false} persistKey="qr">
           {qrItems.map((item) => (

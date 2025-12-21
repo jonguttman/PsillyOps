@@ -13,6 +13,7 @@ export { default as LiquidGlassSwitch } from './LiquidGlassSwitch';
 export { MobileHeader } from './MobileHeader';
 export { MobileBottomNav } from './MobileBottomNav';
 export { MobileShell } from './MobileShell';
+export { MobileMoreSheet } from './MobileMoreSheet';
 
 // Scanning
 export { default as BarcodeScanner } from './BarcodeScanner';

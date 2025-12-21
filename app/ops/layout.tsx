@@ -86,7 +86,7 @@ export default async function OpsLayout({
           CSS breakpoint switching: no hydration issues, no flicker
           ======================================== */}
       <div className="block md:hidden">
-        <MobileShell>
+        <MobileShell userRole={session.user.role}>
           {children}
         </MobileShell>
       </div>
