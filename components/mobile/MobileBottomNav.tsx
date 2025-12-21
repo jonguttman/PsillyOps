@@ -24,7 +24,7 @@ const tabs: NavTab[] = [
   { id: 'scan', label: 'Scan', href: '/ops/m/scan', icon: QrCode },
   { id: 'work', label: 'Work', href: '/ops/production-runs/my-work', icon: CheckSquare },
   { id: 'inventory', label: 'Inventory', href: '/ops/inventory', icon: Package },
-  { id: 'more', label: 'More', href: '/ops', icon: MoreHorizontal },
+  { id: 'more', label: 'More', href: '/ops/settings', icon: MoreHorizontal },
 ];
 
 /**
@@ -43,9 +43,9 @@ export function MobileBottomNav() {
     if (tab.id === 'dashboard') {
       return pathname === '/ops' || pathname === '/ops/dashboard';
     }
-    // More is active only on /ops when no other tab matches
+    // More is active on /ops/settings
     if (tab.id === 'more') {
-      return pathname === '/ops';
+      return pathname === '/ops/settings' || pathname.startsWith('/ops/settings/');
     }
     // All other tabs: active if pathname starts with their href
     return pathname.startsWith(tab.href);
