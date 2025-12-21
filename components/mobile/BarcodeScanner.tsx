@@ -13,6 +13,13 @@
  * - Pauses camera after successful scan
  * - User-initiated camera start
  * - Works in iOS Safari (HTTPS required)
+ * 
+ * Safari Camera Release Fix:
+ * - Captures scanner controls from ZXing's decodeFromVideoDevice
+ * - Calls controls.stop() during teardown to properly release camera
+ * - Captures video element reference before cleanup (React clears refs early)
+ * - Disables tracks before stopping them (Safari requirement)
+ * - Calls video.load() to force WebKit media pipeline release
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -61,6 +68,8 @@ export default function BarcodeScanner({
   const streamRef = useRef<MediaStream | null>(null);
   const videoTrackRef = useRef<MediaStreamTrack | null>(null);
   const debounceTimerRef = useRef<number | null>(null);
+  // Scanner controls returned by ZXing's decodeFromVideoDevice - MUST call stop() to release camera
+  const scannerControlsRef = useRef<{ stop: () => void } | null>(null);
   
   const [state, setState] = useState<ScannerState>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -152,32 +161,59 @@ export default function BarcodeScanner({
     }, 75);
   }, [applyZoom]);
 
-  // Stop camera stream and reader
+  // Teardown guard to prevent race conditions
+  const teardownInProgressRef = useRef(false);
+
+  // Stop camera stream and reader (Safari-safe teardown)
   const stopStream = useCallback(() => {
-    // Stop all camera tracks (stopping the stream stops ZXing decoding automatically)
+    teardownInProgressRef.current = true;
+
+    // 1. Stop ZXing decode loop via scanner controls (CRITICAL for Safari)
+    if (scannerControlsRef.current) {
+      try {
+        scannerControlsRef.current.stop();
+      } catch {}
+      scannerControlsRef.current = null;
+    }
+    readerRef.current = null;
+
+    // 2. Disable and stop all media tracks (disable FIRST for Safari)
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => {
-        track.stop();
-        track.enabled = false;
+        try {
+          track.enabled = false;
+          track.stop();
+        } catch {}
       });
       streamRef.current = null;
     }
-    
-    // Clear video element
+
+    // 3. Fully detach video element (Safari requires load() call)
     if (videoRef.current) {
-      videoRef.current.srcObject = null;
-      videoRef.current.pause();
+      try {
+        videoRef.current.pause();
+        videoRef.current.srcObject = null;
+        videoRef.current.removeAttribute('src');
+        videoRef.current.load(); // Forces WebKit media pipeline release
+      } catch {}
     }
-    
-    // Clear reader reference (ZXing will stop when stream stops)
-    readerRef.current = null;
-    
-    // Clear video track reference (will be recreated on next start)
+
+    // 4. Clear remaining refs
     videoTrackRef.current = null;
+
+    // 5. Release teardown guard after short delay (race condition prevention)
+    setTimeout(() => {
+      teardownInProgressRef.current = false;
+    }, 100);
   }, []);
 
   // Start scanning
   const startScanning = useCallback(async () => {
+    // Guard against race condition with teardown
+    if (teardownInProgressRef.current) {
+      return;
+    }
+
     setState('requesting');
     setErrorMessage(null);
     
@@ -228,8 +264,8 @@ export default function BarcodeScanner({
       setState('scanning');
       trackEvent('scanner_started', { facingMode });
       
-      // Start continuous decoding
-      reader.decodeFromVideoDevice(
+      // Start continuous decoding and capture scanner controls
+      const controls = await reader.decodeFromVideoDevice(
         undefined, // Use default device
         videoRef.current!,
         async (result) => {
@@ -267,6 +303,9 @@ export default function BarcodeScanner({
           // Ignore decode errors (expected when no barcode in view)
         }
       );
+      
+      // Store scanner controls for proper cleanup
+      scannerControlsRef.current = controls;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Camera access failed';
       setErrorMessage(message);
@@ -311,19 +350,56 @@ export default function BarcodeScanner({
     }
   }, [facingMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Cleanup on unmount
+  // Cleanup on unmount - capture video element before React clears refs
   useEffect(() => {
+    // Capture the video element NOW, before cleanup runs
+    const videoElement = videoRef.current;
+    
     return () => {
-      stopStream();
-      // BrowserMultiFormatReader doesn't have a reset method, just stop the stream
+      // Perform Safari-safe teardown with captured video element
+      teardownInProgressRef.current = true;
+
+      // 1. Stop ZXing decode loop via scanner controls (CRITICAL for Safari)
+      if (scannerControlsRef.current) {
+        try {
+          scannerControlsRef.current.stop();
+        } catch {}
+        scannerControlsRef.current = null;
+      }
       readerRef.current = null;
-      
+
+      // 2. Disable and stop all media tracks
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => {
+          try {
+            track.enabled = false;
+            track.stop();
+          } catch {}
+        });
+        streamRef.current = null;
+      }
+
+      // 3. Fully detach video element using CAPTURED reference (not ref)
+      if (videoElement) {
+        try {
+          videoElement.pause();
+          videoElement.srcObject = null;
+          videoElement.removeAttribute('src');
+          videoElement.load(); // Forces WebKit media pipeline release
+        } catch {}
+      }
+
+      // 4. Clear remaining refs
+      videoTrackRef.current = null;
+
       // Clear debounce timer
       if (debounceTimerRef.current) {
         window.clearTimeout(debounceTimerRef.current);
       }
+
+      teardownInProgressRef.current = false;
     };
-  }, [stopStream]);
+  }, []); // Empty deps - only run on mount/unmount
 
   // Respect reduced motion
   const prefersReducedMotion = typeof window !== 'undefined' 
@@ -546,4 +622,3 @@ export default function BarcodeScanner({
     </div>
   );
 }
-
