@@ -1,12 +1,15 @@
 // QR Token Resolver Page
 // Handles public scanning of QR tokens and redirects to entity pages
-// Supports three-level redirect precedence:
+// Supports redirect precedence:
 // 1. Token-level redirectUrl (highest priority)
-// 2. Active QRRedirectRule (group-based)
-// 3. Default entity routing (fallback)
+// 2. Transparency record (if exists for product/batch)
+// 3. Active QRRedirectRule (group-based)
+// 4. Default Redirect (fallback)
+// 5. Default entity routing
 
 import { resolveToken, isValidTokenFormat, getTokenByValue } from '@/lib/services/qrTokenService';
 import { findActiveRedirectRule } from '@/lib/services/qrRedirectService';
+import { getPublicTransparencyRecord, isPubliclyVisible } from '@/lib/services/transparencyService';
 import { logAction } from '@/lib/services/loggingService';
 import { ActivityEntity } from '@prisma/client';
 import { prisma } from '@/lib/db/prisma';
@@ -35,7 +38,7 @@ export default async function QRTokenResolverPage({ params }: Props) {
   // If token is active, determine redirect destination
   if (result.status === 'ACTIVE') {
     let destination: string;
-    let resolutionType: 'TOKEN' | 'BATCH' | 'PRODUCT' | 'ENTITY' | 'VERSION' | 'FALLBACK' | 'DEFAULT';
+    let resolutionType: 'TOKEN' | 'BATCH' | 'PRODUCT' | 'ENTITY' | 'VERSION' | 'FALLBACK' | 'TRANSPARENCY' | 'DEFAULT';
     let ruleId: string | null = null;
 
     // Get the full token record to check for token-level redirect
@@ -46,21 +49,40 @@ export default async function QRTokenResolverPage({ params }: Props) {
       destination = tokenRecord.redirectUrl;
       resolutionType = 'TOKEN';
     } else {
-      // 2. Check for active QRRedirectRule (Batch → Product → Entity → Version → Fallback)
-      const rule = await findActiveRedirectRule({
-        entityType: result.entityType,
-        entityId: result.entityId,
-        versionId: tokenRecord?.versionId
-      });
+      // 2. Check for transparency record (for PRODUCT or BATCH entities)
+      const transparencyEntityType = result.entityType === 'PRODUCT' ? 'PRODUCT' : 
+                                     result.entityType === 'BATCH' ? 'BATCH' : null;
+      
+      if (transparencyEntityType) {
+        const transparencyRecord = await getPublicTransparencyRecord(
+          transparencyEntityType,
+          result.entityId
+        );
+        
+        if (transparencyRecord && isPubliclyVisible(transparencyRecord)) {
+          // Route to transparency page with the actual token
+          destination = `/qr/transparency/${token}`;
+          resolutionType = 'TRANSPARENCY';
+        }
+      }
 
-      if (rule) {
-        destination = rule.redirectUrl;
-        resolutionType = rule.matchedBy; // BATCH, PRODUCT, ENTITY, VERSION, or FALLBACK
-        ruleId = rule.id;
-      } else {
-        // 3. No rule matched - use default entity routing
-        destination = getRedirectPath(result.entityType, result.entityId);
-        resolutionType = 'DEFAULT';
+      // 3. If no transparency record, check for active QRRedirectRule
+      if (!destination!) {
+        const rule = await findActiveRedirectRule({
+          entityType: result.entityType,
+          entityId: result.entityId,
+          versionId: tokenRecord?.versionId
+        });
+
+        if (rule) {
+          destination = rule.redirectUrl;
+          resolutionType = rule.matchedBy; // BATCH, PRODUCT, ENTITY, VERSION, or FALLBACK
+          ruleId = rule.id;
+        } else {
+          // 4. No rule matched - use default entity routing
+          destination = getRedirectPath(result.entityType, result.entityId);
+          resolutionType = 'DEFAULT';
+        }
       }
     }
 
