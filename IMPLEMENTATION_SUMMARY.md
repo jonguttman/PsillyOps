@@ -2458,6 +2458,94 @@ Print Labels button added to:
 
 ---
 
+## 🔐 Product Authenticity Verification System
+
+### Overview
+
+The Product Authenticity Verification system provides a verification-first public QR experience. When consumers scan QR codes, they land on an official verification page that confirms product authenticity, token validity, and verification timestamp.
+
+**⚠️ CRITICAL INVARIANT:**
+`/verify/[token]` is the authoritative public verification surface. Redirect rules must NEVER apply here. This page bypasses all redirect rules (token-level, group rules, fallbacks) to ensure verification truth is never compromised by marketing or ops campaigns.
+
+**Trust boundary:** Verification is for truth, redirects are for routing.
+
+### Architecture
+
+```
+app/verify/
+└── [token]/
+    └── page.tsx                 # Server component - fetches data, resolves state
+
+components/verification/
+├── VerificationAnimation.tsx    # Client component - animation + final state reveal
+└── VerificationContent.tsx      # Client component - product info + details fade-in
+
+lib/utils/
+├── verificationState.ts         # Verification state resolution utilities
+└── reducedMotion.ts             # Accessibility - prefers-reduced-motion detection
+```
+
+### Routing Behavior
+
+**Public Scans (Default):**
+- QR scan → `/qr/[token]` → routes to `/verify/[token]`
+- Verification bypasses all redirect rules
+- Scan logged with `scanContext: "public_verification"`, `surface: "public"`, `isOpsScan: false`
+
+**Ops Scans (`?mode=ops`):**
+- QR scan → `/qr/[token]?mode=ops` → preserves existing redirect behavior
+- Redirect rules apply (token override → group rules → default routing)
+- Scan logged with `scanContext: "ops_scan"`, `surface: "ops"`, `isOpsScan: true`
+
+### Verification States
+
+Centralized state resolution via `resolveVerificationState()`:
+
+- **VERIFIED**: ACTIVE token, not expired → "Product Authentication Verified"
+- **REVOKED**: Token status REVOKED → "This Product Has Been Revoked"
+- **EXPIRED**: Token expired or status EXPIRED → "This Verification Code Is Expired"
+- **UNKNOWN**: Token not found or invalid → "Verification Status Unknown"
+
+### Phase 2: Trust & Legibility Layer
+
+**Animation Specs:**
+- Fixed 700ms verification handshake animation
+- Left-to-right line sweep (1-2px, gray → brand accent)
+- Text: "Verifying product authenticity"
+- Final state: 200ms opacity fade-in (no scale, no transform)
+- Respects `prefers-reduced-motion` (skips animation entirely)
+
+**Implementation:**
+- Hybrid server/client architecture
+- Server resolves verification state, client runs animation
+- Pure CSS/Tailwind animations (no animation libraries)
+- Animation starts only after data is loaded
+- Product details fade in with verification status (same frame)
+
+### API Routes
+
+| Route | Method | Auth | Description |
+|-------|--------|------|-------------|
+| `/verify/[token]` | GET | Public | Verification page (no auth required) |
+| `/qr/[token]` | GET | Public | QR resolver (routes to verification or redirects) |
+
+### Activity Logging
+
+Enhanced scan logging includes:
+- `scanContext`: `"public_verification"` or `"ops_scan"`
+- `surface`: `"public"` or `"ops"`
+- `isOpsScan`: `true` or `false` (boolean for fast filtering)
+- `verifiedAt`: ISO timestamp of verification
+
+### Canonical Copy
+
+**System copy (locked):**
+- Header (VERIFIED): "Product Authentication Verified"
+- Subtext: "This product was successfully verified against official records."
+- Timestamp label: "Verified on"
+
+---
+
 ## 🔐 QR Token System
 
 ### Overview

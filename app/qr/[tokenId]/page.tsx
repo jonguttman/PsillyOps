@@ -1,6 +1,11 @@
 // QR Token Resolver Page
-// Handles public scanning of QR tokens and redirects to entity pages
-// Supports redirect precedence:
+// Handles public scanning of QR tokens and routes to verification or entity pages
+// 
+// Behavior:
+// - Default (public scans): Routes to /verify/[token] for verification-first experience
+// - ?mode=ops: Preserves existing redirect behavior (campaigns, recalls, entity pages)
+//
+// Supports redirect precedence (ops mode only):
 // 1. Token-level redirectUrl (highest priority)
 // 2. Transparency record (if exists for product/batch)
 // 3. Active QRRedirectRule (group-based)
@@ -18,10 +23,15 @@ import Link from 'next/link';
 
 interface Props {
   params: Promise<{ tokenId: string }>;
+  searchParams: Promise<{ mode?: string }>;
 }
 
-export default async function QRTokenResolverPage({ params }: Props) {
+export default async function QRTokenResolverPage({ params, searchParams }: Props) {
   const { tokenId: token } = await params;
+  const { mode } = await searchParams;
+  
+  // Check if this is an ops scan
+  const isOpsMode = mode === 'ops';
 
   // Validate token format first
   if (!isValidTokenFormat(token)) {
@@ -35,14 +45,46 @@ export default async function QRTokenResolverPage({ params }: Props) {
     notFound();
   }
 
-  // If token is active, determine redirect destination
+  // If token is active, determine routing behavior
   if (result.status === 'ACTIVE') {
+    // Get the full token record
+    const tokenRecord = await getTokenByValue(token);
+    
+    // Phase 1: Default behavior is verification-first (public scans)
+    // Ops mode preserves existing redirect behavior
+    if (!isOpsMode) {
+      // Public scan: Route to verification page
+      // Verification bypasses all redirect rules
+      const verifiedAt = new Date();
+      
+      // Log scan with verification context
+      await logAction({
+        entityType: ActivityEntity.LABEL,
+        entityId: result.entityId,
+        action: 'qr_token_scanned',
+        summary: `QR token scanned for ${result.entityType} ${result.entityId} → verification`,
+        metadata: {
+          tokenId: result.token?.id,
+          entityType: result.entityType,
+          entityId: result.entityId,
+          resolutionType: 'VERIFICATION',
+          scanContext: 'public_verification',
+          surface: 'public',
+          isOpsScan: false,
+          verifiedAt: verifiedAt.toISOString(),
+          scanCount: result.token?.scanCount
+        },
+        tags: ['qr', 'label', 'scan', 'verification']
+      });
+      
+      // Route to verification page
+      redirect(`/verify/${token}`);
+    }
+    
+    // Ops mode: Preserve existing redirect behavior
     let destination: string = '';
     let resolutionType: 'TOKEN' | 'BATCH' | 'PRODUCT' | 'ENTITY' | 'VERSION' | 'FALLBACK' | 'TRANSPARENCY' | 'DEFAULT' = 'DEFAULT';
     let ruleId: string | null = null;
-
-    // Get the full token record to check for token-level redirect
-    const tokenRecord = await getTokenByValue(token);
 
     // 1. Check token-level redirectUrl (highest precedence)
     if (tokenRecord?.redirectUrl) {
@@ -124,12 +166,17 @@ export default async function QRTokenResolverPage({ params }: Props) {
           tokenId: tokenRecord?.id,
           token: tokenRecord?.token,
           scanCount: result.token?.scanCount,
+          scanContext: 'ops_scan',
+          surface: 'ops',
+          isOpsScan: true,
+          verifiedAt: new Date().toISOString(),
         },
         tags: ['qr', 'scan', 'production'],
       });
     } else {
-      // Log ALL scans with resolution metadata (label / general tokens)
+      // Log ops scans with resolution metadata (label / general tokens)
       // This captures scan-time destination for audit and analytics
+      const verifiedAt = new Date();
       await logAction({
         entityType: ActivityEntity.LABEL,
         entityId: result.entityId,
@@ -142,7 +189,11 @@ export default async function QRTokenResolverPage({ params }: Props) {
           resolutionType,
           redirectUrl: destination,
           ruleId,
-          scanCount: result.token?.scanCount
+          scanCount: result.token?.scanCount,
+          scanContext: 'ops_scan',
+          surface: 'ops',
+          isOpsScan: true,
+          verifiedAt: verifiedAt.toISOString(),
         },
         tags: ['qr', 'label', 'scan', resolutionType.toLowerCase()]
       });
@@ -150,6 +201,37 @@ export default async function QRTokenResolverPage({ params }: Props) {
 
     redirect(destination);
   }
+  
+  // Token is revoked or expired - route to verification page
+  // Verification page will show appropriate status
+  if (!isOpsMode) {
+    const verifiedAt = new Date();
+    
+    // Log scan even for revoked/expired tokens (for analytics)
+    await logAction({
+      entityType: ActivityEntity.LABEL,
+      entityId: result.entityId,
+      action: 'qr_token_scanned',
+      summary: `QR token scanned for ${result.entityType} ${result.entityId} → ${result.status}`,
+      metadata: {
+        tokenId: result.token?.id,
+        entityType: result.entityType,
+        entityId: result.entityId,
+        resolutionType: result.status,
+        scanContext: 'public_verification',
+        surface: 'public',
+        isOpsScan: false,
+        verifiedAt: verifiedAt.toISOString(),
+        scanCount: result.token?.scanCount,
+        revokedReason: result.token?.revokedReason,
+      },
+      tags: ['qr', 'label', 'scan', result.status.toLowerCase()]
+    });
+    
+    redirect(`/verify/${token}`);
+  }
+  
+  // Ops mode: Show existing revoked/expired page for internal users
 
   // Token is revoked or expired - show info page
   return (
