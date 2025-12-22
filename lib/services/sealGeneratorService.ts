@@ -391,20 +391,25 @@ function applyBaseLayerConfig(
   // Apply radar lines styling (st3 for circles, st6 for lines)
   // Use inline style to override the combined CSS rule
   // Default stroke widths from base SVG: st3 = 2px, st6 = 6px
+  // CRITICAL: Must use style="opacity:X" not opacity="X" attribute because
+  // the CSS .st3 { opacity: .6 } rule overrides the HTML attribute
   if (config.radarLines) {
     const strokeMultiplier = config.radarLines.strokeWidth ?? 1.0;
     const circleStrokeWidth = 2 * strokeMultiplier;  // st3 default is 2px
     const lineStrokeWidth = 6 * strokeMultiplier;    // st6 default is 6px
     
     // Override stroke color, opacity, and width for radar circles (class st3)
+    // Use inline style for opacity to override the CSS .st3 { opacity: .6 } rule
     result = result.replace(
       /<circle\s+class="st3"/g,
-      `<circle class="st3" style="stroke: ${config.radarLines.color}; stroke-width: ${circleStrokeWidth}px;" opacity="${config.radarLines.opacity}"`
+      `<circle class="st3" style="stroke: ${config.radarLines.color}; stroke-width: ${circleStrokeWidth}px; opacity: ${config.radarLines.opacity};"`
     );
+    
     // Override stroke color, opacity, and width for cardinal lines (class st6)
+    // st6 doesn't have CSS opacity, but use inline style for consistency
     result = result.replace(
       /<line\s+class="st6"/g,
-      `<line class="st6" style="stroke: ${config.radarLines.color}; stroke-width: ${lineStrokeWidth}px;" opacity="${config.radarLines.opacity}"`
+      `<line class="st6" style="stroke: ${config.radarLines.color}; stroke-width: ${lineStrokeWidth}px; opacity: ${config.radarLines.opacity};"`
     );
   }
   

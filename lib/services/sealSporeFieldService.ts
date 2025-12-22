@@ -90,8 +90,29 @@ class SeededRandom {
  * Compute deterministic seed from token, version, and config hash
  */
 function computeSeed(token: string, version: string, config: SporeFieldConfig): string {
-  // Include config in seed for full determinism
-  const configHash = createHash('md5').update(JSON.stringify(config)).digest('hex').substring(0, 8);
+  // Include ONLY spore-relevant config in seed for determinism
+  // CRITICAL: Exclude baseLayerConfig because it only affects SVG styling,
+  // not the spore field. Including it would cause the spore field to regenerate
+  // when users adjust radar line opacity/color, which is visually jarring.
+  const sporeRelevantConfig = {
+    basePreset: config.basePreset,
+    sporeCount: config.sporeCount,
+    minOpacity: config.minOpacity,
+    maxOpacity: config.maxOpacity,
+    zoneAEnd: config.zoneAEnd,
+    zoneBEnd: config.zoneBEnd,
+    quietCoreFactor: config.quietCoreFactor,
+    edgeBufferFactor: config.edgeBufferFactor,
+    lightModuleDensity: config.lightModuleDensity,
+    lightModuleMaxOpacity: config.lightModuleMaxOpacity,
+    finderExclusionMultiplier: config.finderExclusionMultiplier,
+    sporeRadiusMinFactor: config.sporeRadiusMinFactor,
+    sporeRadiusMaxFactor: config.sporeRadiusMaxFactor,
+    moduleContrastBoost: config.moduleContrastBoost,
+    qrScale: config.qrScale,
+    // NOTE: baseLayerConfig is intentionally excluded
+  };
+  const configHash = createHash('md5').update(JSON.stringify(sporeRelevantConfig)).digest('hex').substring(0, 8);
   const input = `${token}|${version}|${configHash}`;
   return createHash('sha256').update(input).digest('hex');
 }

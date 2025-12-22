@@ -864,7 +864,7 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
                   <input
                     type="range"
                     min={0.1}
-                    max={3}
+                    max={5}
                     step={0.1}
                     value={config.baseLayerConfig.radarLines.strokeWidth ?? 1.0}
                     onChange={(e) => updateBaseLayer('radarLines', 'strokeWidth', parseFloat(e.target.value))}
