@@ -10,7 +10,7 @@ import {
   getGeoContext 
 } from './deviceIntegrityService';
 import type { NextRequest } from 'next/server';
-import { ExperienceMode } from '@prisma/client';
+import { ExperienceMode, Prisma } from '@prisma/client';
 
 export interface SubmitReviewData {
   token: string;
@@ -251,10 +251,10 @@ export async function submitReview(
       geoRegion: geo.region || null,
       integrityFlags: integrityPattern.context.length > 0 && integrityPattern.context[0] !== 'clean' 
         ? { context: integrityPattern.context, severity: integrityPattern.severity }
-        : null,
+        : Prisma.JsonNull,
       contentFlags: contentFlags.spam || contentFlags.profanity || contentFlags.hasUrl
         ? contentFlags
-        : null,
+        : Prisma.JsonNull,
       questionsAnswered: completion.questionsAnswered,
       questionsSkipped: completion.questionsSkipped,
       completionRate: completion.completionRate
