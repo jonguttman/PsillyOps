@@ -12,7 +12,7 @@
  * to preserve semantic isolation between authenticity and certification.
  */
 
-import { notFound } from 'next/navigation';
+import { notFound, headers } from 'next/navigation';
 import { getTokenByValue } from '@/lib/services/qrTokenService';
 import { getPublicTransparencyRecord } from '@/lib/services/transparencyService';
 import { logAction } from '@/lib/services/loggingService';
@@ -26,6 +26,8 @@ import {
   type SealState
 } from '@/lib/utils/sealState';
 import { Shield, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
+import { isTunerToken } from '@/lib/types/sealConfig';
+import { TunerScanNotifier } from './TunerScanNotifier';
 
 interface PageProps {
   params: Promise<{ token: string }>;
@@ -191,9 +193,15 @@ export default async function SealPage({ params }: PageProps) {
 
   const config = getStateConfig();
   const Icon = config.icon;
+  
+  // Check if this is a tuner preview token
+  const isTunerPreview = isTunerToken(token);
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Tuner scan notifier (only for tuner preview tokens) */}
+      {isTunerPreview && <TunerScanNotifier token={token} />}
+      
       {/* Header */}
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-lg mx-auto px-4 py-4">

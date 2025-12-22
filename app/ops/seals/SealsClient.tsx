@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { SEAL_DIAMETER_PRESETS, DEFAULT_SEAL_DIAMETER, MAX_TOKENS_PER_BATCH } from '@/lib/constants/seal';
+import SealTunerPanel from '@/components/seals/SealTunerPanel';
 
 type PaperSize = 'letter' | 'a4' | 'custom';
 type GenerationMode = 'generate' | 'existing';
@@ -41,6 +42,9 @@ export function SealsClient() {
   const [sealDiameter, setSealDiameter] = useState<number>(DEFAULT_SEAL_DIAMETER);
   const [isGenerating, setIsGenerating] = useState(false);
   const [result, setResult] = useState<GenerationResult | null>(null);
+  
+  // Tuner panel state
+  const [isTunerOpen, setIsTunerOpen] = useState(false);
 
   // Load products for optional product selection
   useEffect(() => {
@@ -232,6 +236,29 @@ export function SealsClient() {
 
   return (
     <div className="space-y-6">
+      {/* Tuner Panel */}
+      <SealTunerPanel 
+        isOpen={isTunerOpen} 
+        onClose={() => setIsTunerOpen(false)} 
+      />
+      
+      {/* Header with Tuner Button */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">TripDAR Seal Generator</h1>
+          <p className="text-sm text-gray-500 mt-1">Generate print-ready seal sheets with QR codes</p>
+        </div>
+        <button
+          onClick={() => setIsTunerOpen(true)}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+          </svg>
+          Seal Tuner
+        </button>
+      </div>
+      
       {/* Mode Selection */}
       <div className="bg-white shadow rounded-lg p-6">
         <h2 className="text-lg font-medium text-gray-900 mb-4">Generation Mode</h2>

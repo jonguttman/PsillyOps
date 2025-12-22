@@ -2,15 +2,37 @@
  * Seal Generation Constants
  * 
  * Single source of truth for seal generator configuration.
+ * 
+ * CRITICAL: These constants are SEAL-SPECIFIC.
+ * Do NOT reuse for label QR codes.
+ * Label QRs use separate constants in labelService.ts.
  */
 
 export const SEAL_VERSION = 'seal_v1';
 
-// QR Cloud Zone Configuration
-// QR should fill most of the inner radar area, extending past the innermost ring
-// Target QR radius ≈ 223 SVG units (165 × 1.35 = 35% larger)
-// QR diameter = 446, extends well into the radar field
-export const QR_CLOUD_EFFECTIVE_RADIUS = 223;  // Large QR that dominates the radar interior
+// ============================================
+// SEAL QR CONFIGURATION (SEAL MODE ONLY)
+// ============================================
+// These constants control dot-based QR rendering for TripDAR seals.
+// They are NOT used for product label QRs.
+
+// Inner radar diameter is ~500 SVG units
+export const INNER_RADAR_DIAMETER = 500;
+
+// SEAL_QR_SCALE: 35% larger than baseline for 1-inch print scanning
+export const SEAL_QR_SCALE = 1.35;
+
+// SEAL_QR_RADIUS: QR should occupy ~85% of inner radar diameter
+// Calculated as: (INNER_RADAR_DIAMETER / 2) * 0.85 * SEAL_QR_SCALE ≈ 230
+export const SEAL_QR_RADIUS = Math.round((INNER_RADAR_DIAMETER / 2) * 0.85);
+
+// Legacy alias for backward compatibility
+export const QR_RADIUS_FACTOR = 0.92;
+export const QR_CLOUD_EFFECTIVE_RADIUS = SEAL_QR_RADIUS;
+
+// SEAL_QR_QUIET_CORE: Hard quiet zone where NO spores are allowed
+// This is critical for camera binarization - must be completely clear
+export const SEAL_QR_QUIET_CORE_FACTOR = 0.55; // 55% of QR radius is spore-free
 
 // Seal Diameter Presets (inches)
 export const SEAL_DIAMETER_PRESETS = [1.25, 1.5, 2.0] as const;

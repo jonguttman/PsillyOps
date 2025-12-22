@@ -739,8 +739,21 @@ export async function renderLabelsWithTokens(params: {
 
 /**
  * Generate a QR code SVG markup from a URL
+ * 
+ * CRITICAL: This is the LABEL QR renderer (QrRenderMode.LABEL equivalent).
+ * It uses SQUARE modules for maximum scan reliability.
+ * 
+ * DO NOT modify this to use circular dots or artistic effects.
+ * For TripDAR seals with dot-based QR, use sealQrRenderer.ts instead.
+ * 
+ * The separation between label QRs (square) and seal QRs (circular dots)
+ * is intentional and required for long-term stability.
  */
 async function generateQrSvgFromUrl(url: string): Promise<string> {
+  // LABEL MODE: Standard square QR modules
+  // - Square modules (rects) for maximum contrast
+  // - White background for clear binarization
+  // - No artistic effects
   return await QRCode.toString(url, {
     type: 'svg',
     errorCorrectionLevel: 'L',

@@ -1237,3 +1237,29 @@ model BindingSession {
   @@index([partnerId])
   @@index([status])
 }
+
+// ========================================
+// Seal Tuning & Calibration System
+// ========================================
+
+// Saved seal presets for the tuner UI
+// Stores complete SporeFieldConfig snapshots
+model SealPreset {
+  id          String           @id @default(cuid())
+  name        String           @unique
+  description String?
+  basePreset  String           // 'dot-zones' | 'zone-system' | 'module-masked' | 'material-unified'
+  parentId    String?          // Reference to parent preset if this is a child
+  config      Json             // Full SporeFieldConfig object
+  isLive      Boolean          @default(false)  // Only one preset can be live at a time
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  createdById String?
+
+  parent   SealPreset?  @relation("PresetParent", fields: [parentId], references: [id])
+  children SealPreset[] @relation("PresetParent")
+
+  @@index([basePreset])
+  @@index([isLive])
+  @@index([parentId])
+}

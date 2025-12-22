@@ -30,35 +30,35 @@
  * - Spore field is raster-first, deterministic per token
  * - Generator must NEVER inject marketing copy or text (text lives only in base SVG or UI layers)
  * 
- * SPORE FIELD VISUAL GOAL:
- * - Dense core that feels alive
- * - Mid-radius has motion and texture
- * - Outer 10-15% feels airy and sparse
+ * SPORE FIELD VISUAL GOAL (v5 - 3-Zone System):
+ * - Zone A (0-40% of QR): Clean, no spores for scan reliability
+ * - Zone B (40-70% of QR): Light transition spores
+ * - Zone C (70%+): Full artistic density at outer radar
+ * - Finder eyes hard-masked at 1.25× radius
  * - No visible bands or math artifacts
- * - Looks like spores drifting outward, not a pattern
  */
 
 import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import QRCode from 'qrcode';
 import {
   SEAL_VERSION,
   SEAL_BASE_SVG_PATH,
   SEAL_BASE_SVG_CHECKSUM,
   QR_CLOUD_EFFECTIVE_RADIUS,
-  QR_ERROR_CORRECTION_LEVEL,
-  SEAL_QR_URL_PREFIX,
+  SEAL_QR_QUIET_CORE_FACTOR,
 } from '@/lib/constants/seal';
 import {
   generateSporeFieldPng,
   createSporeFieldImageElement,
   type SporeFieldMetadata,
 } from './sealSporeFieldService';
-
-// QR Cloud center coordinates (from base SVG viewBox: 0 0 1000 1000)
-const QR_CLOUD_CENTER_X = 500;
-const QR_CLOUD_CENTER_Y = 500;
+import {
+  renderDotBasedQr,
+  getQrRenderingMetadata,
+} from './sealQrRenderer';
+import { QrRenderMode } from '@/lib/types/qr';
+import type { SporeFieldConfig } from '@/lib/types/sealConfig';
 
 /**
  * Compute deterministic hash for QR cloud generation
@@ -66,80 +66,6 @@ const QR_CLOUD_CENTER_Y = 500;
 export function computeQrCloudHash(token: string, version: string): string {
   const input = `${token}|${version}`;
   return createHash('sha256').update(input).digest('hex');
-}
-
-/**
- * Generate QR code SVG string for seal URL
- * 
- * QR SIZING NOTES:
- * - QR should occupy ~52-55% of inner radar diameter for structural dominance
- * - Margin set to 0 (minimum) - no aesthetic padding, spore field provides context
- * - QR must feel "found inside the seal" not "placed on top"
- * 
- * COMPOSITING:
- * - QR background is TRANSPARENT (light: '#0000' = transparent)
- * - Only black QR modules are rendered
- * - Spore field shows through between modules
- * - No white rect, no white fill behind QR
- */
-async function generateQrSvgForSeal(token: string): Promise<string> {
-  const sealUrl = `${SEAL_QR_URL_PREFIX}${token}`;
-  return await QRCode.toString(sealUrl, {
-    type: 'svg',
-    errorCorrectionLevel: QR_ERROR_CORRECTION_LEVEL,
-    margin: 0,  // MINIMUM quiet zone - no extra padding, spore field surrounds it
-    color: {
-      dark: '#000000',
-      light: '#0000'  // TRANSPARENT background - spore field shows through
-    },
-    width: QR_CLOUD_EFFECTIVE_RADIUS * 2,  // Diameter in SVG units
-  });
-}
-
-/**
- * Extract QR code from SVG and position it within the cloud zone
- * Returns SVG group element with QR code positioned and scaled to fit radius
- * 
- * FINDER PATTERN SOFTENING:
- * - QR finder squares (corners) use slightly lighter color (#111 instead of #000)
- * - This helps the QR feel embedded rather than laser-cut
- * - Data modules remain full black for scan reliability
- */
-function renderQrCloud(qrSvg: string, hash: string, radius: number): string {
-  // Get QR SVG content (without outer svg tags for embedding)
-  // Use [\s\S]*? instead of .*? with 's' flag for ES2017 compatibility
-  const qrContentMatch = qrSvg.match(/<svg[^>]*>([\s\S]*?)<\/svg>/);
-  if (!qrContentMatch) {
-    throw new Error('Invalid QR SVG format: could not extract content');
-  }
-  
-  // Extract the viewBox from the QR SVG to get the native coordinate space
-  const viewBoxMatch = qrSvg.match(/viewBox="0 0 (\d+) (\d+)"/);
-  const qrNativeSize = viewBoxMatch ? parseInt(viewBoxMatch[1], 10) : 33; // Default QR module count
-  
-  let qrContent = qrContentMatch[1];
-  
-  // FINDER PATTERN SOFTENING: Use #111111 (very dark gray) instead of pure black
-  // for finder patterns. The qrcode library generates a single path, so we apply
-  // a subtle opacity to the entire QR and rely on spore field contrast.
-  // This softens the overall appearance without affecting individual modules.
-  
-  // QR code paths are in native viewBox coordinates (e.g., 0-33)
-  // We need to scale them to fit within our target size (radius * 2)
-  const targetSize = radius * 2; // Target size in SVG units (e.g., 216)
-  const scaleFactor = targetSize / qrNativeSize; // e.g., 216 / 33 ≈ 6.545
-  
-  // Position it centered in the cloud zone (which is centered at 500,500)
-  const offset = QR_CLOUD_CENTER_X - radius;
-  
-  // Transform: first scale to target size, then translate to center
-  const transform = `translate(${offset}, ${offset}) scale(${scaleFactor})`;
-  
-  // Apply subtle opacity reduction (0.97) to soften finder patterns
-  // This is imperceptible to scanners but softens visual edges
-  return `<g id="qr-cloud" transform="${transform}" opacity="0.97">
-    ${qrContent}
-  </g>`;
 }
 
 // Note: generateMicrofiberDots has been replaced by the raster spore field service
@@ -177,9 +103,9 @@ async function loadBaseSealSvg(): Promise<string> {
  * 
  * CRITICAL NODE COUNT:
  * - Spore field = 1 node (<image>)
- * - QR code = ~1-2 nodes
+ * - QR code = ~500-800 circle nodes (dot-based rendering)
  * - Base SVG elements = dozens
- * - Total should be < 100 nodes, NOT thousands
+ * - Total should be < 1000 nodes, well under the limit
  * 
  * IMPORTANT: Generator must never inject copy or text.
  * Text lives only in the base SVG or UI layers.
@@ -225,29 +151,60 @@ function injectSealElements(
 /**
  * Generate complete seal SVG for a given token
  * 
- * Same token + version always produces identical SVG.
+ * Same token + version + config always produces identical SVG.
  * 
- * Returns SVG with metadata comment including sealVersion and spore field info.
+ * Returns SVG with metadata comment including sealVersion, spore field, and QR rendering info.
+ * 
+ * LAYERING ORDER (bottom to top):
+ * 1. Spore raster (background atmosphere, with QR-aware zones)
+ * 2. Radar rings (from base SVG)
+ * 3. Dot-based QR (circular modules, radar-style finders)
+ * 4. Sweep lines (from base SVG)
+ * 5. Outer typography (from base SVG)
+ * 
+ * QR READABILITY:
+ * - QR geometry is passed to spore field for zone-aware density
+ * - Zone A (0-40% of QR radius): No spores
+ * - Zone B (40-70%): Light transition
+ * - Zone C (70%+): Full density
+ * - Finder eyes hard-masked at 1.25× radius
+ * 
+ * CONFIG-DRIVEN:
+ * - If config is provided, uses config.qrScale to adjust QR size
+ * - If config is not provided, uses default QR_CLOUD_EFFECTIVE_RADIUS
  */
-export async function generateSealSvg(token: string, version: string = SEAL_VERSION): Promise<string> {
+export async function generateSealSvg(
+  token: string, 
+  version: string = SEAL_VERSION,
+  config?: SporeFieldConfig
+): Promise<string> {
   // 1. Compute deterministic hash
   const hash = computeQrCloudHash(token, version);
   
   // 2. Load and validate base SVG
   const baseSvg = await loadBaseSealSvg();
   
-  // 3. Generate QR code SVG
-  const qrSvg = await generateQrSvgForSeal(token);
+  // 3. Calculate QR radius with optional scale from config
+  // qrScale: 1.0 = default, >1.0 = larger, <1.0 = smaller
+  const qrScale = config?.qrScale ?? 1.0;
+  const effectiveQrRadius = QR_CLOUD_EFFECTIVE_RADIUS * qrScale;
   
-  // 4. Convert QR to cloud pattern within radius
-  const qrCloudSvg = renderQrCloud(qrSvg, hash, QR_CLOUD_EFFECTIVE_RADIUS);
+  // 4. Generate DOT-BASED QR code (circles instead of squares)
+  // Returns both SVG and geometry for spore field coordination
+  // Apply contrast boost from config if provided
+  const qrResult = await renderDotBasedQr(token, effectiveQrRadius, {
+    contrastBoost: config?.moduleContrastBoost,
+  });
   
   // 5. Generate RASTER spore field (PNG embedded as single <image> node)
-  // CRITICAL: NO SVG FALLBACK - if raster fails, render without spore field
+  // CRITICAL: Pass QR geometry for zone-aware density (3-zone system)
+  // Zone A: No spores (QR core)
+  // Zone B: Light spores (transition)
+  // Zone C: Full density (outer radar)
   let sporeFieldElement: string = '';
   let sporeFieldMetadata: SporeFieldMetadata | null = null;
   
-  const sporeResult = await generateSporeFieldPng(token, version);
+  const sporeResult = await generateSporeFieldPng(token, version, qrResult.geometry, config);
   
   if (sporeResult) {
     // Success: single <image> element with base64 PNG
@@ -259,30 +216,106 @@ export async function generateSealSvg(token: string, version: string = SEAL_VERS
     sporeFieldElement = '<!-- Spore field generation failed - no fallback -->';
   }
   
-  // 6. Inject all elements into base SVG
-  let finalSvg = injectSealElements(baseSvg, qrCloudSvg, sporeFieldElement);
+  // 6. Apply base layer config if provided
+  let processedSvg = baseSvg;
+  if (config?.baseLayerConfig) {
+    processedSvg = applyBaseLayerConfig(baseSvg, config.baseLayerConfig);
+  }
   
-  // 7. Add metadata comment with sealVersion and spore field info
+  // 7. Inject all elements into base SVG
+  let finalSvg = injectSealElements(processedSvg, qrResult.svg, sporeFieldElement);
+  
+  // 8. Add metadata comment with sealVersion, spore field, and QR rendering info
+  // CRITICAL: qrRenderMode is explicitly SEAL - this is enforced by the renderer
+  const qrMetadata = getQrRenderingMetadata();
   const sporeInfo = sporeFieldMetadata 
     ? `sporeField: {
     version: "${sporeFieldMetadata.version}",
+    basePreset: "${sporeFieldMetadata.basePreset}",
     canvas: ${sporeFieldMetadata.canvas},
     densityCurve: "${sporeFieldMetadata.densityCurve}",
     noise: "${sporeFieldMetadata.noise}",
-    edgeTaper: ${sporeFieldMetadata.edgeTaper}
+    edgeTaper: ${sporeFieldMetadata.edgeTaper},
+    hardQuietCoreFactor: ${sporeFieldMetadata.hardQuietCoreFactor ?? SEAL_QR_QUIET_CORE_FACTOR},
+    zoneASkipped: ${sporeFieldMetadata.zoneASkipped ?? 0},
+    zoneBCount: ${sporeFieldMetadata.zoneBCount ?? 0},
+    finderSkipped: ${sporeFieldMetadata.finderSkipped ?? 0}
   }`
-    : `sporeField: "fallback"`;
+    : `sporeField: "none"`;
+  
+  const configInfo = config 
+    ? `config: {
+    basePreset: "${config.basePreset}",
+    qrScale: ${config.qrScale ?? 1.0},
+    sporeCount: ${config.sporeCount}
+  }`
+    : `config: "default"`;
   
   const metadataComment = `<!-- TripDAR Seal Generator
   sealVersion: ${version}
   generator: sealGeneratorService
   tokenHash: ${hash.substring(0, 16)}...
+  qrRenderMode: "${QrRenderMode.SEAL}"
+  qrRenderer: {
+    mode: "${qrMetadata.mode}",
+    type: "dot-based",
+    radius: ${effectiveQrRadius},
+    radiusFactor: ${qrMetadata.radiusFactor},
+    moduleShape: "${qrMetadata.moduleShape}",
+    circleCount: ${qrResult.circleCount},
+    finderStyle: "${qrMetadata.finderStyle}"
+  }
   ${sporeInfo}
+  ${configInfo}
 -->`;
   
   // Insert metadata comment after XML declaration
   finalSvg = finalSvg.replace('<?xml', `<?xml\n${metadataComment}`);
   
   return finalSvg;
+}
+
+/**
+ * Apply base layer configuration (colors, opacity) to the base SVG
+ * 
+ * This modifies the SVG elements for outer ring, text ring, and radar lines
+ * based on the provided configuration.
+ */
+function applyBaseLayerConfig(
+  svg: string, 
+  config: SporeFieldConfig['baseLayerConfig']
+): string {
+  let result = svg;
+  
+  // Apply outer ring styling
+  // The outer ring typically has id="outer-ring" or class="outer-ring"
+  if (config.outerRing) {
+    result = result.replace(
+      /(<(?:circle|ellipse|path)[^>]*(?:id|class)="[^"]*outer[^"]*ring[^"]*"[^>]*)(fill|stroke)="[^"]*"/gi,
+      `$1$2="${config.outerRing.color}" opacity="${config.outerRing.opacity}"`
+    );
+  }
+  
+  // Apply text ring styling
+  if (config.textRing) {
+    result = result.replace(
+      /(<text[^>]*(?:id|class)="[^"]*text[^"]*ring[^"]*"[^>]*)(fill)="[^"]*"/gi,
+      `$1$2="${config.textRing.color}" opacity="${config.textRing.opacity}"`
+    );
+    result = result.replace(
+      /(<textPath[^>]*)(fill)="[^"]*"/gi,
+      `$1$2="${config.textRing.color}" opacity="${config.textRing.opacity}"`
+    );
+  }
+  
+  // Apply radar lines styling
+  if (config.radarLines) {
+    result = result.replace(
+      /(<(?:line|path|circle)[^>]*(?:id|class)="[^"]*radar[^"]*"[^>]*)(stroke)="[^"]*"/gi,
+      `$1$2="${config.radarLines.color}" opacity="${config.radarLines.opacity}"`
+    );
+  }
+  
+  return result;
 }
 

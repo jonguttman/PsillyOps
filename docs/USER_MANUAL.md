@@ -2654,6 +2654,92 @@ When scanned, seals display different states on the `/seal/[token]` page:
 - **Deterministic Generation**: Same token always produces identical seal artwork
 - **Partner Assignment**: Seals can be assigned to TripDAR Partners for their products
 
+### Seal Tuner (Advanced)
+
+**Location:** Ops → TripDAR labels → "Open Seal Tuner" button
+
+**Access:** ADMIN and WAREHOUSE roles
+
+The Seal Tuner is an advanced calibration tool for fine-tuning the visual appearance of TripDAR seals. It provides real-time preview and adjustment of the spore field density, QR code integration, and base layer styling.
+
+#### Opening the Tuner
+
+1. Navigate to **Ops** → **TripDAR labels**
+2. Click the **"Open Seal Tuner"** button
+3. A slide-out panel appears with preview on the left and controls on the right
+
+#### Preview Panel (Left Side)
+
+- **Live Preview**: Shows the seal with current settings using a test token (TUNER_PREVIEW_001)
+- **Show Scan Safety Overlay**: Toggle to display zone boundaries (QR core, transition, outer)
+- **DPI Simulation**: Preview how the seal looks at different print resolutions (300 DPI, 150 DPI, 72 DPI)
+- **Recent Scan Tests**: Shows results of scanning the preview QR with your phone
+
+#### Base Presets
+
+Choose from four algorithm presets that define the spore field generation approach:
+
+| Preset | Description |
+|--------|-------------|
+| **Dot Zones** | Basic radial density zones, small uniform particles |
+| **Quiet Core** | 3-zone system with hard QR exclusion |
+| **Module Masked** | Full QR module awareness, respects light/dark modules |
+| **Material Unified** | Spore particles sized to match QR dots for visual cohesion |
+
+#### Core Density Controls
+
+- **Spore Count**: Total number of spore particles (10,000 - 100,000)
+- **Min Opacity**: Minimum particle opacity (0 - 0.5)
+- **Max Opacity**: Maximum particle opacity (0.5 - 1.0)
+
+#### Zone Boundaries
+
+- **Zone A End (QR Core)**: Where the hard exclusion zone ends (as % of QR radius)
+- **Zone B End (Transition)**: Where the transition zone ends (as % of QR radius)
+
+#### QR Size
+
+- **QR Scale**: Adjust the QR code size (50% - 150% of default)
+
+#### Quiet Core
+
+- **Quiet Core Factor**: Size of the absolute no-spore zone at center
+- **Finder Exclusion**: Buffer around QR finder patterns (1.0x - 2.0x)
+
+#### Base Layer Controls
+
+Adjust the visibility of the seal's structural elements:
+
+- **Outer Ring**: Color and opacity of the outer decorative ring
+- **Text Ring**: Color and opacity of the "TripDAR CERTIFIED" text band
+- **Radar Lines**: Color and opacity of the radar sweep lines
+
+#### Saving Custom Presets
+
+1. Adjust settings to your preference
+2. Enter a name in the **"Save as Custom Preset"** field
+3. Click **Save**
+
+Custom presets are saved to the database and can be reused.
+
+#### Exporting Calibration PDFs
+
+1. Select desired **Export Sizes** (1.25", 1.5", 2")
+2. Choose **Paper Size** (Letter or A4)
+3. Click **"Export Calibration PDF"**
+
+The PDF includes:
+- Multiple seal sizes for comparison
+- Cut guides for testing
+- Embedded configuration settings
+
+#### Tips for Scan Reliability
+
+- **Higher Quiet Core Factor** = more reliable scanning but less artistic integration
+- **Lower Spore Count** = cleaner QR but less visual density
+- **Module Masked preset** provides the best balance of aesthetics and scan reliability
+- Test scans with your actual phone camera before printing production runs
+
 ---
 
 ## TripDAR Insights
