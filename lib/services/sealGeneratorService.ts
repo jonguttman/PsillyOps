@@ -51,9 +51,8 @@ import {
   SEAL_QR_URL_PREFIX,
 } from '@/lib/constants/seal';
 import {
-  generateSporeFieldSvg,
-  createSporeFieldSvgElement,
-  generateFallbackSvgDots,
+  generateSporeFieldPng,
+  createSporeFieldImageElement,
   type SporeFieldMetadata,
 } from './sealSporeFieldService';
 
@@ -152,11 +151,17 @@ async function loadBaseSealSvg(): Promise<string> {
  * Inject spore field and QR cloud into base SVG
  * 
  * Rendering order (bottom to top):
- * 1. Raster spore PNG (background atmosphere)
+ * 1. Raster spore PNG as single <image> element (background atmosphere)
  * 2. Radar rings (SVG - from base)
  * 3. QR cloud / encoded pattern (SVG)
  * 4. Radar sweep lines (SVG - from base)
  * 5. Outer ring typography (SVG - from base)
+ * 
+ * CRITICAL NODE COUNT:
+ * - Spore field = 1 node (<image>)
+ * - QR code = ~1-2 nodes
+ * - Base SVG elements = dozens
+ * - Total should be < 100 nodes, NOT thousands
  * 
  * IMPORTANT: Generator must never inject copy or text.
  * Text lives only in the base SVG or UI layers.
@@ -164,8 +169,7 @@ async function loadBaseSealSvg(): Promise<string> {
 function injectSealElements(
   baseSvg: string, 
   qrCloudSvg: string, 
-  sporeFieldElement: string,
-  usedFallback: boolean
+  sporeFieldElement: string
 ): string {
   // First, inject the spore field as the background layer
   // Insert it right after the opening <g id="Layer_1"> to be behind everything
@@ -191,14 +195,10 @@ function injectSealElements(
   result = result.replace(placeholderPattern, qrCloudReplacement);
   
   // Remove the microfiber-field placeholder (replaced by raster spore field)
-  // Keep the group but empty it, or remove entirely
   const microfiberPattern = /<g id="microfiber-field">[\s\S]*?<\/g>/;
-  const microfiberReplacement = usedFallback 
-    ? `<g id="microfiber-field"><!-- Fallback mode: spore field embedded above --></g>`
-    : `<g id="microfiber-field"><!-- Replaced by raster spore field --></g>`;
   
   if (microfiberPattern.test(result)) {
-    result = result.replace(microfiberPattern, microfiberReplacement);
+    result = result.replace(microfiberPattern, `<g id="microfiber-field"><!-- Replaced by raster spore field --></g>`);
   }
   
   return result;
@@ -224,27 +224,25 @@ export async function generateSealSvg(token: string, version: string = SEAL_VERS
   // 4. Convert QR to cloud pattern within radius
   const qrCloudSvg = renderQrCloud(qrSvg, hash, QR_CLOUD_EFFECTIVE_RADIUS);
   
-  // 5. Generate SVG spore field (or fallback to simple SVG dots)
-  let sporeFieldElement: string;
+  // 5. Generate RASTER spore field (PNG embedded as single <image> node)
+  // CRITICAL: NO SVG FALLBACK - if raster fails, render without spore field
+  let sporeFieldElement: string = '';
   let sporeFieldMetadata: SporeFieldMetadata | null = null;
-  let usedFallback = false;
   
-  const sporeResult = await generateSporeFieldSvg(token, version);
+  const sporeResult = await generateSporeFieldPng(token, version);
   
   if (sporeResult) {
-    // Success: use SVG spore field with noise-based organic pattern
-    sporeFieldElement = createSporeFieldSvgElement(sporeResult.svgContent);
+    // Success: single <image> element with base64 PNG
+    sporeFieldElement = createSporeFieldImageElement(sporeResult.base64);
     sporeFieldMetadata = sporeResult.metadata;
   } else {
-    // Fallback: use legacy SVG dots with warning
-    console.warn(`[SealGenerator] Spore field generation failed for token ${token.substring(0, 10)}..., using fallback SVG dots`);
-    const fallbackDots = generateFallbackSvgDots(token, version, QR_CLOUD_EFFECTIVE_RADIUS * 4, QR_CLOUD_CENTER_X, QR_CLOUD_CENTER_Y);
-    sporeFieldElement = `<g id="spore-field-fallback">\n      ${fallbackDots}\n    </g>`;
-    usedFallback = true;
+    // NO FALLBACK - log warning and continue without spore field
+    console.warn(`[SealGenerator] Spore raster failed for token ${token.substring(0, 10)}..., rendered without spore field.`);
+    sporeFieldElement = '<!-- Spore field generation failed - no fallback -->';
   }
   
   // 6. Inject all elements into base SVG
-  let finalSvg = injectSealElements(baseSvg, qrCloudSvg, sporeFieldElement, usedFallback);
+  let finalSvg = injectSealElements(baseSvg, qrCloudSvg, sporeFieldElement);
   
   // 7. Add metadata comment with sealVersion and spore field info
   const sporeInfo = sporeFieldMetadata 
