@@ -84,16 +84,22 @@ function renderQrCloud(qrSvg: string, hash: string, radius: number): string {
     throw new Error('Invalid QR SVG format: could not extract content');
   }
   
-  let qrContent = qrContentMatch[1];
+  // Extract the viewBox from the QR SVG to get the native coordinate space
+  const viewBoxMatch = qrSvg.match(/viewBox="0 0 (\d+) (\d+)"/);
+  const qrNativeSize = viewBoxMatch ? parseInt(viewBoxMatch[1], 10) : 33; // Default QR module count
   
-  // QR code was generated at width = radius * 2
+  const qrContent = qrContentMatch[1];
+  
+  // QR code paths are in native viewBox coordinates (e.g., 0-33)
+  // We need to scale them to fit within our target size (radius * 2)
+  const targetSize = radius * 2; // Target size in SVG units (e.g., 216)
+  const scaleFactor = targetSize / qrNativeSize; // e.g., 216 / 33 ≈ 6.545
+  
   // Position it centered in the cloud zone (which is centered at 500,500)
-  // The QR is a square, so we fit it within the circle radius
-  const qrSize = radius * 2; // QR was generated at this size
   const offset = QR_CLOUD_CENTER_X - radius;
   
-  // Transform QR content to center it
-  const transform = `translate(${offset}, ${offset})`;
+  // Transform: first scale to target size, then translate to center
+  const transform = `translate(${offset}, ${offset}) scale(${scaleFactor})`;
   
   return `<g id="qr-cloud" transform="${transform}">
     ${qrContent}
