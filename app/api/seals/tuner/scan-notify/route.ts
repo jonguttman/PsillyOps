@@ -11,7 +11,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { isTunerToken } from '@/lib/types/sealConfig';
-import { addScanEvent } from '../scan-events/route';
+import { addScanEvent } from '@/lib/services/scanEventService';
 
 export async function POST(request: NextRequest) {
   try {

@@ -5,43 +5,11 @@
  * 
  * The /seal/TUNER_PREVIEW_001 page will POST to /api/seals/tuner/scan-notify
  * when scanned, and this SSE endpoint will broadcast to connected clients.
- * 
- * This uses a simple in-memory event queue since we only need
- * to support a single active tuner session at a time.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/auth';
-
-// In-memory event queue (single session)
-// In production, you'd use Redis pub/sub or similar
-interface ScanEvent {
-  timestamp: string;
-  token: string;
-  userAgent?: string;
-  success: boolean;
-}
-
-const eventQueue: ScanEvent[] = [];
-const MAX_EVENTS = 50;
-
-// Add event to queue (called by scan-notify endpoint)
-export function addScanEvent(event: ScanEvent) {
-  eventQueue.unshift(event);
-  if (eventQueue.length > MAX_EVENTS) {
-    eventQueue.pop();
-  }
-}
-
-// Get recent events
-export function getRecentEvents(): ScanEvent[] {
-  return eventQueue.slice(0, 10);
-}
-
-// Clear events
-export function clearEvents() {
-  eventQueue.length = 0;
-}
+import { getEventQueue } from '@/lib/services/scanEventService';
 
 export async function GET(request: NextRequest) {
   // Require authentication
@@ -61,6 +29,7 @@ export async function GET(request: NextRequest) {
   // Create SSE stream
   const encoder = new TextEncoder();
   let lastEventCount = 0;
+  const eventQueue = getEventQueue();
   
   const stream = new ReadableStream({
     start(controller) {
@@ -100,4 +69,3 @@ export async function GET(request: NextRequest) {
     },
   });
 }
-
