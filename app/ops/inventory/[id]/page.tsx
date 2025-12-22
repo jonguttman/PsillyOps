@@ -160,7 +160,7 @@ export default async function InventoryDetailPage({
         <h2 className="text-lg font-medium text-gray-900 mb-4">Overview</h2>
         <InventoryAdjustClient
           inventoryId={id}
-          userRole={session.user.role as UserRole}
+          userRole={session.user.role}
           unitOfMeasure={inventoryItem.unitOfMeasure}
           initialOnHand={inventoryItem.quantityOnHand}
           initialReserved={inventoryItem.quantityReserved}
