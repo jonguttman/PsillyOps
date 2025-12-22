@@ -1620,7 +1620,74 @@ All product fields can be edited:
 
 ---
 
-### 6. BOM Editor
+### 6. Predicted Experience (TripDAR)
+
+**Location:** Product detail page → "Predicted Experience" section
+
+**Access:** ADMIN and PRODUCTION roles can edit predictions
+
+#### Purpose
+
+The Predicted Experience feature allows you to set expected experience profiles for products. These predictions help customers understand what to expect and enable the TripDAR experience review system to collect feedback comparing predictions to actual experiences.
+
+#### Experience Modes
+
+Products can have predictions for two different experience modes:
+
+- **MICRO**: Microdose experiences - subtle, functional enhancement
+- **MACRO**: Macro journey experiences - full experience, deeper exploration
+
+A product can have both MICRO and MACRO profiles simultaneously, allowing you to set different expectations for different use cases.
+
+#### Setting Predictions
+
+1. Navigate to **Products** → Click **"View"** on a product
+2. Scroll to the **"Predicted Experience"** section
+3. Use the mode toggle to switch between **MICRO** and **MACRO**
+4. Adjust the five vibe sliders to set the expected experience distribution:
+   - **Transcend**: Mystical/beyond-self (MACRO) or Subtle uplift (MICRO)
+   - **Energize**: Stimulation/intensity (MACRO) or Clarity/energy (MICRO)
+   - **Create**: Visionary/imagination (MACRO) or Creative flow (MICRO)
+   - **Transform**: Breakthrough/dissolution (MACRO) or Perspective shift (MICRO)
+   - **Connect**: Connection/unity (MACRO) or Emotional openness (MICRO)
+5. Ensure the weights sum to 1.0 (100%)
+6. Click **"Save [MODE] Prediction Profile"**
+
+#### Vibe Vocabulary
+
+The labels for each vibe change based on the selected mode:
+
+**MICRO Mode Labels:**
+- Transcend: "Subtle uplift"
+- Energize: "Clarity / energy"
+- Create: "Creative flow"
+- Transform: "Perspective shift"
+- Connect: "Emotional openness"
+
+**MACRO Mode Labels:**
+- Transcend: "Mystical / beyond-self"
+- Energize: "Stimulation / intensity"
+- Create: "Visionary / imagination"
+- Transform: "Breakthrough / dissolution"
+- Connect: "Connection / unity"
+
+#### Product Default Mode
+
+Each product has a `defaultExperienceMode` (defaults to MACRO) that determines:
+- Which mode the Prediction Editor opens first
+- Which mode the survey preselects when both profiles exist
+- Which mode is used when mode isn't specified elsewhere
+
+#### Immutable Profiles
+
+Prediction profiles are immutable snapshots. Each time you save, a new profile version is created. This ensures:
+- Historical predictions are preserved
+- You can track how predictions evolved over time
+- Reviews are always linked to the specific prediction profile that was active when they were submitted
+
+---
+
+### 7. BOM Editor
 
 **URL:** `/products/[id]/bom`
 
@@ -1681,7 +1748,7 @@ The Bill of Materials (BOM) defines what raw materials are needed to produce one
 
 ---
 
-### 7. Inventory Summary
+### 8. Inventory Summary
 
 The Inventory Summary card on the product detail page shows current stock levels.
 
@@ -1706,7 +1773,7 @@ Inventory is pulled from the `InventoryItem` table where:
 
 ---
 
-### 8. Recent Production
+### 9. Recent Production
 
 The Recent Production card shows the last 5 production orders for this product.
 
@@ -1734,7 +1801,7 @@ Clicking an order number navigates to `/production/[orderId]` (when implemented)
 
 ---
 
-### 9. Product Creation Workflow Diagram
+### 10. Product Creation Workflow Diagram
 
 ```mermaid
 sequenceDiagram
@@ -1767,7 +1834,7 @@ sequenceDiagram
 
 ---
 
-### 10. Product Data Flow Diagram
+### 11. Product Data Flow Diagram
 
 ```mermaid
 flowchart TB
@@ -2526,6 +2593,218 @@ If vendor ships in multiple deliveries:
 5. Enter quantities from second delivery
 6. System tracks total received across all receipts
 7. When all items received, status automatically changes to RECEIVED
+
+---
+
+## TripDAR Insights
+
+TripDAR (Trip Data & Analytics Repository) is a privacy-forward, trust-first experience data collection system that gathers anonymous feedback comparing predicted product experiences to actual user experiences. This system is designed for internal operations and future ML readiness.
+
+### Core Principles
+
+- **No PII**: No personally identifying information is ever collected or stored
+- **Optional Participation**: All questions are skippable; skipping is valid data
+- **Neutral Responses Valued**: "No change" responses are as valuable as positive ones
+- **Non-Blocking**: The system observes patterns silently but never blocks or notifies users
+- **Signal Quality Focus**: Emphasis on language formation and signal quality, not outcome claims
+
+### Predicted Experience Management (Admin & Production)
+
+**Location:** Product detail page → "Predicted Experience" section
+
+**Access:** ADMIN and PRODUCTION roles
+
+#### Setting Product Predictions
+
+1. Navigate to **Products** → Click **"View"** on a product
+2. Scroll to the **"Predicted Experience"** section
+3. Use the **Mode Toggle** to switch between **MICRO** and **MACRO**
+4. Adjust the five vibe sliders (weights must sum to 1.0):
+   - Each vibe has mode-specific labels (see [Vibe Vocabulary](#vibe-vocabulary) below)
+   - Use the sliders to set the expected distribution
+5. Click **"Save [MODE] Prediction Profile"**
+
+#### Experience Modes
+
+- **MICRO**: Microdose experiences - subtle, functional enhancement
+- **MACRO**: Macro journey experiences - full experience, deeper exploration
+
+Products can have both MICRO and MACRO profiles simultaneously. The product's `defaultExperienceMode` determines which mode is preselected.
+
+#### Vibe Vocabulary
+
+The labels for each vibe change based on the selected mode:
+
+**MICRO Mode:**
+- Transcend: "Subtle uplift"
+- Energize: "Clarity / energy"
+- Create: "Creative flow"
+- Transform: "Perspective shift"
+- Connect: "Emotional openness"
+
+**MACRO Mode:**
+- Transcend: "Mystical / beyond-self"
+- Energize: "Stimulation / intensity"
+- Create: "Visionary / imagination"
+- Transform: "Breakthrough / dissolution"
+- Connect: "Connection / unity"
+
+#### Immutable Profiles
+
+Prediction profiles are immutable snapshots. Each save creates a new profile version, preserving history and ensuring reviews are linked to the specific prediction that was active when submitted.
+
+### TripDAR Dashboard (Admin & Analyst)
+
+**Location:** Insights → TripDAR
+
+**Access:** ADMIN and ANALYST roles
+
+#### Dashboard Overview
+
+The TripDAR dashboard provides a comprehensive view of experience review data:
+
+**Goal Progress:**
+- Shows progress toward the global review goal (default: 1,000 reviews)
+- Configurable via `SystemConfig` key `TRIPDAR_REVIEW_GOAL_GLOBAL`
+- Progress bar with percentage complete
+
+**Key Metrics:**
+- **Total Reviews**: All-time review count
+- **Weekly Submissions**: Reviews submitted in the last 7 days
+- **Completion Rate**: Percentage of questions answered vs. skipped
+- **Skip Rate**: Percentage of questions skipped
+
+**Experience Mode Breakdown:**
+- **MICRO**: Total reviews and weekly submissions for microdose experiences
+- **MACRO**: Total reviews and weekly submissions for macro journey experiences
+
+**Data Quality Metrics:**
+- **Neutral Response Rate**: Percentage of reviews with neutral/no-change responses
+- **Integrity Breakdown**: Clean vs. flagged reviews (based on integrity patterns)
+
+#### Quick Actions
+
+- **Browse Reviews**: Navigate to the review browser for detailed filtering
+- **Export Data**: Download CSV or JSON exports for ML pipelines
+
+### Review Browser (Admin & Analyst)
+
+**Location:** Insights → TripDAR → Reviews
+
+**Access:** ADMIN and ANALYST roles
+
+#### Filtering Reviews
+
+The review browser supports multiple filters:
+
+- **Product ID**: Filter by specific product
+- **Batch ID**: Filter by specific batch
+- **Experience Mode**: Filter by MICRO or MACRO
+- **Integrity Status**: Filter by flagged or clean reviews
+
+#### Review Table Columns
+
+- **Product**: Product name, SKU, and batch code (if applicable)
+- **Mode**: Experience mode badge (MICRO or MACRO)
+- **Overall Match**: Match score (0-4) or "Skipped"
+- **Completion**: Completion rate percentage
+- **Flags**: Integrity and content flags (if any)
+- **Date**: Review submission timestamp
+
+#### Review Details
+
+Click any review to see:
+- Full review data including all vibe deltas
+- Context information (first time, dose, setting)
+- Optional free-text note
+- Integrity and content flags
+- Linked prediction profile
+
+### Data Export (Admin & Analyst)
+
+**Location:** Insights → TripDAR → Export
+
+**Access:** ADMIN and ANALYST roles
+
+#### Export Formats
+
+- **CSV**: Comma-separated values for spreadsheet analysis
+- **JSON**: Structured JSON for ML pipelines
+
+#### Export Fields
+
+Exports include:
+- Review ID, product ID, product name, product SKU
+- Batch ID and batch code (if applicable)
+- **Experience Mode** (MICRO or MACRO)
+- Overall match score and vibe deltas
+- Context fields (first time, dose bands, setting)
+- Free-text note
+- Completion rate
+- Timestamp
+
+#### Filtering Exports
+
+Exports can be filtered by:
+- Product ID
+- Batch ID
+- Experience Mode
+- Date range (from/to)
+- Integrity status (flagged/clean)
+
+### Public Experience Survey
+
+**Location:** Public transparency page (accessed via QR code scan)
+
+**Access:** No authentication required
+
+#### Survey Entry Points
+
+1. **Explicit Button**: "Share Your Experience" button on the transparency page
+2. **Soft Nudge**: Dismissible prompt after scrolling or time delay (12-20 seconds or 60% scroll)
+
+#### Mode Selection
+
+If a product has both MICRO and MACRO prediction profiles:
+1. User sees a mode selection screen: "How did you use it?"
+2. Two options:
+   - **Microdose**: Subtle, functional enhancement
+   - **Macro Journey**: Full experience, deeper exploration
+3. User selects their mode
+4. Survey proceeds with mode-specific labels
+
+If only one profile exists, mode is automatically locked and no selection is shown.
+
+#### Survey Questions
+
+All questions are optional and skippable:
+
+1. **Privacy Disclosure**: Explains data collection policy
+2. **Overall Match**: How well did your experience match expectations? (0-4 scale)
+3. **Vibe Comparison**: For each of the 5 vibes, how did it compare to predicted? (5-point slider)
+4. **Context (Optional)**:
+   - First time trying this product? (Yes/No/Skip)
+   - Dose in grams (ranges or "Prefer not to say")
+   - Dose relative to typical (Less/Typical/More/First time/Prefer not to say)
+   - Setting (Solo, Social, Nature, Ceremony, Work, Other, Prefer not to say)
+5. **Free-Text Note**: Optional note (280-500 characters)
+
+#### Privacy & Data Collection
+
+The survey clearly discloses:
+- No names, emails, accounts, or precise location collected
+- No personal identification
+- Data used only in aggregate
+- No revelation of internal integrity mechanisms
+
+#### Survey Submission
+
+After submission:
+- Review is stored with the selected experience mode
+- Mode-specific vibe labels are preserved
+- Review is linked to the active prediction profile for that mode
+- Integrity and content flags are automatically detected
+- User sees a thank you message
 
 ---
 

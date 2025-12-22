@@ -36,6 +36,10 @@ interface PageProps {
 export default async function VerificationPage({ params }: PageProps) {
   const { token } = await params;
 
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/verify/[token]/page.tsx:28',message:'Verification page entry',data:{token:token?.slice(0,10)+'...'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+  // #endregion
+
   // Get token record directly (read-only, no scan count increment)
   // Scan was already logged in /qr/[tokenId] resolver
   const tokenRecord = await getTokenByValue(token);

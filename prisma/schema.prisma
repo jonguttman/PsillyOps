@@ -1,24 +1,852 @@
-// PSILLYOPS PRISMA SCHEMA - SINGLE SOURCE OF TRUTH
-// This schema defines all 14+ core entities for the inventory management system
+generator client {
+  provider = "prisma-client-js"
+}
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-generator client {
-  provider = "prisma-client-js"
+model User {
+  id                         String                @id @default(cuid())
+  name                       String
+  email                      String                @unique
+  password                   String
+  role                       UserRole              @default(REP)
+  active                     Boolean               @default(true)
+  createdAt                  DateTime              @default(now())
+  updatedAt                  DateTime              @updatedAt
+  lastLoginAt                DateTime?
+  passwordSetAt              DateTime?
+  aiCommandLogs              AICommandLog[]
+  aiDocumentImports          AIDocumentImport[]
+  activityLogs               ActivityLog[]
+  batches                    BatchMaker[]
+  inventoryAdjustments       InventoryAdjustment[] @relation("UserInventoryAdjustments")
+  laborEntries               LaborEntry[]
+  printJobs                  PrintJob[]
+  createdProductionOrders    ProductionOrder[]     @relation("ProductionOrderCreator")
+  createdProductionRuns      ProductionRun[]       @relation("ProductionRunCreator")
+  assignedProductionRunSteps ProductionRunStep[]   @relation("ProductionRunStepAssignee")
+  productionRunSteps         ProductionRunStep[]   @relation("ProductionRunStepPerformer")
+  createdPurchaseOrders      PurchaseOrder[]       @relation("PurchaseOrderCreator")
+  qrRedirectRules            QRRedirectRule[]
+  qrTokens                   QRToken[]
+  assignedRetailers          Retailer[]
+  approvedOrders             RetailerOrder[]       @relation("OrderApprover")
+  createdOrders              RetailerOrder[]       @relation("OrderCreator")
+  predictionProfiles         PredictionProfile[]
+  partnerId                  String?
+  partner                    Partner?              @relation(fields: [partnerId], references: [id])
+  createdSealSheets          SealSheet[]           @relation("SealSheetCreator")
+  assignedSealSheets         SealSheet[]           @relation("SealSheetAssigner")
+  experienceBindings         ExperienceBinding[]   @relation("ExperienceBindingBoundBy")
+  bindingSessions            BindingSession[]      @relation("BindingSessionStartedBy")
+
+  @@index([email])
+  @@index([role])
+  @@index([partnerId])
 }
 
-// ========================================
-// CANONICAL ENUMS
-// ========================================
+model Strain {
+  id        String        @id @default(cuid())
+  name      String        @unique
+  shortCode String        @unique
+  aliases   Json          @default("[]")
+  active    Boolean       @default(true)
+  createdAt DateTime      @default(now())
+  products  Product[]
+  materials RawMaterial[]
+
+  @@index([shortCode])
+}
+
+model Product {
+  id                      String                   @id @default(cuid())
+  name                    String
+  sku                     String                   @unique
+  unitOfMeasure           String
+  defaultBatchSize        Int?
+  leadTimeDays            Int                      @default(0)
+  reorderPoint            Int                      @default(0)
+  wholesalePrice          Float?
+  strainId                String?
+  active                  Boolean                  @default(true)
+  defaultExperienceMode   ExperienceMode           @default(MACRO)
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  barcodeValue            String?
+  labelHeightIn           Float?
+  labelPrintQuantity      Int?
+  labelWidthIn            Float?
+  sheetMarginTopBottomIn  Float?
+  upc                     String?
+  bom                     BOMItem[]
+  batches                 Batch[]
+  inventory               InventoryItem[]
+  orderLines              OrderLineItem[]
+  strain                  Strain?                  @relation(fields: [strainId], references: [id])
+  productionOrders        ProductionOrder[]
+  productionRuns          ProductionRun[]
+  productionStepTemplates ProductionStepTemplate[]
+  productionTemplates     ProductionTemplate[]
+  predictionProfiles      PredictionProfile[]
+  experienceReviews       ExperienceReview[]
+
+  @@index([sku])
+  @@index([upc])
+  @@index([active])
+  @@index([strainId])
+}
+
+model ProductionStepTemplate {
+  id        String   @id @default(cuid())
+  productId String
+  key       String
+  label     String
+  order     Int
+  required  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  product   Product  @relation(fields: [productId], references: [id])
+
+  @@unique([productId, key])
+  @@unique([productId, order])
+  @@index([productId, order])
+}
+
+model ProductionRun {
+  id          String              @id @default(cuid())
+  productId   String
+  quantity    Int
+  status      ProductionRunStatus @default(PLANNED)
+  qrTokenId   String?             @unique
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdById String?
+  createdAt   DateTime            @default(now())
+  createdBy   User?               @relation("ProductionRunCreator", fields: [createdById], references: [id])
+  product     Product             @relation(fields: [productId], references: [id])
+  qrToken     QRToken?            @relation("ProductionRunQrToken", fields: [qrTokenId], references: [id])
+  steps       ProductionRunStep[]
+
+  @@index([productId])
+}
+
+model ProductionRunStep {
+  id               String               @id @default(cuid())
+  productionRunId  String
+  templateKey      String
+  label            String
+  order            Int
+  required         Boolean
+  status           ProductionStepStatus @default(PENDING)
+  startedAt        DateTime?
+  completedAt      DateTime?
+  skippedAt        DateTime?
+  skipReason       String?
+  performedById    String?
+  assignedToUserId String?
+  createdAt        DateTime             @default(now())
+  assignedToUser   User?                @relation("ProductionRunStepAssignee", fields: [assignedToUserId], references: [id])
+  performedBy      User?                @relation("ProductionRunStepPerformer", fields: [performedById], references: [id])
+  productionRun    ProductionRun        @relation(fields: [productionRunId], references: [id])
+
+  @@index([productionRunId, order])
+}
+
+model RawMaterial {
+  id                       String                    @id @default(cuid())
+  name                     String
+  sku                      String                    @unique
+  unitOfMeasure            String
+  category                 String
+  description              String?
+  currentStockQty          Float                     @default(0)
+  reorderPoint             Float                     @default(0)
+  reorderQuantity          Float                     @default(0)
+  moq                      Float                     @default(0)
+  leadTimeDays             Int                       @default(0)
+  shelfLifeDays            Int?
+  expiryWarningDays        Int?
+  active                   Boolean                   @default(true)
+  archivedAt               DateTime?
+  preferredVendorId        String?
+  strainId                 String?
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  upc                      String?
+  bomUsage                 BOMItem[]
+  inventory                InventoryItem[]
+  attachments              MaterialAttachment[]
+  costHistory              MaterialCostHistory[]
+  vendors                  MaterialVendor[]
+  productionOrderMaterials ProductionOrderMaterial[]
+  poLineItems              PurchaseOrderLineItem[]
+  preferredVendor          Vendor?                   @relation("PreferredVendor", fields: [preferredVendorId], references: [id])
+  strain                   Strain?                   @relation(fields: [strainId], references: [id])
+
+  @@index([sku])
+  @@index([upc])
+  @@index([active])
+  @@index([preferredVendorId])
+  @@index([category])
+  @@index([strainId])
+}
+
+model Vendor {
+  id                  String                @id @default(cuid())
+  name                String
+  contactName         String?
+  contactEmail        String?
+  contactPhone        String?
+  address             String?
+  paymentTerms        String?
+  defaultLeadTimeDays Int                   @default(0)
+  notes               String?
+  active              Boolean               @default(true)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  costHistory         MaterialCostHistory[]
+  materials           MaterialVendor[]
+  purchaseOrders      PurchaseOrder[]
+  preferredFor        RawMaterial[]         @relation("PreferredVendor")
+
+  @@index([name])
+  @@index([active])
+}
+
+model MaterialVendor {
+  id           String      @id @default(cuid())
+  materialId   String
+  vendorId     String
+  leadTimeDays Int?
+  lastPrice    Float?
+  moq          Float       @default(0)
+  preferred    Boolean     @default(false)
+  notes        String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  material     RawMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  vendor       Vendor      @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@unique([materialId, vendorId])
+  @@index([materialId])
+  @@index([vendorId])
+  @@index([preferred])
+}
+
+model BOMItem {
+  id              String      @id @default(cuid())
+  productId       String
+  materialId      String
+  quantityPerUnit Float
+  version         Int         @default(1)
+  active          Boolean     @default(true)
+  createdAt       DateTime    @default(now())
+  material        RawMaterial @relation(fields: [materialId], references: [id])
+  product         Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, materialId, version])
+  @@index([productId])
+  @@index([materialId])
+}
+
+model Location {
+  id                 String          @id @default(cuid())
+  name               String          @unique
+  type               String
+  isDefaultReceiving Boolean         @default(false)
+  isDefaultShipping  Boolean         @default(false)
+  active             Boolean         @default(true)
+  createdAt          DateTime        @default(now())
+  inventory          InventoryItem[]
+
+  @@index([type])
+}
+
+model Batch {
+  id                String             @id @default(cuid())
+  productId         String
+  batchCode         String             @unique
+  plannedQuantity   Int
+  actualQuantity    Int?
+  status            BatchStatus        @default(PLANNED)
+  productionOrderId String?
+  productionDate    DateTime?
+  manufactureDate   DateTime?
+  expirationDate    DateTime?
+  expectedYield     Float?
+  actualYield       Float?
+  lossQty           Float?
+  lossReason        String?
+  qcStatus          QCStatus           @default(NOT_REQUIRED)
+  notes             String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  product           Product            @relation(fields: [productId], references: [id])
+  productionOrder   ProductionOrder?   @relation(fields: [productionOrderId], references: [id])
+  makers            BatchMaker[]
+  inventory         InventoryItem[]
+  laborEntries      LaborEntry[]
+  experienceReviews ExperienceReview[]
+
+  @@index([productId])
+  @@index([status])
+  @@index([batchCode])
+  @@index([productionOrderId])
+  @@index([qcStatus])
+}
+
+model BatchMaker {
+  id        String   @id @default(cuid())
+  batchId   String
+  userId    String
+  createdAt DateTime @default(now())
+  batch     Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([batchId, userId])
+  @@index([batchId])
+  @@index([userId])
+}
+
+model InventoryItem {
+  id               String                @id @default(cuid())
+  type             InventoryType
+  productId        String?
+  materialId       String?
+  batchId          String?
+  locationId       String
+  quantityOnHand   Float
+  quantityReserved Float                 @default(0)
+  unitOfMeasure    String
+  unitCost         Float?
+  externalRef      String?
+  status           InventoryStatus       @default(AVAILABLE)
+  lotNumber        String?
+  expiryDate       DateTime?
+  source           String                @default("MANUAL")
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  adjustments      InventoryAdjustment[] @relation("InventoryItemAdjustments")
+  batch            Batch?                @relation(fields: [batchId], references: [id])
+  location         Location              @relation(fields: [locationId], references: [id])
+  material         RawMaterial?          @relation(fields: [materialId], references: [id])
+  product          Product?              @relation(fields: [productId], references: [id])
+
+  @@index([type])
+  @@index([productId])
+  @@index([materialId])
+  @@index([batchId])
+  @@index([locationId])
+  @@index([status])
+  @@index([expiryDate])
+}
+
+model Retailer {
+  id              String          @id @default(cuid())
+  name            String
+  contactEmail    String?
+  contactPhone    String?
+  shippingAddress String?
+  billingAddress  String?
+  notes           String?
+  salesRepId      String?
+  active          Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  invoices        Invoice[]
+  salesRep        User?           @relation(fields: [salesRepId], references: [id])
+  orders          RetailerOrder[]
+
+  @@index([salesRepId])
+  @@index([name])
+}
+
+model RetailerOrder {
+  id                String          @id @default(cuid())
+  orderNumber       String          @unique
+  retailerId        String
+  createdByUserId   String
+  status            OrderStatus     @default(DRAFT)
+  requestedShipDate DateTime?
+  approvedByUserId  String?
+  approvedAt        DateTime?
+  shippedAt         DateTime?
+  trackingNumber    String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  invoices          Invoice[]
+  lineItems         OrderLineItem[]
+  approvedBy        User?           @relation("OrderApprover", fields: [approvedByUserId], references: [id])
+  createdBy         User            @relation("OrderCreator", fields: [createdByUserId], references: [id])
+  retailer          Retailer        @relation(fields: [retailerId], references: [id])
+
+  @@index([retailerId])
+  @@index([status])
+  @@index([orderNumber])
+  @@index([createdByUserId])
+}
+
+model OrderLineItem {
+  id                 String        @id @default(cuid())
+  orderId            String
+  productId          String
+  quantityOrdered    Int
+  quantityAllocated  Int           @default(0)
+  shortageQuantity   Int           @default(0)
+  allocationDetails  Json?
+  unitWholesalePrice Float?
+  lineTotal          Float?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  order              RetailerOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product            Product       @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+model ProductionOrder {
+  id                     String                    @id @default(cuid())
+  orderNumber            String                    @unique
+  productId              String
+  quantityToMake         Int
+  batchSize              Float?
+  status                 ProductionStatus          @default(PLANNED)
+  scheduledDate          DateTime?
+  dueDate                DateTime?
+  startedAt              DateTime?
+  completedAt            DateTime?
+  workCenterId           String?
+  templateId             String?
+  createdByUserId        String
+  linkedRetailerOrderIds Json?
+  materialRequirements   Json?
+  createdAt              DateTime                  @default(now())
+  updatedAt              DateTime                  @updatedAt
+  batches                Batch[]
+  createdBy              User                      @relation("ProductionOrderCreator", fields: [createdByUserId], references: [id])
+  product                Product                   @relation(fields: [productId], references: [id])
+  template               ProductionTemplate?       @relation(fields: [templateId], references: [id])
+  workCenter             WorkCenter?               @relation(fields: [workCenterId], references: [id])
+  materials              ProductionOrderMaterial[]
+
+  @@index([productId])
+  @@index([status])
+  @@index([orderNumber])
+  @@index([createdByUserId])
+  @@index([workCenterId])
+  @@index([scheduledDate])
+}
+
+model PurchaseOrder {
+  id                   String                  @id @default(cuid())
+  poNumber             String                  @unique
+  vendorId             String
+  status               PurchaseOrderStatus     @default(DRAFT)
+  createdByUserId      String
+  sentAt               DateTime?
+  expectedDeliveryDate DateTime?
+  receivedAt           DateTime?
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+  createdBy            User                    @relation("PurchaseOrderCreator", fields: [createdByUserId], references: [id])
+  vendor               Vendor                  @relation(fields: [vendorId], references: [id])
+  lineItems            PurchaseOrderLineItem[]
+
+  @@index([vendorId])
+  @@index([status])
+  @@index([poNumber])
+  @@index([createdByUserId])
+}
+
+model PurchaseOrderLineItem {
+  id               String        @id @default(cuid())
+  purchaseOrderId  String
+  materialId       String
+  quantityOrdered  Float
+  quantityReceived Float         @default(0)
+  unitCost         Float?
+  lotNumber        String?
+  expiryDate       DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  material         RawMaterial   @relation(fields: [materialId], references: [id])
+  purchaseOrder    PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+
+  @@index([purchaseOrderId])
+  @@index([materialId])
+}
+
+model ActivityLog {
+  id         String          @id @default(cuid())
+  entityType ActivityEntity?
+  entityId   String?
+  action     String
+  userId     String?
+  summary    String
+  diff       Json?
+  tags       Json?
+  createdAt  DateTime        @default(now())
+  ipAddress  String?
+  metadata   Json?
+  userAgent  String?
+  user       User?           @relation(fields: [userId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([tags])
+  @@index([action])
+}
+
+model InventoryAdjustment {
+  id                String                  @id @default(cuid())
+  inventoryId       String
+  deltaQty          Int
+  reason            String
+  adjustmentType    InventoryAdjustmentType
+  relatedEntityType ActivityEntity?
+  relatedEntityId   String?
+  createdById       String?
+  createdAt         DateTime                @default(now())
+  createdBy         User?                   @relation("UserInventoryAdjustments", fields: [createdById], references: [id])
+  inventory         InventoryItem           @relation("InventoryItemAdjustments", fields: [inventoryId], references: [id])
+
+  @@index([inventoryId])
+  @@index([createdAt])
+}
+
+model MaterialCostHistory {
+  id         String      @id @default(cuid())
+  materialId String
+  vendorId   String?
+  price      Float
+  source     String      @default("MANUAL")
+  notes      String?
+  createdAt  DateTime    @default(now())
+  material   RawMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  vendor     Vendor?     @relation(fields: [vendorId], references: [id])
+
+  @@index([materialId])
+  @@index([vendorId])
+  @@index([createdAt])
+}
+
+model MaterialAttachment {
+  id         String      @id @default(cuid())
+  materialId String
+  fileName   String
+  fileUrl    String
+  fileType   String      @default("OTHER")
+  notes      String?
+  uploadedAt DateTime    @default(now())
+  material   RawMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  @@index([materialId])
+  @@index([fileType])
+}
+
+model InventoryMovement {
+  id           String       @id @default(cuid())
+  inventoryId  String?
+  materialId   String?
+  productId    String?
+  batchId      String?
+  type         MovementType
+  quantity     Float
+  fromLocation String?
+  toLocation   String?
+  reason       String?
+  reference    String?
+  userId       String?
+  createdAt    DateTime     @default(now())
+
+  @@index([materialId])
+  @@index([productId])
+  @@index([batchId])
+  @@index([inventoryId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+model ProductionOrderMaterial {
+  id                String          @id @default(cuid())
+  productionOrderId String
+  materialId        String
+  requiredQty       Float
+  issuedQty         Float           @default(0)
+  shortage          Float           @default(0)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  material          RawMaterial     @relation(fields: [materialId], references: [id])
+  productionOrder   ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+
+  @@unique([productionOrderId, materialId])
+  @@index([productionOrderId])
+  @@index([materialId])
+}
+
+model WorkCenter {
+  id               String            @id @default(cuid())
+  name             String
+  description      String?
+  active           Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  productionOrders ProductionOrder[]
+
+  @@index([active])
+}
+
+model ProductionTemplate {
+  id               String            @id @default(cuid())
+  name             String
+  productId        String
+  defaultBatchSize Float
+  instructions     String?
+  active           Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  productionOrders ProductionOrder[]
+  product          Product           @relation(fields: [productId], references: [id])
+
+  @@index([productId])
+  @@index([active])
+}
+
+model LaborEntry {
+  id        String   @id @default(cuid())
+  batchId   String
+  userId    String
+  minutes   Int
+  role      String?
+  notes     String?
+  createdAt DateTime @default(now())
+  batch     Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([batchId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model UnitConversion {
+  id         String        @id @default(cuid())
+  fromUnit   UnitOfMeasure
+  toUnit     UnitOfMeasure
+  multiplier Float
+
+  @@unique([fromUnit, toUnit])
+}
+
+model AICommandLog {
+  id               String    @id @default(cuid())
+  userId           String?
+  inputText        String
+  normalized       String?
+  status           String
+  aiResult         Json?
+  executedPayload  Json?
+  correctedCommand Json?
+  error            String?
+  createdAt        DateTime  @default(now())
+  appliedAt        DateTime?
+  user             User?     @relation(fields: [userId], references: [id])
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model AIDocumentImport {
+  id           String    @id @default(cuid())
+  userId       String?
+  sourceType   String
+  originalName String?
+  contentType  String?
+  textPreview  String?
+  status       String
+  confidence   Float?
+  aiResult     Json?
+  createdAt    DateTime  @default(now())
+  reviewedAt   DateTime?
+  appliedAt    DateTime?
+  error        String?
+  user         User?     @relation(fields: [userId], references: [id])
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Invoice {
+  id         String        @id @default(cuid())
+  invoiceNo  String        @unique
+  orderId    String
+  retailerId String
+  issuedAt   DateTime      @default(now())
+  subtotal   Float
+  notes      String?
+  order      RetailerOrder @relation(fields: [orderId], references: [id])
+  retailer   Retailer      @relation(fields: [retailerId], references: [id])
+
+  @@index([orderId])
+  @@index([retailerId])
+  @@index([invoiceNo])
+  @@index([issuedAt])
+}
+
+model LabelTemplate {
+  id         String                 @id @default(cuid())
+  name       String
+  entityType LabelEntityType
+  createdAt  DateTime               @default(now())
+  updatedAt  DateTime               @updatedAt
+  versions   LabelTemplateVersion[]
+
+  @@index([entityType])
+}
+
+model LabelTemplateVersion {
+  id            String        @id @default(cuid())
+  templateId    String
+  version       String
+  fileUrl       String
+  qrTemplate    String?
+  labelWidthIn  Float?
+  labelHeightIn Float?
+  isActive      Boolean       @default(false)
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime?
+  elements      Json?
+  template      LabelTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  tokens        QRToken[]
+
+  @@unique([templateId, version])
+  @@index([templateId])
+  @@index([isActive])
+}
+
+model QRToken {
+  id                String                @id @default(cuid())
+  token             String                @unique
+  status            QRTokenStatus         @default(ACTIVE)
+  entityType        LabelEntityType
+  entityId          String
+  versionId         String?
+  redirectUrl       String?
+  printedAt         DateTime              @default(now())
+  expiresAt         DateTime?
+  revokedAt         DateTime?
+  revokedReason     String?
+  scanCount         Int                   @default(0)
+  lastScannedAt     DateTime?
+  createdByUserId   String?
+  productionRun     ProductionRun?        @relation("ProductionRunQrToken")
+  createdBy         User?                 @relation(fields: [createdByUserId], references: [id])
+  version           LabelTemplateVersion? @relation(fields: [versionId], references: [id])
+  experienceReviews ExperienceReview[]
+  sealSheetId       String?
+  metadata          Json?
+  sealSheet         SealSheet?            @relation(fields: [sealSheetId], references: [id])
+  experienceBinding ExperienceBinding?
+
+  @@index([token])
+  @@index([entityType, entityId])
+  @@index([status])
+  @@index([versionId])
+  @@index([printedAt])
+  @@index([sealSheetId])
+}
+
+model QRRedirectRule {
+  id          String           @id @default(cuid())
+  entityType  LabelEntityType?
+  entityId    String?
+  versionId   String?
+  redirectUrl String
+  active      Boolean          @default(true)
+  reason      String?
+  startsAt    DateTime?
+  endsAt      DateTime?
+  createdById String?
+  createdAt   DateTime         @default(now())
+  isFallback  Boolean          @default(false)
+  updatedAt   DateTime         @updatedAt
+  createdBy   User?            @relation(fields: [createdById], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([versionId])
+  @@index([active])
+  @@index([isFallback])
+}
+
+model PrintJob {
+  id              String          @id @default(cuid())
+  status          PrintJobStatus  @default(CREATED)
+  sheets          Int
+  paperMaterialId String?
+  paperUsedAt     DateTime?
+  entityType      LabelEntityType
+  entityId        String
+  versionId       String
+  quantity        Int
+  createdById     String?
+  createdAt       DateTime        @default(now())
+  createdBy       User?           @relation(fields: [createdById], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Lab {
+  id                  String               @id @default(cuid())
+  name                String
+  location            String
+  description         String?
+  active              Boolean              @default(true)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  transparencyRecords TransparencyRecord[]
+}
+
+model TransparencyRecord {
+  id                String              @id @default(cuid())
+  entityType        ActivityEntity
+  entityId          String
+  productionDate    DateTime
+  batchCode         String?
+  labId             String?
+  labNameSnapshot   String
+  testDate          DateTime?
+  testResult        TransparencyResult?
+  rawMaterialLinked Boolean             @default(true)
+  publicDescription String?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  lab               Lab?                @relation(fields: [labId], references: [id])
+
+  @@index([entityType, entityId, testDate])
+  @@index([labId])
+}
+
+model SystemConfig {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+}
 
 enum UserRole {
   ADMIN
+  ANALYST
   PRODUCTION
   WAREHOUSE
   REP
+  PARTNER_ADMIN
+  PARTNER_OPERATOR
 }
 
 enum OrderStatus {
@@ -155,965 +983,257 @@ enum InventoryAdjustmentType {
   CONSUMPTION
 }
 
-// ========================================
-// CORE MODELS
-// ========================================
-
-model User {
-  id            String   @id @default(cuid())
-  name          String
-  email         String   @unique
-  password      String
-  role          UserRole @default(REP)
-  active        Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  
-  // Phase 2: User Management fields
-  lastLoginAt   DateTime?
-  passwordSetAt DateTime?
-  
-  // Relations
-  createdOrders             RetailerOrder[]    @relation("OrderCreator")
-  approvedOrders            RetailerOrder[]    @relation("OrderApprover")
-  createdProductionOrders   ProductionOrder[]  @relation("ProductionOrderCreator")
-  createdProductionRuns     ProductionRun[]    @relation("ProductionRunCreator")
-  createdPurchaseOrders     PurchaseOrder[]    @relation("PurchaseOrderCreator")
-  batches                   BatchMaker[]
-  activityLogs              ActivityLog[]
-  inventoryAdjustments      InventoryAdjustment[] @relation("UserInventoryAdjustments")
-  assignedRetailers         Retailer[]
-  laborEntries              LaborEntry[]
-  productionRunSteps        ProductionRunStep[] @relation("ProductionRunStepPerformer")
-  assignedProductionRunSteps ProductionRunStep[] @relation("ProductionRunStepAssignee")
-  aiCommandLogs             AICommandLog[]
-  aiDocumentImports         AIDocumentImport[]
-  qrTokens                  QRToken[]
-  qrRedirectRules           QRRedirectRule[]
-  printJobs                 PrintJob[]
-  
-  @@index([email])
-  @@index([role])
-}
-
-model Strain {
-  id        String   @id @default(cuid())
-  name      String   @unique           // "Penis Envy"
-  shortCode String   @unique           // "PE"
-  aliases   Json     @default("[]")    // ["P. Envy", "PenisEnvy"] - stored as JSON for SQLite compatibility
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  
-  products  Product[]
-  materials RawMaterial[]
-  
-  @@index([shortCode])
-}
-
-model Product {
-  id                String   @id @default(cuid())
-  name              String
-  sku               String   @unique
-  upc               String?  // External UPC/EAN-13 identifier for scanning (not unique - vendors reuse across pack sizes)
-  barcodeValue      String?  // Barcode value for label printing (defaults to SKU if null)
-  unitOfMeasure     String
-  defaultBatchSize  Int?
-  leadTimeDays      Int      @default(0)
-  reorderPoint      Int      @default(0)
-  wholesalePrice    Float?   // Default wholesale price per unit
-  strainId          String?  // Optional reference to strain
-  active            Boolean  @default(true)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
-  // Print settings (persisted per product, used in Print Labels modal)
-  labelPrintQuantity      Int?    // Preferred number of labels per print run
-  labelWidthIn            Float?  // Preferred label width in inches for printing
-  labelHeightIn           Float?  // Preferred label height in inches for printing
-  sheetMarginTopBottomIn  Float?  // Preferred top/bottom margin in inches (default 0.5)
-  
-  // Relations
-  strain            Strain?  @relation(fields: [strainId], references: [id])
-  bom               BOMItem[]
-  inventory         InventoryItem[]
-  orderLines        OrderLineItem[]
-  productionOrders  ProductionOrder[]
-  productionRuns    ProductionRun[]
-  batches           Batch[]
-  productionTemplates ProductionTemplate[]
-  productionStepTemplates ProductionStepTemplate[]
-  
-  @@index([sku])
-  @@index([upc])
-  @@index([active])
-  @@index([strainId])
-}
-
-model ProductionStepTemplate {
-  id        String   @id @default(cuid())
-
-  productId String
-  product   Product  @relation(fields: [productId], references: [id])
-
-  key       String   // machine-friendly identifier (e.g. "mix", "encapsulate")
-  label     String   // human-friendly label
-  order     Int
-  required  Boolean  @default(true)
-
-  createdAt DateTime @default(now())
-
-  @@unique([productId, key])
-  @@unique([productId, order])
-  @@index([productId, order])
-}
-
-model ProductionRun {
-  id            String   @id @default(cuid())
-
-  productId     String
-  product       Product  @relation(fields: [productId], references: [id])
-
-  quantity      Int
-  status        ProductionRunStatus @default(PLANNED)
-
-  qrTokenId     String?  @unique
-  qrToken       QRToken? @relation("ProductionRunQrToken", fields: [qrTokenId], references: [id])
-
-  startedAt     DateTime?
-  completedAt   DateTime?
-
-  createdById   String?
-  createdBy     User?    @relation("ProductionRunCreator", fields: [createdById], references: [id])
-
-  steps         ProductionRunStep[]
-
-  createdAt     DateTime @default(now())
-
-  @@index([productId])
-}
-
-model ProductionRunStep {
-  id              String @id @default(cuid())
-
-  productionRunId String
-  productionRun   ProductionRun @relation(fields: [productionRunId], references: [id])
-
-  templateKey     String
-  label           String
-  order           Int
-  required        Boolean
-
-  status          ProductionStepStatus @default(PENDING)
-
-  startedAt       DateTime?
-  completedAt     DateTime?
-  skippedAt       DateTime?
-  skipReason      String?
-
-  performedById   String?
-  performedBy     User? @relation("ProductionRunStepPerformer", fields: [performedById], references: [id])
-
-  assignedToUserId String?
-  assignedToUser   User? @relation("ProductionRunStepAssignee", fields: [assignedToUserId], references: [id])
-
-  createdAt       DateTime @default(now())
-
-  @@index([productionRunId, order])
-}
-
-model RawMaterial {
-  id                String           @id @default(cuid())
-  name              String
-  sku               String           @unique
-  upc               String?          // External UPC/EAN-13 identifier for scanning (not unique - vendors reuse across pack sizes)
-  unitOfMeasure     String
-  category          String
-  description       String?
-  currentStockQty   Float            @default(0)
-  reorderPoint      Float            @default(0)
-  reorderQuantity   Float            @default(0)
-  moq               Float            @default(0)
-  leadTimeDays      Int              @default(0)
-  shelfLifeDays     Int?
-  expiryWarningDays Int?
-  active            Boolean          @default(true)
-  archivedAt        DateTime?        // Soft delete timestamp
-  preferredVendorId String?
-  strainId          String?          // Optional reference to strain
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
-  
-  // Relations
-  strain                    Strain?                   @relation(fields: [strainId], references: [id])
-  preferredVendor           Vendor?                   @relation("PreferredVendor", fields: [preferredVendorId], references: [id])
-  vendors                   MaterialVendor[]
-  bomUsage                  BOMItem[]
-  inventory                 InventoryItem[]
-  poLineItems               PurchaseOrderLineItem[]
-  costHistory               MaterialCostHistory[]
-  attachments               MaterialAttachment[]
-  productionOrderMaterials  ProductionOrderMaterial[]
-  
-  @@index([sku])
-  @@index([upc])
-  @@index([active])
-  @@index([preferredVendorId])
-  @@index([category])
-  @@index([strainId])
-}
-
-model Vendor {
-  id                  String   @id @default(cuid())
-  name                String
-  contactName         String?
-  contactEmail        String?
-  contactPhone        String?
-  address             String?
-  paymentTerms        String?
-  defaultLeadTimeDays Int      @default(0)
-  notes               String?
-  active              Boolean  @default(true)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-  
-  // Relations
-  materials         MaterialVendor[]
-  purchaseOrders    PurchaseOrder[]
-  preferredFor      RawMaterial[]         @relation("PreferredVendor")
-  costHistory       MaterialCostHistory[]
-  
-  @@index([name])
-  @@index([active])
-}
-
-model MaterialVendor {
-  id            String   @id @default(cuid())
-  materialId    String
-  vendorId      String
-  leadTimeDays  Int?
-  lastPrice     Float?
-  moq           Float    @default(0)
-  preferred     Boolean  @default(false)
-  notes         String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  
-  material      RawMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade)
-  vendor        Vendor      @relation(fields: [vendorId], references: [id], onDelete: Cascade)
-  
-  @@unique([materialId, vendorId])
-  @@index([materialId])
-  @@index([vendorId])
-  @@index([preferred])
-}
-
-model BOMItem {
-  id              String   @id @default(cuid())
-  productId       String
-  materialId      String
-  quantityPerUnit Float
-  version         Int      @default(1)
-  active          Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  
-  product         Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
-  material        RawMaterial @relation(fields: [materialId], references: [id])
-  
-  @@unique([productId, materialId, version])
-  @@index([productId])
-  @@index([materialId])
-}
-
-model Location {
-  id                  String   @id @default(cuid())
-  name                String   @unique
-  type                String
-  isDefaultReceiving  Boolean  @default(false)
-  isDefaultShipping   Boolean  @default(false)
-  active              Boolean  @default(true)
-  createdAt           DateTime @default(now())
-  
-  inventory           InventoryItem[]
-  
-  @@index([type])
-}
-
-model Batch {
-  id                String      @id @default(cuid())
-  productId         String
-  batchCode         String      @unique
-  plannedQuantity   Int
-  actualQuantity    Int?
-  status            BatchStatus @default(PLANNED)
-  productionOrderId String?
-  productionDate    DateTime?
-  manufactureDate   DateTime?
-  expirationDate    DateTime?
-  expectedYield     Float?
-  actualYield       Float?
-  lossQty           Float?
-  lossReason        String?
-  qcStatus          QCStatus    @default(NOT_REQUIRED)
-  notes             String?
-  createdAt         DateTime    @default(now())
-  updatedAt         DateTime    @updatedAt
-  
-  product           Product            @relation(fields: [productId], references: [id])
-  productionOrder   ProductionOrder?   @relation(fields: [productionOrderId], references: [id])
-  makers            BatchMaker[]
-  inventory         InventoryItem[]
-  laborEntries      LaborEntry[]
-  
-  @@index([productId])
-  @@index([status])
-  @@index([batchCode])
-  @@index([productionOrderId])
-  @@index([qcStatus])
-}
-
-model BatchMaker {
-  id        String   @id @default(cuid())
-  batchId   String
-  userId    String
-  createdAt DateTime @default(now())
-  
-  batch     Batch @relation(fields: [batchId], references: [id], onDelete: Cascade)
-  user      User  @relation(fields: [userId], references: [id])
-  
-  @@unique([batchId, userId])
-  @@index([batchId])
-  @@index([userId])
-}
-
-model InventoryItem {
-  id                String          @id @default(cuid())
-  type              InventoryType
-  productId         String?
-  materialId        String?
-  batchId           String?
-  locationId        String
-  quantityOnHand    Float
-  quantityReserved  Float           @default(0)
-  unitOfMeasure     String
-  unitCost          Float?
-  externalRef       String?
-  status            InventoryStatus @default(AVAILABLE)
-  lotNumber         String?
-  expiryDate        DateTime?
-  source            String          @default("MANUAL")
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  
-  product           Product?      @relation(fields: [productId], references: [id])
-  material          RawMaterial?  @relation(fields: [materialId], references: [id])
-  batch             Batch?        @relation(fields: [batchId], references: [id])
-  location          Location      @relation(fields: [locationId], references: [id])
-  adjustments       InventoryAdjustment[] @relation("InventoryItemAdjustments")
-  
-  @@index([type])
-  @@index([productId])
-  @@index([materialId])
-  @@index([batchId])
-  @@index([locationId])
-  @@index([status])
-  @@index([expiryDate])
-}
-
-model Retailer {
-  id              String   @id @default(cuid())
-  name            String
-  contactEmail    String?
-  contactPhone    String?
-  shippingAddress String?
-  billingAddress  String?
-  notes           String?
-  salesRepId      String?
-  active          Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  salesRep        User?           @relation(fields: [salesRepId], references: [id])
-  orders          RetailerOrder[]
-  invoices        Invoice[]
-  
-  @@index([salesRepId])
-  @@index([name])
-}
-
-model RetailerOrder {
-  id                String      @id @default(cuid())
-  orderNumber       String      @unique
-  retailerId        String
-  createdByUserId   String
-  status            OrderStatus @default(DRAFT)
-  requestedShipDate DateTime?
-  approvedByUserId  String?
-  approvedAt        DateTime?
-  shippedAt         DateTime?
-  trackingNumber    String?
-  createdAt         DateTime    @default(now())
-  updatedAt         DateTime    @updatedAt
-  
-  retailer          Retailer         @relation(fields: [retailerId], references: [id])
-  createdBy         User             @relation("OrderCreator", fields: [createdByUserId], references: [id])
-  approvedBy        User?            @relation("OrderApprover", fields: [approvedByUserId], references: [id])
-  lineItems         OrderLineItem[]
-  invoices          Invoice[]
-  
-  @@index([retailerId])
-  @@index([status])
-  @@index([orderNumber])
-  @@index([createdByUserId])
-}
-
-model OrderLineItem {
-  id                  String   @id @default(cuid())
-  orderId             String
-  productId           String
-  quantityOrdered     Int
-  quantityAllocated   Int      @default(0)
-  shortageQuantity    Int      @default(0)
-  allocationDetails   Json?
-  unitWholesalePrice  Float?   // Snapshotted at order submission
-  lineTotal           Float?   // Snapshotted at order submission (qty * price)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-  
-  order               RetailerOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product             Product       @relation(fields: [productId], references: [id])
-  
-  @@index([orderId])
-  @@index([productId])
-}
-
-model ProductionOrder {
-  id                      String           @id @default(cuid())
-  orderNumber             String           @unique
-  productId               String
-  quantityToMake          Int
-  batchSize               Float?
-  status                  ProductionStatus @default(PLANNED)
-  scheduledDate           DateTime?
-  dueDate                 DateTime?
-  startedAt               DateTime?
-  completedAt             DateTime?
-  workCenterId            String?
-  templateId              String?
-  createdByUserId         String
-  linkedRetailerOrderIds  Json?
-  materialRequirements    Json?
-  createdAt               DateTime         @default(now())
-  updatedAt               DateTime         @updatedAt
-  
-  product                 Product                   @relation(fields: [productId], references: [id])
-  createdBy               User                      @relation("ProductionOrderCreator", fields: [createdByUserId], references: [id])
-  workCenter              WorkCenter?               @relation(fields: [workCenterId], references: [id])
-  template                ProductionTemplate?       @relation(fields: [templateId], references: [id])
-  batches                 Batch[]
-  materials               ProductionOrderMaterial[]
-  
-  @@index([productId])
-  @@index([status])
-  @@index([orderNumber])
-  @@index([createdByUserId])
-  @@index([workCenterId])
-  @@index([scheduledDate])
-}
-
-model PurchaseOrder {
-  id                    String               @id @default(cuid())
-  poNumber              String               @unique
-  vendorId              String
-  status                PurchaseOrderStatus  @default(DRAFT)
-  createdByUserId       String
-  sentAt                DateTime?
-  expectedDeliveryDate  DateTime?
-  receivedAt            DateTime?
-  createdAt             DateTime             @default(now())
-  updatedAt             DateTime             @updatedAt
-  
-  vendor                Vendor                    @relation(fields: [vendorId], references: [id])
-  createdBy             User                      @relation("PurchaseOrderCreator", fields: [createdByUserId], references: [id])
-  lineItems             PurchaseOrderLineItem[]
-  
-  @@index([vendorId])
-  @@index([status])
-  @@index([poNumber])
-  @@index([createdByUserId])
-}
-
-model PurchaseOrderLineItem {
-  id                String   @id @default(cuid())
-  purchaseOrderId   String
-  materialId        String
-  quantityOrdered   Float
-  quantityReceived  Float    @default(0)
-  unitCost          Float?
-  lotNumber         String?
-  expiryDate        DateTime?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
-  purchaseOrder     PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
-  material          RawMaterial   @relation(fields: [materialId], references: [id])
-  
-  @@index([purchaseOrderId])
-  @@index([materialId])
-}
-
-model ActivityLog {
-  id          String         @id @default(cuid())
-  entityType  ActivityEntity? // Phase 1: Made nullable for auth logs
-  entityId    String?         // Phase 1: Made nullable for auth logs
-  action      String
-  userId      String?
-  ipAddress   String?         // Phase 1: Added for auth tracking
-  userAgent   String?         // Phase 1: Added for auth tracking
-  summary     String
-  diff        Json?
-  metadata    Json?           // Phase 1: Renamed from 'details'
-  tags        Json?
-  createdAt   DateTime       @default(now())
-  
-  user        User?  @relation(fields: [userId], references: [id])
-  
-  @@index([entityType, entityId])
-  @@index([userId])
-  @@index([createdAt])
-  @@index([tags])
-  @@index([action])
-}
-
-model InventoryAdjustment {
-  id                 String                  @id @default(cuid())
-  inventoryId        String
-  inventory          InventoryItem           @relation("InventoryItemAdjustments", fields: [inventoryId], references: [id])
-
-  deltaQty           Int
-  reason             String
-  adjustmentType     InventoryAdjustmentType
-
-  relatedEntityType  ActivityEntity?
-  relatedEntityId    String?
-
-  createdById        String?
-  createdBy          User?                   @relation("UserInventoryAdjustments", fields: [createdById], references: [id])
-
-  createdAt          DateTime                @default(now())
-
-  @@index([inventoryId])
-  @@index([createdAt])
-}
-
-// ========================================
-// MATERIAL COST & ATTACHMENT TRACKING
-// ========================================
-
-model MaterialCostHistory {
-  id          String      @id @default(cuid())
-  materialId  String
-  vendorId    String?
-  price       Float
-  source      String      @default("MANUAL") // MANUAL, PO, IMPORT, etc.
-  notes       String?
-  createdAt   DateTime    @default(now())
-  
-  material    RawMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade)
-  vendor      Vendor?     @relation(fields: [vendorId], references: [id], onDelete: SetNull)
-  
-  @@index([materialId])
-  @@index([vendorId])
-  @@index([createdAt])
-}
-
-model MaterialAttachment {
-  id          String      @id @default(cuid())
-  materialId  String
-  fileName    String
-  fileUrl     String
-  fileType    String      @default("OTHER") // COA, MSDS, SPEC, OTHER
-  notes       String?
-  uploadedAt  DateTime    @default(now())
-  
-  material    RawMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade)
-  
-  @@index([materialId])
-  @@index([fileType])
-}
-
-// ========================================
-// INVENTORY MOVEMENTS & PRODUCTION TRACKING
-// ========================================
-
-model InventoryMovement {
-  id           String       @id @default(cuid())
-  inventoryId  String?
-  materialId   String?
-  productId    String?
-  batchId      String?
-  type         MovementType
-  quantity     Float
-  fromLocation String?
-  toLocation   String?
-  reason       String?
-  reference    String?
-  userId       String?
-  createdAt    DateTime     @default(now())
-  
-  @@index([materialId])
-  @@index([productId])
-  @@index([batchId])
-  @@index([inventoryId])
-  @@index([type])
-  @@index([createdAt])
-}
-
-model ProductionOrderMaterial {
-  id                String          @id @default(cuid())
-  productionOrderId String
-  materialId        String
-  requiredQty       Float
-  issuedQty         Float           @default(0)
-  shortage          Float           @default(0)
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  
-  productionOrder   ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
-  material          RawMaterial     @relation(fields: [materialId], references: [id])
-  
-  @@unique([productionOrderId, materialId])
-  @@index([productionOrderId])
-  @@index([materialId])
-}
-
-model WorkCenter {
-  id               String            @id @default(cuid())
-  name             String
-  description      String?
-  active           Boolean           @default(true)
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  
-  productionOrders ProductionOrder[]
-  
-  @@index([active])
-}
-
-model ProductionTemplate {
-  id               String            @id @default(cuid())
-  name             String
-  productId        String
-  defaultBatchSize Float
-  instructions     String?
-  active           Boolean           @default(true)
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  
-  product          Product           @relation(fields: [productId], references: [id])
-  productionOrders ProductionOrder[]
-  
-  @@index([productId])
-  @@index([active])
-}
-
-model LaborEntry {
-  id        String   @id @default(cuid())
-  batchId   String
-  userId    String
-  minutes   Int
-  role      String?
-  notes     String?
-  createdAt DateTime @default(now())
-  
-  batch     Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id])
-  
-  @@index([batchId])
-  @@index([userId])
-  @@index([createdAt])
-}
-
-model UnitConversion {
-  id         String        @id @default(cuid())
-  fromUnit   UnitOfMeasure
-  toUnit     UnitOfMeasure
-  multiplier Float
-  
-  @@unique([fromUnit, toUnit])
-}
-
-// ========================================
-// AI COMMAND & DOCUMENT INGEST
-// ========================================
-
-model AICommandLog {
-  id               String    @id @default(cuid())
-  userId           String?
-  inputText        String
-  normalized       String?   // Short normalized command name, e.g. "RECEIVE_MATERIAL"
-  status           String    // "PENDING", "CONFIRMED", "APPLIED", "FAILED"
-  aiResult         Json?     // Raw AI response / parsed structure
-  executedPayload  Json?     // Final executed command payload after resolution
-  correctedCommand Json?     // User-corrected command if they edited it
-  error            String?
-  createdAt        DateTime  @default(now())
-  appliedAt        DateTime?
-  
-  user             User?     @relation(fields: [userId], references: [id])
-  
-  @@index([status])
-  @@index([createdAt])
-}
-
-model AIDocumentImport {
-  id           String    @id @default(cuid())
-  userId       String?
-  sourceType   String    // "UPLOAD", "PASTE", "EMAIL"
-  originalName String?
-  contentType  String?
-  textPreview  String?
-  status       String    // "PENDING_REVIEW", "PARSED", "APPLIED", "REJECTED", "FAILED"
-  confidence   Float?
-  aiResult     Json?     // Parsed structured data and commands
-  createdAt    DateTime  @default(now())
-  reviewedAt   DateTime?
-  appliedAt    DateTime?
-  error        String?
-  
-  user         User?     @relation(fields: [userId], references: [id])
-  
-  @@index([status])
-  @@index([createdAt])
-}
-
-// ========================================
-// INVOICING
-// ========================================
-
-model Invoice {
-  id          String   @id @default(cuid())
-  invoiceNo   String   @unique
-  orderId     String
-  retailerId  String
-  issuedAt    DateTime @default(now())
-  subtotal    Float
-  notes       String?
-  
-  order       RetailerOrder @relation(fields: [orderId], references: [id])
-  retailer    Retailer      @relation(fields: [retailerId], references: [id])
-  
-  @@index([orderId])
-  @@index([retailerId])
-  @@index([invoiceNo])
-  @@index([issuedAt])
-}
-
-// ========================================
-// LABEL TEMPLATES & VERSIONING
-// ========================================
-
-model LabelTemplate {
-  id          String          @id @default(cuid())
-  name        String
-  entityType  LabelEntityType
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
-  
-  versions    LabelTemplateVersion[]
-  
-  @@index([entityType])
-}
-
-model LabelTemplateVersion {
-  id          String        @id @default(cuid())
-  templateId  String
-  version     String        // e.g., "1.0", "1.1", "2.0"
-  fileUrl     String        // Relative path to SVG file
-  qrTemplate  String?       // e.g., https://ops.originalpsilly.com/qr/batch/{{id}}
-  
-  // Unified Placement System
-  // Stores PlaceableElement[] - all QR codes and barcodes with absolute inch positions
-  // See lib/types/placement.ts for type definitions
-  elements    Json?
-  
-  // Label canvas size override (inches)
-  labelWidthIn   Float?
-  labelHeightIn  Float?
-
-  isActive    Boolean       @default(false)
-  notes       String?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime?     // When elements or settings were last updated
-  
-  template    LabelTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  tokens      QRToken[]
-  
-  @@unique([templateId, version])
-  @@index([templateId])
-  @@index([isActive])
-}
-
-// ========================================
-// QR TOKEN SYSTEM
-// ========================================
-
-model QRToken {
-  id              String          @id @default(cuid())
-  token           String          @unique    // Opaque token (e.g., "qr_2x7kP9mN4...")
-  
-  status          QRTokenStatus   @default(ACTIVE)
-  
-  // Entity reference (polymorphic via type + id pattern)
-  entityType      LabelEntityType            // PRODUCT, BATCH, INVENTORY, CUSTOM
-  entityId        String                     // ID of the referenced entity
-  
-  // Label context
-  versionId       String?                    // Which label version was printed
-  version         LabelTemplateVersion?      @relation(fields: [versionId], references: [id])
-  
-  // Token-level redirect (highest precedence)
-  redirectUrl     String?                    // Override destination URL for this specific token
-  
-  // Timestamps
-  printedAt       DateTime        @default(now())  // When the label was generated
-  expiresAt       DateTime?                        // Optional expiration
-  revokedAt       DateTime?                        // When revoked (if applicable)
-  revokedReason   String?                          // Why revoked (recall, error, etc.)
-  
-  // Analytics (lightweight)
-  scanCount       Int             @default(0)      // Total scans
-  lastScannedAt   DateTime?                        // Most recent scan
-  
-  // Audit
-  createdByUserId String?
-  createdBy       User?           @relation(fields: [createdByUserId], references: [id])
-
-  // Optional linkage to a ProductionRun (Phase 5)
-  productionRun   ProductionRun?  @relation("ProductionRunQrToken")
-  
-  @@index([token])
-  @@index([entityType, entityId])
-  @@index([status])
-  @@index([versionId])
-  @@index([printedAt])
-}
-
-// ========================================
-// QR REDIRECT RULES (Group-based Redirects)
-// ========================================
-
-model QRRedirectRule {
-  id          String   @id @default(cuid())
-
-  // Scope selectors (exactly one set of selectors must be provided)
-  // For entity-scoped rules: entityType + entityId
-  // For version-scoped rules: versionId
-  // For fallback rule: isFallback = true (entityType, entityId, versionId all null)
-  entityType  LabelEntityType?   // Target entity type (PRODUCT, BATCH, etc.)
-  entityId    String?            // Target entity ID
-  versionId   String?            // Target label template version
-  
-  // System-level fallback (exactly one can exist)
-  // Used only when no product/batch/version rule matches
-  isFallback  Boolean  @default(false)
-
-  redirectUrl String             // Where to redirect matching scans
-
-  active      Boolean  @default(true)  // Only active rules are applied
-
-  // Optional metadata
-  reason      String?            // Why this redirect exists (recall, campaign, etc.)
-  startsAt    DateTime?          // Optional scheduled start time
-  endsAt      DateTime?          // Optional scheduled end time
-
-  // Audit
-  createdById String?
-  createdBy   User?    @relation(fields: [createdById], references: [id])
-
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@index([entityType, entityId])
-  @@index([versionId])
-  @@index([active])
-  @@index([isFallback])
-}
-
-model PrintJob {
-  id              String          @id @default(cuid())
-  status          PrintJobStatus  @default(CREATED)
-  sheets          Int
-  paperMaterialId String?
-  paperUsedAt     DateTime?
-  
-  // Context
-  entityType      LabelEntityType
-  entityId        String
-  versionId       String
-  quantity        Int             // Number of labels printed
-  
-  // Audit
-  createdById     String?
-  createdBy       User?           @relation(fields: [createdById], references: [id])
-  createdAt       DateTime        @default(now())
-  
-  @@index([entityType, entityId])
-  @@index([status])
-  @@index([createdAt])
-}
-
-// ========================================
-// PRODUCT TRANSPARENCY SYSTEM
-// ========================================
-
 enum TransparencyResult {
   PASS
   PENDING
   FAIL
 }
 
-model Lab {
-  id                   String               @id @default(cuid())
-  name                 String
-  location             String
-  description          String?
-  active               Boolean              @default(true)
-  createdAt            DateTime             @default(now())
-  updatedAt            DateTime             @updatedAt
-  transparencyRecords  TransparencyRecord[]
+enum ExperienceMode {
+  MICRO
+  MACRO
 }
 
-model TransparencyRecord {
-  id                String              @id @default(cuid())
-  entityType        ActivityEntity
-  entityId          String
-  
-  productionDate    DateTime
-  batchCode         String?
-  
-  // Lab relation + snapshot for historical accuracy
-  labId             String?
-  lab               Lab?                @relation(fields: [labId], references: [id])
-  labNameSnapshot   String              // Populated on save, preserves name if lab changes
-  
-  testDate          DateTime?
-  testResult        TransparencyResult?
-  
-  rawMaterialLinked Boolean             @default(true)
-  publicDescription String?
-  
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
-  
-  // No unique constraint - allows retests. Latest testDate wins for public display.
-  @@index([entityType, entityId, testDate])
-  @@index([labId])
+enum PartnerStatus {
+  ACTIVE
+  SUSPENDED
 }
 
-model SystemConfig {
-  id        String   @id @default(cuid())
-  key       String   @unique
-  value     String   @db.Text
-  updatedAt DateTime @updatedAt
+enum SealSheetStatus {
+  UNASSIGNED
+  ASSIGNED
+  REVOKED
 }
 
+enum BindingSource {
+  MOBILE_ASSIGNMENT
+  ADMIN_UI
+}
+
+enum VibesOwnerType {
+  PSILLYOPS
+  PARTNER
+}
+
+enum ProductType {
+  PARTNER
+  PSILLYOPS
+}
+
+enum SessionStatus {
+  ACTIVE
+  EXPIRED
+  TERMINATED
+}
+
+model PredictionProfile {
+  id             String             @id @default(cuid())
+  productId      String
+  product        Product            @relation(fields: [productId], references: [id])
+  experienceMode ExperienceMode     @default(MACRO)
+  transcend      Float              @default(0)
+  energize       Float              @default(0)
+  create         Float              @default(0)
+  transform      Float              @default(0)
+  connect        Float              @default(0)
+  vocabVersion   Int                @default(1)
+  createdAt      DateTime           @default(now())
+  createdById    String?
+  createdBy      User?              @relation(fields: [createdById], references: [id])
+  archivedAt     DateTime?
+  reviews        ExperienceReview[]
+
+  @@index([productId])
+  @@index([productId, experienceMode])
+  @@index([createdAt])
+}
+
+model ExperienceReview {
+  id                  String             @id @default(cuid())
+  qrTokenId           String?
+  qrToken             QRToken?           @relation(fields: [qrTokenId], references: [id])
+  productId           String
+  product             Product            @relation(fields: [productId], references: [id])
+  batchId             String?
+  batch               Batch?             @relation(fields: [batchId], references: [id])
+  predictionProfileId String?
+  predictionProfile   PredictionProfile? @relation(fields: [predictionProfileId], references: [id])
+  experienceMode      ExperienceMode     @default(MACRO)
+  reviewSource        String             @default("transparency_page")
+  overallMatch        Int?
+  deltaTranscend      Int?
+  deltaEnergize       Int?
+  deltaCreate         Int?
+  deltaTransform      Int?
+  deltaConnect        Int?
+  isFirstTime         Boolean?
+  doseBandGrams       String?
+  doseRelative        String?
+  setting             String?
+  note                String?            @db.VarChar(500)
+  deviceHash          String
+  geoCountry          String?
+  geoRegion           String?
+  integrityFlags      Json?
+  contentFlags        Json?
+  questionsAnswered   Int                @default(0)
+  questionsSkipped    Int                @default(0)
+  completionRate      Float              @default(0)
+  createdAt           DateTime           @default(now())
+
+  @@index([productId])
+  @@index([productId, experienceMode])
+  @@index([batchId])
+  @@index([deviceHash])
+  @@index([createdAt])
+  @@index([overallMatch])
+}
+
+model DeviceScanLog {
+  id         String   @id @default(cuid())
+  deviceHash String
+  tokenId    String?
+  action     String
+  createdAt  DateTime @default(now())
+
+  @@index([deviceHash, createdAt])
+  @@index([tokenId, createdAt])
+}
+
+// ========================================
+// Phase 2B: Partner & Assignment Layer
+// ========================================
+
+model Partner {
+  id        String        @id @default(cuid())
+  name      String
+  status    PartnerStatus @default(ACTIVE)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  users           User[]
+  sealSheets      SealSheet[]
+  products        PartnerProduct[]
+  bindings        ExperienceBinding[]
+  vibesProfiles   VibesProfile[]
+  bindingSessions BindingSession[]
+
+  @@index([status])
+}
+
+model SealSheet {
+  id           String          @id @default(cuid())
+  sealVersion  String
+  status       SealSheetStatus @default(UNASSIGNED)
+  tokenCount   Int
+  tokensHash   String
+  createdAt    DateTime        @default(now())
+  createdById  String
+  assignedAt   DateTime?
+  assignedById String?
+  partnerId    String?
+
+  createdBy  User      @relation("SealSheetCreator", fields: [createdById], references: [id])
+  assignedBy User?     @relation("SealSheetAssigner", fields: [assignedById], references: [id])
+  partner    Partner?  @relation(fields: [partnerId], references: [id])
+  tokens     QRToken[]
+
+  @@index([partnerId])
+  @@index([status])
+  @@index([tokensHash])
+}
+
+model PartnerProduct {
+  id             String   @id @default(cuid())
+  partnerId      String
+  name           String
+  sku            String?
+  vibesProfileId String?
+  createdAt      DateTime @default(now())
+
+  partner         Partner             @relation(fields: [partnerId], references: [id])
+  vibesProfile    VibesProfile?       @relation(fields: [vibesProfileId], references: [id])
+  bindings        ExperienceBinding[]
+  bindingSessions BindingSession[]
+
+  @@unique([partnerId, name])
+  @@index([partnerId])
+}
+
+// UNIFIED VibesProfile model (replaces separate PredictionProfile + PartnerVibesProfile)
+// ownerType determines who owns the profile:
+// - PSILLYOPS: System-wide defaults, ownerId is null
+// - PARTNER: Partner-specific, ownerId references Partner.id
+model VibesProfile {
+  id          String         @id @default(cuid())
+  ownerType   VibesOwnerType
+  ownerId     String?
+  name        String
+  mode        ExperienceMode
+  predictions Json
+  active      Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  partner         Partner?            @relation(fields: [ownerId], references: [id])
+  partnerProducts PartnerProduct[]
+  bindings        ExperienceBinding[]
+
+  @@unique([ownerType, ownerId, name])
+  @@index([ownerType])
+  @@index([ownerId])
+  @@index([active])
+}
+
+// ExperienceBinding uses product-agnostic reference pattern
+// productType + productRefId replaces nullable polymorphic FKs
+// This avoids Prisma polymorphism pain and keeps integrity in service layer
+model ExperienceBinding {
+  id               String        @id @default(cuid())
+  sealTokenId      String        @unique
+  partnerId        String
+  productType      ProductType
+  productRefId     String
+  vibesProfileId   String?
+  boundAt          DateTime      @default(now())
+  boundVia         BindingSource
+  boundById        String
+  // Phase 2C: Session-aware binding
+  bindingSessionId  String?
+  isRebind          Boolean       @default(false)
+  previousBindingId String?
+
+  sealToken        QRToken          @relation(fields: [sealTokenId], references: [id])
+  partner          Partner          @relation(fields: [partnerId], references: [id])
+  vibesProfile     VibesProfile?    @relation(fields: [vibesProfileId], references: [id])
+  boundBy          User             @relation("ExperienceBindingBoundBy", fields: [boundById], references: [id])
+  partnerProduct   PartnerProduct?  @relation(fields: [partnerProductId], references: [id])
+  partnerProductId String?
+  bindingSession   BindingSession?  @relation(fields: [bindingSessionId], references: [id])
+
+  @@index([partnerId])
+  @@index([productType, productRefId])
+  @@index([vibesProfileId])
+  @@index([bindingSessionId])
+}
+
+// Phase 2C: Binding Session for mobile batch binding
+model BindingSession {
+  id               String        @id @default(cuid())
+  partnerId        String
+  partnerProductId String
+  startedById      String
+  startedAt        DateTime      @default(now())
+  expiresAt        DateTime
+  endedAt          DateTime?
+  status           SessionStatus @default(ACTIVE)
+  scanCount        Int           @default(0)
+
+  partner        Partner             @relation(fields: [partnerId], references: [id])
+  partnerProduct PartnerProduct      @relation(fields: [partnerProductId], references: [id])
+  startedBy      User                @relation("BindingSessionStartedBy", fields: [startedById], references: [id])
+  bindings       ExperienceBinding[]
+
+  @@index([partnerId])
+  @@index([status])
+}

@@ -84,6 +84,10 @@ export const PERMISSIONS = {
   analytics: {
     view: [UserRole.ADMIN]
   },
+  insights: {
+    view: [UserRole.ADMIN, UserRole.ANALYST],
+    export: [UserRole.ADMIN, UserRole.ANALYST]
+  },
   users: {
     create: [UserRole.ADMIN],
     update: [UserRole.ADMIN],
@@ -94,6 +98,17 @@ export const PERMISSIONS = {
     command: [UserRole.ADMIN, UserRole.PRODUCTION, UserRole.WAREHOUSE],
     ingest: [UserRole.ADMIN, UserRole.PRODUCTION, UserRole.WAREHOUSE],
     view: [UserRole.ADMIN, UserRole.PRODUCTION, UserRole.WAREHOUSE, UserRole.REP]
+  },
+  partner: {
+    view_own: [UserRole.PARTNER_ADMIN, UserRole.PARTNER_OPERATOR],
+    manage_products: [UserRole.PARTNER_ADMIN],
+    bind_seals: [UserRole.PARTNER_ADMIN, UserRole.PARTNER_OPERATOR],
+    manage_users: [UserRole.PARTNER_ADMIN]
+  },
+  sealSheets: {
+    assign: [UserRole.ADMIN],
+    revoke: [UserRole.ADMIN],
+    view: [UserRole.ADMIN, UserRole.WAREHOUSE, UserRole.PARTNER_ADMIN]
   }
 } as const;
 
@@ -179,5 +194,33 @@ export function canUseAICommand(userRole: UserRole): boolean {
  */
 export function canUseAIIngest(userRole: UserRole): boolean {
   return ([UserRole.ADMIN, UserRole.PRODUCTION, UserRole.WAREHOUSE] as UserRole[]).includes(userRole);
+}
+
+/**
+ * Check if user is a partner user (PARTNER_ADMIN or PARTNER_OPERATOR)
+ */
+export function isPartnerUser(userRole: UserRole): boolean {
+  return ([UserRole.PARTNER_ADMIN, UserRole.PARTNER_OPERATOR] as UserRole[]).includes(userRole);
+}
+
+/**
+ * Check if user can manage partner resources (must be partner user)
+ */
+export function canManagePartnerResources(userRole: UserRole): boolean {
+  return isPartnerUser(userRole);
+}
+
+/**
+ * Check if user can bind seals to products
+ */
+export function canBindSeals(userRole: UserRole): boolean {
+  return hasPermission(userRole, 'partner', 'bind_seals');
+}
+
+/**
+ * Check if user can assign seal sheets (ADMIN only)
+ */
+export function canAssignSealSheets(userRole: UserRole): boolean {
+  return hasPermission(userRole, 'sealSheets', 'assign');
 }
 

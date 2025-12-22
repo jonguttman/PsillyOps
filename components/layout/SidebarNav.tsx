@@ -23,7 +23,8 @@ import {
   Shield,
   Settings,
   LucideIcon,
-  ArrowRightLeft
+  ArrowRightLeft,
+  BarChart3
 } from 'lucide-react';
 
 interface NavItem {
@@ -73,6 +74,10 @@ export function SidebarNav({ userRole }: SidebarNavProps) {
     if (href === '/ops/qr/fallback') {
       return pathname === '/ops/qr/fallback';
     }
+    // Special handling for Insights section
+    if (href === '/ops/insights/tripdar') {
+      return pathname.startsWith('/ops/insights/tripdar');
+    }
     return pathname.startsWith(href);
   };
 
@@ -93,12 +98,18 @@ export function SidebarNav({ userRole }: SidebarNavProps) {
   // LABELS section - Label templates
   const labelsItems: NavItem[] = [
     { href: '/ops/labels', label: 'Templates', icon: Tags },
+    { href: '/ops/seals', label: 'TripDAR Seals', icon: Shield },
   ];
 
   // QR section - QR code management (ADMIN only)
   const qrItems: NavItem[] = userRole === 'ADMIN' ? [
     { href: '/ops/qr/redirects', label: 'Redirects', icon: ArrowRightLeft },
     { href: '/ops/qr/fallback', label: 'Defaults', icon: QrCode },
+  ] : [];
+
+  // Insights section - Experience data (ADMIN + ANALYST)
+  const insightsItems: NavItem[] = (userRole === 'ADMIN' || userRole === 'ANALYST') ? [
+    { href: '/ops/insights/tripdar', label: 'TripDAR', icon: BarChart3 },
   ] : [];
 
   // Mobile tools - lightweight pages for phone workflows
@@ -150,6 +161,21 @@ export function SidebarNav({ userRole }: SidebarNavProps) {
       {qrItems.length > 0 && (
         <SidebarSection title="QR" defaultExpanded={false} persistKey="qr">
           {qrItems.map((item) => (
+            <NavItem
+              key={item.href}
+              href={item.href}
+              label={item.label}
+              icon={item.icon}
+              isActive={isActive(item.href)}
+            />
+          ))}
+        </SidebarSection>
+      )}
+
+      {/* INSIGHTS - Experience data (only show if there are items) */}
+      {insightsItems.length > 0 && (
+        <SidebarSection title="Insights" defaultExpanded={false} persistKey="insights">
+          {insightsItems.map((item) => (
             <NavItem
               key={item.href}
               href={item.href}

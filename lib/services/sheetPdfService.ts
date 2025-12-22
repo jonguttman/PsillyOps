@@ -82,7 +82,7 @@ export interface SheetPdfResult {
 /**
  * Renders a sheet SVG to PNG at 300 DPI
  */
-function renderSvgToPng(svgString: string): Buffer {
+export function renderSvgToPng(svgString: string): Buffer {
   const resvg = new Resvg(svgString, {
     fitTo: {
       mode: 'width',
@@ -107,7 +107,7 @@ function renderSvgToPng(svgString: string): Buffer {
 /**
  * Creates a PDF document with the given PNG pages
  */
-function createPdfFromPngs(pngBuffers: Buffer[]): Promise<Buffer> {
+export function createPdfFromPngs(pngBuffers: Buffer[]): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     

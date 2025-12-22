@@ -9,6 +9,9 @@ import { logAction } from "@/lib/services/loggingService";
 import { ActivityEntity } from "@prisma/client";
 import { QRBehaviorPanelServer } from "@/components/qr/QRBehaviorPanelServer";
 import { QRTokenInspector } from "@/components/qr/QRTokenInspector";
+import { PredictionEditor } from "@/components/products/PredictionEditor";
+import { getActivePrediction, createPredictionProfile, getActivePredictionsByMode } from "@/lib/services/predictionService";
+import { ExperienceMode } from "@prisma/client";
 
 const UNIT_OPTIONS = [
   "jar",
@@ -145,6 +148,15 @@ export default async function ProductDetailPage({
       },
     },
   });
+
+  if (!product) {
+    notFound();
+  }
+
+  // Get active predictions for both modes
+  const activePredictions = await getActivePredictionsByMode(id);
+  const defaultMode = product.defaultExperienceMode;
+  const activePrediction = activePredictions[defaultMode];
 
   if (!product) {
     notFound();
@@ -435,6 +447,24 @@ export default async function ProductDetailPage({
         entityId={id}
         entityCode={product.sku}
       />
+
+      {/* Predicted Experience Section */}
+      <div className="bg-white shadow rounded-lg p-6">
+        <PredictionEditor
+          productId={id}
+          defaultMode={defaultMode}
+          initialPredictions={activePredictions}
+          onSave={async (weights, experienceMode) => {
+            'use server';
+            const session = await auth();
+            if (!session?.user?.id) {
+              throw new Error('User session not found');
+            }
+            await createPredictionProfile(id, weights, experienceMode, session.user.id);
+            revalidatePath(`/ops/products/${id}`);
+          }}
+        />
+      </div>
 
       {/* Inventory Summary Card */}
       <div className="bg-white shadow rounded-lg p-6">

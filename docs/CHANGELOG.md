@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### TripDAR Experience Mode Support
+- **ExperienceMode Enum**: Added `MICRO` and `MACRO` experience modes to distinguish between microdose and macro journey experiences
+- **Prediction Profiles**: Prediction profiles now support mode-specific predictions (products can have both MICRO and MACRO profiles)
+- **Product Default Mode**: Products now have a `defaultExperienceMode` field (defaults to MACRO) that determines which mode is used when not explicitly specified
+- **Mode-Specific Vibe Vocabulary**: Vibe labels (Transcend, Energize, Create, Transform, Connect) now have mode-specific wording:
+  - **MICRO**: "Subtle uplift", "Clarity / energy", "Creative flow", "Perspective shift", "Emotional openness"
+  - **MACRO**: "Mystical / beyond-self", "Stimulation / intensity", "Visionary / imagination", "Breakthrough / dissolution", "Connection / unity"
+- **Survey Mode Selection**: When a product has both MICRO and MACRO profiles, users are prompted to select which mode they used before starting the survey
+- **Mode Lock-In**: Once mode is selected in the survey, all questions use mode-specific labels and the review is stored with the selected mode
+- **TripDAR Dashboard**: Dashboard now shows breakdowns by experience mode (MICRO vs MACRO totals and weekly submissions)
+- **Review Browser**: Added experience mode filter and display column in the review browser
+- **Export Support**: CSV/JSON exports now include `experienceMode` field for ML-ready data
+- **Backward Compatibility**: All existing prediction profiles and reviews are automatically assigned MACRO mode (safe migration)
+
 ### Materials Management
 - **Edit Materials**: Metadata fields (name, category, notes, vendor) are now editable on existing materials
 - **Archive Materials**: Soft delete materials with `archivedAt` timestamp; archived materials hidden by default with toggle to show

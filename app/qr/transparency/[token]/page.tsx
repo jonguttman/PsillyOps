@@ -13,7 +13,10 @@ import {
   getEntityDetails,
   isPubliclyVisible,
 } from '@/lib/services/transparencyService';
+import { getActivePredictionsByMode } from '@/lib/services/predictionService';
+import { prisma } from '@/lib/db/prisma';
 import { Shield, CheckCircle, Clock, FlaskConical, Leaf, Package } from 'lucide-react';
+import { TransparencySurveySection } from './TransparencySurveySection';
 
 interface PageProps {
   params: Promise<{ token: string }>;
@@ -50,15 +53,40 @@ export default async function TransparencyPage({ params }: PageProps) {
     return <FallbackPage message="Transparency information is not available for this product." />;
   }
 
-  // Fetch copy and entity details
-  const [copy, entityDetails] = await Promise.all([
+  // Get product ID for mode determination
+  let productId: string;
+  if (entityType === 'PRODUCT') {
+    productId = tokenResult.entityId;
+  } else if (entityType === 'BATCH') {
+    const batch = await prisma.batch.findUnique({
+      where: { id: tokenResult.entityId },
+      select: { productId: true }
+    });
+    if (!batch) {
+      return <FallbackPage message="Batch not found." />;
+    }
+    productId = batch.productId;
+  } else {
+    return <FallbackPage message="Invalid entity type." />;
+  }
+
+  // Fetch copy, entity details, product mode info, and predictions
+  const [copy, entityDetails, product, activePredictions] = await Promise.all([
     getTransparencyCopy(),
     getEntityDetails(entityType, tokenResult.entityId),
+    prisma.product.findUnique({
+      where: { id: productId },
+      select: { defaultExperienceMode: true }
+    }),
+    getActivePredictionsByMode(productId)
   ]);
 
   const productName = entityDetails?.name || 'Unknown Product';
   const sku = entityDetails?.sku;
   const batchCode = record.batchCode || entityDetails?.batchCode;
+  const defaultMode = product?.defaultExperienceMode || 'MACRO';
+  const hasMicro = !!activePredictions.MICRO;
+  const hasMacro = !!activePredictions.MACRO;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100">
@@ -151,6 +179,16 @@ export default async function TransparencyPage({ params }: PageProps) {
             <p className="text-gray-600 text-sm whitespace-pre-line">{record.publicDescription}</p>
           </div>
         )}
+
+        {/* Experience Survey Section */}
+        <TransparencySurveySection 
+          token={token} 
+          productName={productName}
+          productId={productId}
+          defaultMode={defaultMode}
+          hasMicro={hasMicro}
+          hasMacro={hasMacro}
+        />
 
         {/* Footer Trust Statement */}
         <div className="text-center pt-4 pb-8">
