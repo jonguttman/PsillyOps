@@ -7,10 +7,10 @@
 export const SEAL_VERSION = 'seal_v1';
 
 // QR Cloud Zone Configuration
-// QR should fill most of the inner radar area, extending nearly to the innermost ring (r=180)
-// Reference image shows QR filling ~85-90% of the inner radar diameter
-// Target QR radius ≈ 165 SVG units (diameter 330, nearly fills the r=180 ring)
-export const QR_CLOUD_EFFECTIVE_RADIUS = 165;  // Large QR that dominates the radar interior
+// QR should fill most of the inner radar area, extending past the innermost ring
+// Target QR radius ≈ 223 SVG units (165 × 1.35 = 35% larger)
+// QR diameter = 446, extends well into the radar field
+export const QR_CLOUD_EFFECTIVE_RADIUS = 223;  // Large QR that dominates the radar interior
 
 // Seal Diameter Presets (inches)
 export const SEAL_DIAMETER_PRESETS = [1.25, 1.5, 2.0] as const;
