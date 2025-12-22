@@ -2596,6 +2596,66 @@ If vendor ships in multiple deliveries:
 
 ---
 
+## TripDAR Seals
+
+TripDAR Certification Seals are physical stickers containing QR codes that indicate a product participates in the TripDAR anonymous experience data collection system. Seals are generated through the Ops portal and printed on label stock.
+
+### Generating TripDAR Seals
+
+**Location:** Ops → TripDAR labels (`/ops/seals`)
+
+**Access:** ADMIN and WAREHOUSE roles
+
+#### Generate New Seals (Recommended)
+
+This is the fastest way to create TripDAR seals:
+
+1. Navigate to **Ops** → **TripDAR labels**
+2. Ensure **"Generate New Seals"** mode is selected (default)
+3. Enter the **Number of Seals** you want to create (1-250)
+4. Optionally select a **Product** to link the seals to:
+   - Linked seals can be tracked back to the product
+   - Unlinked seals can be assigned to partners later
+5. Configure print settings:
+   - **Paper Size**: US Letter, A4, or Custom dimensions
+   - **Seal Diameter**: 1.25", 1.5", or 2"
+6. Click **"Download PDF"** or **"Download SVG Sheets"**
+
+The system will:
+- Create unique QR tokens for each seal
+- Generate the seal artwork with embedded QR codes
+- Create a `SealSheet` record linking all tokens
+- Log the generation event for audit
+
+#### Use Existing Tokens
+
+If you have pre-existing QR tokens (e.g., from product label printing):
+
+1. Select **"Use Existing Tokens"** mode
+2. Paste token values (one per line or comma-separated)
+3. Configure print settings
+4. Generate PDF or SVG
+
+### Seal States
+
+When scanned, seals display different states on the `/seal/[token]` page:
+
+| State | Meaning | Display |
+|-------|---------|---------|
+| Sheet Unassigned | Seal not yet assigned to a partner | "TripDAR Ready — not yet activated" |
+| Seal Unbound | Assigned to partner but not linked to product | "TripDAR Ready — awaiting product assignment" |
+| Active | Fully bound and participating | "TripDAR Certified — participates in experience data" |
+| Revoked | Disabled by admin | Revoked message with reason |
+
+### Important Notes
+
+- **Seals ≠ Authenticity**: TripDAR seals indicate experience data participation, not product authenticity
+- **Same Token System**: Seals use the same `QRToken` infrastructure as product labels
+- **Deterministic Generation**: Same token always produces identical seal artwork
+- **Partner Assignment**: Seals can be assigned to TripDAR Partners for their products
+
+---
+
 ## TripDAR Insights
 
 TripDAR (Trip Data & Analytics Repository) is a privacy-forward, trust-first experience data collection system that gathers anonymous feedback comparing predicted product experiences to actual user experiences. This system is designed for internal operations and future ML readiness.

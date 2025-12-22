@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### TripDAR Seal Generator — Low-Friction Mode
+- **Generate New Seals Mode**: New default mode in `/ops/seals` that creates QR tokens and seals in one step
+- **Mode Toggle**: UI now offers "Generate New Seals" (default) vs "Use Existing Tokens" modes
+- **Quantity Input**: Enter number of seals to generate (1-250 per batch)
+- **Optional Product Linking**: Seals can optionally be linked to a product for tracking
+- **Automatic Token Creation**: System creates `QRToken` records with `CUSTOM` or `PRODUCT` entity type
+- **One-Click Workflow**: No more manual token creation → copy → paste workflow
+- **Backward Compatible**: "Use Existing Tokens" mode preserves original behavior for existing tokens
+- **Full Audit Trail**: All token creation and seal generation events logged with `logCategory: 'certification'`
+
 ### TripDAR Experience Mode Support
 - **ExperienceMode Enum**: Added `MICRO` and `MACRO` experience modes to distinguish between microdose and macro journey experiences
 - **Prediction Profiles**: Prediction profiles now support mode-specific predictions (products can have both MICRO and MACRO profiles)

@@ -464,6 +464,72 @@ const result = await applyDocumentImport(importId, userId);
 await rejectDocumentImport(importId, 'Incorrect data', userId);
 ```
 
+### TripDAR Seal Services
+
+#### sealGeneratorService.ts
+**Deterministic seal SVG generation**
+
+```typescript
+// Generate a single seal SVG
+const svg = await generateSealSvg(token, sealVersion);
+
+// Seal generation is deterministic: same token + version = identical SVG
+// Uses sha256(token|version) for QR cloud pattern generation
+```
+
+**Key features:**
+- Loads base SVG from `public/tripdar_seal_base_and_text.svg`
+- Injects QR code pointing to `/seal/{token}`
+- Generates microfiber dots deterministically from token hash
+- Validates base SVG checksum to prevent tampering
+
+#### sealBatchService.ts
+**Batch seal generation with sheet layout**
+
+```typescript
+// Generate seals for multiple tokens
+const result = await generateSealBatch({
+  tokens: ['qr_abc123', 'qr_def456'],
+  sheetConfig: {
+    paperSize: 'letter',
+    sealDiameter: 1.5,
+    marginIn: 0.25,
+  },
+  userId: 'user_123',
+});
+
+// Returns: { sealSvgs, sheetSvgs, pageCount, sealsPerSheet, layout, metadata }
+```
+
+#### API Routes for Seal Generation
+
+**POST `/api/seals/generate`**
+Supports two modes:
+
+```typescript
+// Mode 1: Generate new seals (creates tokens automatically)
+{
+  quantity: 10,
+  productId?: 'prod_123',  // Optional product link
+  config: { paperSize, sealDiameter, marginIn }
+}
+
+// Mode 2: Use existing tokens
+{
+  tokens: ['qr_abc123', 'qr_def456'],
+  config: { paperSize, sealDiameter, marginIn }
+}
+```
+
+**POST `/api/seals/pdf`**
+Same request format as `/generate`, returns PDF binary.
+
+**Key invariants:**
+- Generator never modifies token state
+- Same inputs always produce identical output (idempotent)
+- All generation events logged with `logCategory: 'certification'`
+- Maximum 250 tokens per batch (`MAX_TOKENS_PER_BATCH`)
+
 ### TripDAR Services (Experience Data Collection)
 
 #### predictionService.ts
@@ -641,6 +707,30 @@ API routes catch and convert:
 ```typescript
 return handleApiError(error);  // Returns proper JSON + status
 ```
+
+### TripDAR Seal API Routes
+
+#### Seal Generation (ADMIN or WAREHOUSE)
+
+- `POST /api/seals/generate`
+  - Generate seal SVGs for tokens
+  - Mode 1: `{ quantity, productId?, config }` - creates new tokens
+  - Mode 2: `{ tokens[], config }` - uses existing tokens
+  - Returns: `{ sealSvgs, sheetSvgs, pageCount, sealsPerSheet, sheetId, metadata }`
+  - Creates `SealSheet` record and links tokens
+
+- `POST /api/seals/pdf`
+  - Generate print-ready PDF of seals
+  - Same request format as `/generate`
+  - Returns: PDF binary with `Content-Disposition: attachment`
+
+#### Seal Page (Public)
+
+- `GET /seal/[token]`
+  - Public TripDAR certification page
+  - Displays seal state (unassigned, unbound, active, revoked)
+  - Links to experience survey
+  - Never redirects, never mutates token state
 
 ### TripDAR API Routes
 
