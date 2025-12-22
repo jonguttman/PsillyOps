@@ -206,18 +206,56 @@ export interface SporeFieldConfig {
   qrDotColor?: string;
   
   /**
-   * Background color behind the QR code area
-   * Hex color string, Default: '#ffffff'
+   * Size of QR dots as a fraction of module size
+   * 1.0 = dots touch edges, >1.0 = overlapping dots
+   * Range: 0.5-1.2, Default: 1.0
    */
-  qrBgColor?: string;
+  qrDotSize?: number;
   
   /**
-   * Opacity of the QR background
-   * 0 = fully transparent (spores show through)
-   * 1 = fully opaque (solid background)
-   * Range: 0-1, Default: 0
+   * Shape of QR dots
+   * 'circle' = round dots (default), 'diamond' = rotated squares
    */
-  qrBgOpacity?: number;
+  qrDotShape?: 'circle' | 'diamond';
+  
+  /**
+   * QR error correction level as a percentage (7-30%)
+   * Lower = fewer modules (bigger dots), less scan reliability
+   * Higher = more modules (smaller dots), better scan reliability
+   * 
+   * Mapped to QR levels:
+   * - 7-11%: L (7% recovery)
+   * - 12-19%: M (15% recovery) 
+   * - 20-26%: Q (25% recovery)
+   * - 27-30%: H (30% recovery)
+   * 
+   * Range: 7-30, Default: 15
+   */
+  qrErrorCorrection?: number;
+  
+  // ============================================
+  // SPORE CLOUD APPEARANCE (all presets)
+  // ============================================
+  
+  /**
+   * Primary color of the spore cloud particles
+   * Hex color string, Default: '#000000'
+   */
+  sporeColor?: string;
+  
+  /**
+   * Secondary color for gradient effect (optional)
+   * If set, spores will blend between sporeColor and this color
+   * Hex color string
+   */
+  sporeColorSecondary?: string;
+  
+  /**
+   * Overall opacity multiplier for the spore cloud
+   * Applied on top of individual particle opacity
+   * Range: 0-1, Default: 1.0
+   */
+  sporeCloudOpacity?: number;
 
   // ============================================
   // BASE LAYER CONTROLS (all presets)
@@ -253,8 +291,12 @@ export interface PresetControlMeta {
     qrScale: boolean;
     qrRotation: boolean;
     qrDotColor: boolean;
-    qrBgColor: boolean;
-    qrBgOpacity: boolean;
+    qrDotSize: boolean;
+    qrDotShape: boolean;
+    qrErrorCorrection: boolean;
+    sporeColor: boolean;
+    sporeColorSecondary: boolean;
+    sporeCloudOpacity: boolean;
   };
 }
 
@@ -314,13 +356,23 @@ export const CONTROL_TOOLTIPS: Record<string, string> = {
   qrScale:
     'Scale factor for the QR code size. Values above 1.0 make the QR larger (easier to scan), values below 1.0 make it smaller (more spore field visible). Default is 1.0 (85% of inner radar).',
   qrRotation:
-    'Rotation angle of the QR code in degrees. Useful for aesthetic alignment or to test scan reliability at different orientations.',
+    'Rotation angle of the QR code in degrees. Useful for aesthetic alignment or to test scan reliability at different orientations. Finder exclusion zones rotate with the QR.',
   qrDotColor:
     'Color of the QR code modules (dots). Default is black. Changing this affects scan reliability - ensure sufficient contrast with background.',
-  qrBgColor:
-    'Background color behind the QR code area. Only visible when QR Background Opacity is above 0.',
-  qrBgOpacity:
-    'Opacity of the QR background. 0 = transparent (spores show through), 1 = solid background. Higher values improve scan reliability but reduce spore integration.',
+  qrDotSize:
+    'Size of individual QR dots as a fraction of the module cell. 1.0 = dots touch cell edges, >1.0 = overlapping dots for a bolder look. Default is 1.0.',
+  qrDotShape:
+    'Shape of QR dots. Circle (default) creates a softer, organic feel. Diamond creates sharper, geometric patterns.',
+  qrErrorCorrection:
+    'Error correction level as a percentage (7-30%). Lower values = fewer, bigger modules but less scan reliability. Higher values = more, smaller modules with better reliability. Default is 15%.',
+  
+  // Spore cloud appearance
+  sporeColor:
+    'Primary color of the spore cloud particles. Default is black. Use with spore cloud opacity for subtle tinting effects.',
+  sporeColorSecondary:
+    'Optional secondary color for gradient effect. When set, spores blend between primary and secondary colors based on radial position.',
+  sporeCloudOpacity:
+    'Overall opacity multiplier for the entire spore cloud. Applied on top of individual particle opacity. Use to make the whole field more subtle.',
   
   // Base layer
   'baseLayerConfig.outerRing.color': 

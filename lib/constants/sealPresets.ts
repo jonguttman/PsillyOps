@@ -62,8 +62,12 @@ const DOT_ZONES_META: PresetControlMeta = {
     qrScale: true,
     qrRotation: true,
     qrDotColor: true,
-    qrBgColor: true,
-    qrBgOpacity: true,
+    qrDotSize: true,
+    qrDotShape: true,
+    qrErrorCorrection: true,
+    sporeColor: true,
+    sporeColorSecondary: true,
+    sporeCloudOpacity: true,
   },
 };
 
@@ -83,8 +87,14 @@ const DOT_ZONES_DEFAULTS: SporeFieldConfig = {
   qrScale: 1.0,
   qrRotation: 0,
   qrDotColor: '#000000',
-  qrBgColor: '#ffffff',
-  qrBgOpacity: 0,
+  qrDotSize: 1.0,
+  qrDotShape: 'circle',
+  qrErrorCorrection: 15,
+  
+  // Spore cloud appearance
+  sporeColor: '#000000',
+  sporeColorSecondary: undefined,
+  sporeCloudOpacity: 1.0,
   
   // Not used in this preset
   quietCoreFactor: undefined,
@@ -119,8 +129,12 @@ const ZONE_SYSTEM_META: PresetControlMeta = {
     qrScale: true,
     qrRotation: true,
     qrDotColor: true,
-    qrBgColor: true,
-    qrBgOpacity: true,
+    qrDotSize: true,
+    qrDotShape: true,
+    qrErrorCorrection: true,
+    sporeColor: true,
+    sporeColorSecondary: true,
+    sporeCloudOpacity: true,
   },
 };
 
@@ -140,8 +154,14 @@ const ZONE_SYSTEM_DEFAULTS: SporeFieldConfig = {
   qrScale: 1.0,
   qrRotation: 0,
   qrDotColor: '#000000',
-  qrBgColor: '#ffffff',
-  qrBgOpacity: 0,
+  qrDotSize: 1.0,
+  qrDotShape: 'circle',
+  qrErrorCorrection: 15,
+  
+  // Spore cloud appearance
+  sporeColor: '#000000',
+  sporeColorSecondary: undefined,
+  sporeCloudOpacity: 1.0,
   
   // Quiet core enabled
   quietCoreFactor: 0.55,
@@ -178,8 +198,12 @@ const MODULE_MASKED_META: PresetControlMeta = {
     qrScale: true,
     qrRotation: true,
     qrDotColor: true,
-    qrBgColor: true,
-    qrBgOpacity: true,
+    qrDotSize: true,
+    qrDotShape: true,
+    qrErrorCorrection: true,
+    sporeColor: true,
+    sporeColorSecondary: true,
+    sporeCloudOpacity: true,
   },
 };
 
@@ -199,8 +223,14 @@ const MODULE_MASKED_DEFAULTS: SporeFieldConfig = {
   qrScale: 1.0,
   qrRotation: 0,
   qrDotColor: '#000000',
-  qrBgColor: '#ffffff',
-  qrBgOpacity: 0,
+  qrDotSize: 1.0,
+  qrDotShape: 'circle',
+  qrErrorCorrection: 15,
+  
+  // Spore cloud appearance
+  sporeColor: '#000000',
+  sporeColorSecondary: undefined,
+  sporeCloudOpacity: 1.0,
   
   // Quiet core
   quietCoreFactor: 0.55,
@@ -241,8 +271,12 @@ const MATERIAL_UNIFIED_META: PresetControlMeta = {
     qrScale: true,
     qrRotation: true,
     qrDotColor: true,
-    qrBgColor: true,
-    qrBgOpacity: true,
+    qrDotSize: true,
+    qrDotShape: true,
+    qrErrorCorrection: true,
+    sporeColor: true,
+    sporeColorSecondary: true,
+    sporeCloudOpacity: true,
   },
 };
 
@@ -262,8 +296,14 @@ const MATERIAL_UNIFIED_DEFAULTS: SporeFieldConfig = {
   qrScale: 1.0,
   qrRotation: 0,
   qrDotColor: '#000000',
-  qrBgColor: '#ffffff',
-  qrBgOpacity: 0,
+  qrDotSize: 1.0,
+  qrDotShape: 'circle',
+  qrErrorCorrection: 15,
+  
+  // Spore cloud appearance
+  sporeColor: '#000000',
+  sporeColorSecondary: undefined,
+  sporeCloudOpacity: 1.0,
   
   // Quiet core
   quietCoreFactor: 0.55,
@@ -412,9 +452,27 @@ export function validateConfig(config: SporeFieldConfig): string[] {
     }
   }
   
-  if (enabledControls.qrBgOpacity && config.qrBgOpacity !== undefined) {
-    if (config.qrBgOpacity < 0 || config.qrBgOpacity > 1) {
-      errors.push('qrBgOpacity must be between 0 and 1');
+  if (enabledControls.qrDotSize && config.qrDotSize !== undefined) {
+    if (config.qrDotSize < 0.5 || config.qrDotSize > 1.2) {
+      errors.push('qrDotSize must be between 0.5 and 1.2');
+    }
+  }
+  
+  if (enabledControls.qrDotShape && config.qrDotShape !== undefined) {
+    if (config.qrDotShape !== 'circle' && config.qrDotShape !== 'diamond') {
+      errors.push('qrDotShape must be "circle" or "diamond"');
+    }
+  }
+  
+  if (enabledControls.qrErrorCorrection && config.qrErrorCorrection !== undefined) {
+    if (config.qrErrorCorrection < 7 || config.qrErrorCorrection > 30) {
+      errors.push('qrErrorCorrection must be between 7 and 30');
+    }
+  }
+  
+  if (enabledControls.sporeCloudOpacity && config.sporeCloudOpacity !== undefined) {
+    if (config.sporeCloudOpacity < 0 || config.sporeCloudOpacity > 1) {
+      errors.push('sporeCloudOpacity must be between 0 and 1');
     }
   }
   

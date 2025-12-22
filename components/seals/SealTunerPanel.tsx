@@ -781,43 +781,69 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
                   />
                 </div>
                 
+                <SliderControl
+                  label="Dot Size"
+                  tooltipKey="qrDotSize"
+                  value={config.qrDotSize ?? 1.0}
+                  min={0.5}
+                  max={1.2}
+                  step={0.02}
+                  onChange={(v) => updateConfig({ qrDotSize: v })}
+                  format={(v) => `${(v * 100).toFixed(0)}%`}
+                />
+                
                 <div className="mb-4">
-                  <Tooltip text={CONTROL_TOOLTIPS.qrBgOpacity || 'Background opacity behind the QR code'}>
+                  <Tooltip text={CONTROL_TOOLTIPS.qrDotShape || 'Shape of QR dots'}>
                     <label className="text-sm font-medium text-gray-700 cursor-help flex items-center gap-1 mb-2">
-                      Background Opacity
+                      Dot Shape
                       <span className="text-gray-400 text-xs">ⓘ</span>
                     </label>
                   </Tooltip>
-                  <div className="flex gap-2 items-center">
-                    <input
-                      type="range"
-                      min={0}
-                      max={1}
-                      step={0.05}
-                      value={config.qrBgOpacity ?? 0}
-                      onChange={(e) => updateConfig({ qrBgOpacity: parseFloat(e.target.value) })}
-                      className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                    />
-                    <span className="text-xs text-gray-500 w-12">{((config.qrBgOpacity ?? 0) * 100).toFixed(0)}%</span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => updateConfig({ qrDotShape: 'circle' })}
+                      className={`flex-1 px-3 py-2 rounded border text-sm font-medium transition-colors ${
+                        (config.qrDotShape ?? 'circle') === 'circle'
+                          ? 'bg-blue-50 border-blue-500 text-blue-700'
+                          : 'bg-white border-gray-200 hover:border-gray-400'
+                      }`}
+                    >
+                      ● Circle
+                    </button>
+                    <button
+                      onClick={() => updateConfig({ qrDotShape: 'diamond' })}
+                      className={`flex-1 px-3 py-2 rounded border text-sm font-medium transition-colors ${
+                        config.qrDotShape === 'diamond'
+                          ? 'bg-blue-50 border-blue-500 text-blue-700'
+                          : 'bg-white border-gray-200 hover:border-gray-400'
+                      }`}
+                    >
+                      ◆ Diamond
+                    </button>
                   </div>
                 </div>
                 
-                {(config.qrBgOpacity ?? 0) > 0 && (
-                  <div className="mb-4">
-                    <Tooltip text={CONTROL_TOOLTIPS.qrBgColor || 'Background color behind the QR code'}>
-                      <label className="text-sm font-medium text-gray-700 cursor-help flex items-center gap-1 mb-2">
-                        Background Color
-                        <span className="text-gray-400 text-xs">ⓘ</span>
-                      </label>
-                    </Tooltip>
-                    <PalettePicker 
-                      value={config.qrBgColor ?? '#ffffff'} 
-                      onChange={(c) => updateConfig({ qrBgColor: c })} 
-                    />
-                  </div>
-                )}
+                {/* Error Correction Level */}
+                <SliderControl
+                  label="Error Correction"
+                  tooltipKey="qrErrorCorrection"
+                  value={config.qrErrorCorrection ?? 15}
+                  min={7}
+                  max={30}
+                  step={1}
+                  onChange={(v) => updateConfig({ qrErrorCorrection: v })}
+                  format={(v) => {
+                    // Show the actual QR level that will be used
+                    let level: string;
+                    if (v < 11) level = 'L (7%)';
+                    else if (v < 20) level = 'M (15%)';
+                    else if (v < 27.5) level = 'Q (25%)';
+                    else level = 'H (30%)';
+                    return `${v}% → ${level}`;
+                  }}
+                />
                 
-                {/* Quiet Core - moved here */}
+                {/* Quiet Core - scan safety controls */}
                 {enabledControls.quietCoreFactor && (
                   <>
                     <div className="border-t my-4 pt-4">
@@ -849,6 +875,60 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
                     )}
                   </>
                 )}
+              </CollapsibleSection>
+              
+              {/* Spore Cloud Appearance - Collapsible */}
+              <CollapsibleSection title="Spore Cloud" defaultOpen={false}>
+                <div className="mb-4">
+                  <Tooltip text={CONTROL_TOOLTIPS.sporeColor || 'Primary color of spore particles'}>
+                    <label className="text-sm font-medium text-gray-700 cursor-help flex items-center gap-1 mb-2">
+                      Primary Color
+                      <span className="text-gray-400 text-xs">ⓘ</span>
+                    </label>
+                  </Tooltip>
+                  <PalettePicker 
+                    value={config.sporeColor ?? '#000000'} 
+                    onChange={(c) => updateConfig({ sporeColor: c })} 
+                  />
+                </div>
+                
+                <div className="mb-4">
+                  <Tooltip text={CONTROL_TOOLTIPS.sporeColorSecondary || 'Secondary color for gradient effect'}>
+                    <label className="text-sm font-medium text-gray-700 cursor-help flex items-center gap-1 mb-2">
+                      Secondary Color (Gradient)
+                      <span className="text-gray-400 text-xs">ⓘ</span>
+                    </label>
+                  </Tooltip>
+                  <div className="flex gap-2 items-center">
+                    <PalettePicker 
+                      value={config.sporeColorSecondary ?? '#666666'} 
+                      onChange={(c) => updateConfig({ sporeColorSecondary: c })} 
+                    />
+                    <button
+                      onClick={() => updateConfig({ sporeColorSecondary: undefined })}
+                      className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 border rounded"
+                    >
+                      Clear
+                    </button>
+                    {config.sporeColorSecondary && (
+                      <span className="text-xs text-green-600">✓ Active</span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">
+                    When set, spores blend from primary (center) to secondary (edge)
+                  </p>
+                </div>
+                
+                <SliderControl
+                  label="Cloud Opacity"
+                  tooltipKey="sporeCloudOpacity"
+                  value={config.sporeCloudOpacity ?? 1.0}
+                  min={0.1}
+                  max={1.0}
+                  step={0.05}
+                  onChange={(v) => updateConfig({ sporeCloudOpacity: v })}
+                  format={(v) => `${(v * 100).toFixed(0)}%`}
+                />
               </CollapsibleSection>
               
               {/* Module Masking (module-masked, material-unified) */}

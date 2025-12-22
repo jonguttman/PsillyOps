@@ -110,6 +110,7 @@ function computeSeed(token: string, version: string, config: SporeFieldConfig): 
     sporeRadiusMaxFactor: config.sporeRadiusMaxFactor,
     moduleContrastBoost: config.moduleContrastBoost,
     qrScale: config.qrScale,
+    qrErrorCorrection: config.qrErrorCorrection,
     // NOTE: baseLayerConfig is intentionally excluded
   };
   const configHash = createHash('md5').update(JSON.stringify(sporeRelevantConfig)).digest('hex').substring(0, 8);
@@ -333,13 +334,44 @@ function getCrc32Table(): Uint32Array {
   return crc32Table;
 }
 
+/**
+ * Parse hex color to RGB components
+ */
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  if (!result) {
+    return { r: 0, g: 0, b: 0 }; // Default to black
+  }
+  return {
+    r: parseInt(result[1], 16),
+    g: parseInt(result[2], 16),
+    b: parseInt(result[3], 16),
+  };
+}
+
+/**
+ * Blend two colors based on a factor (0 = color1, 1 = color2)
+ */
+function blendColors(
+  color1: { r: number; g: number; b: number },
+  color2: { r: number; g: number; b: number },
+  factor: number
+): { r: number; g: number; b: number } {
+  return {
+    r: Math.round(color1.r + (color2.r - color1.r) * factor),
+    g: Math.round(color1.g + (color2.g - color1.g) * factor),
+    b: Math.round(color1.b + (color2.b - color1.b) * factor),
+  };
+}
+
 function drawCircle(
   pixels: Uint8Array,
   width: number,
   cx: number,
   cy: number,
   radius: number,
-  opacity: number
+  opacity: number,
+  color: { r: number; g: number; b: number } = { r: 0, g: 0, b: 0 }
 ): void {
   const r = Math.ceil(radius);
   const minX = Math.max(0, Math.floor(cx - r));
@@ -359,6 +391,18 @@ function drawCircle(
         const idx = (y * width + x) * 4;
         const existingAlpha = pixels[idx + 3];
         const newAlpha = Math.min(255, existingAlpha + alpha * (1 - existingAlpha / 255));
+        
+        // Blend colors if there's existing content
+        if (existingAlpha > 0 && newAlpha > 0) {
+          const blendFactor = (alpha * (1 - existingAlpha / 255)) / newAlpha;
+          pixels[idx] = Math.round(pixels[idx] * (1 - blendFactor) + color.r * blendFactor);
+          pixels[idx + 1] = Math.round(pixels[idx + 1] * (1 - blendFactor) + color.g * blendFactor);
+          pixels[idx + 2] = Math.round(pixels[idx + 2] * (1 - blendFactor) + color.b * blendFactor);
+        } else {
+          pixels[idx] = color.r;
+          pixels[idx + 1] = color.g;
+          pixels[idx + 2] = color.b;
+        }
         pixels[idx + 3] = newAlpha;
       }
     }
@@ -376,7 +420,9 @@ async function generateDotZones(
   qrCenterX: number,
   qrCenterY: number,
   qrRadiusPx: number,
-  finderExclusions: { centerX: number; centerY: number; exclusionRadius: number }[]
+  finderExclusions: { centerX: number; centerY: number; exclusionRadius: number }[],
+  sporeColor: { r: number; g: number; b: number },
+  sporeColorSecondary?: { r: number; g: number; b: number }
 ): Promise<{ pixels: Uint8Array; stats: SporeStats }> {
   const pixels = new Uint8Array(PNG_SIZE * PNG_SIZE * 4);
   const stats: SporeStats = { dotCount: 0, zoneASkipped: 0, zoneBCount: 0, finderSkipped: 0 };
@@ -432,7 +478,12 @@ async function generateDotZones(
         stats.zoneBCount++;
       }
       
-      drawCircle(pixels, PNG_SIZE, x, y, dotRadius, opacity);
+      // Calculate color - blend between primary and secondary based on radial position
+      const color = sporeColorSecondary 
+        ? blendColors(sporeColor, sporeColorSecondary, rNorm)
+        : sporeColor;
+      
+      drawCircle(pixels, PNG_SIZE, x, y, dotRadius, opacity, color);
       stats.dotCount++;
     }
   }
@@ -451,7 +502,9 @@ async function generateZoneSystem(
   qrCenterX: number,
   qrCenterY: number,
   qrRadiusPx: number,
-  finderExclusions: { centerX: number; centerY: number; exclusionRadius: number }[]
+  finderExclusions: { centerX: number; centerY: number; exclusionRadius: number }[],
+  sporeColor: { r: number; g: number; b: number },
+  sporeColorSecondary?: { r: number; g: number; b: number }
 ): Promise<{ pixels: Uint8Array; stats: SporeStats }> {
   const pixels = new Uint8Array(PNG_SIZE * PNG_SIZE * 4);
   const stats: SporeStats = { dotCount: 0, zoneASkipped: 0, zoneBCount: 0, finderSkipped: 0 };
@@ -519,7 +572,12 @@ async function generateZoneSystem(
         stats.zoneBCount++;
       }
       
-      drawCircle(pixels, PNG_SIZE, x, y, dotRadius, opacity);
+      // Calculate color - blend between primary and secondary based on radial position
+      const color = sporeColorSecondary 
+        ? blendColors(sporeColor, sporeColorSecondary, rNorm)
+        : sporeColor;
+      
+      drawCircle(pixels, PNG_SIZE, x, y, dotRadius, opacity, color);
       stats.dotCount++;
     }
   }
@@ -540,7 +598,9 @@ async function generateModuleMasked(
   qrRadiusPx: number,
   finderExclusions: { centerX: number; centerY: number; exclusionRadius: number }[],
   moduleMask: Uint8Array | null,
-  moduleSizePx: number
+  moduleSizePx: number,
+  sporeColor: { r: number; g: number; b: number },
+  sporeColorSecondary?: { r: number; g: number; b: number }
 ): Promise<{ pixels: Uint8Array; stats: SporeStats }> {
   const pixels = new Uint8Array(PNG_SIZE * PNG_SIZE * 4);
   const stats: SporeStats = { 
@@ -655,7 +715,12 @@ async function generateModuleMasked(
         stats.zoneBCount++;
       }
       
-      drawCircle(pixels, PNG_SIZE, x, y, dotRadius, opacity);
+      // Calculate color - blend between primary and secondary based on radial position
+      const color = sporeColorSecondary 
+        ? blendColors(sporeColor, sporeColorSecondary, rNorm)
+        : sporeColor;
+      
+      drawCircle(pixels, PNG_SIZE, x, y, dotRadius, opacity, color);
       stats.dotCount++;
     }
   }
@@ -676,7 +741,9 @@ async function generateMaterialUnified(
   qrRadiusPx: number,
   finderExclusions: { centerX: number; centerY: number; exclusionRadius: number }[],
   moduleMask: Uint8Array | null,
-  moduleSizePx: number
+  moduleSizePx: number,
+  sporeColor: { r: number; g: number; b: number },
+  sporeColorSecondary?: { r: number; g: number; b: number }
 ): Promise<{ pixels: Uint8Array; stats: SporeStats }> {
   const pixels = new Uint8Array(PNG_SIZE * PNG_SIZE * 4);
   const stats: SporeStats = { 
@@ -800,7 +867,12 @@ async function generateMaterialUnified(
         stats.zoneBCount++;
       }
       
-      drawCircle(pixels, PNG_SIZE, x, y, dotRadius, opacity);
+      // Calculate color - blend between primary and secondary based on radial position
+      const color = sporeColorSecondary 
+        ? blendColors(sporeColor, sporeColorSecondary, rNorm)
+        : sporeColor;
+      
+      drawCircle(pixels, PNG_SIZE, x, y, dotRadius, opacity, color);
       stats.dotCount++;
     }
   }
@@ -867,30 +939,40 @@ export async function generateSporeFieldPng(
     // ============================================
     let result: { pixels: Uint8Array; stats: SporeStats };
     
+    // Parse spore colors from config
+    const sporeColor = hexToRgb(effectiveConfig.sporeColor ?? '#000000');
+    const sporeColorSecondary = effectiveConfig.sporeColorSecondary 
+      ? hexToRgb(effectiveConfig.sporeColorSecondary)
+      : undefined;
+    
     switch (effectiveConfig.basePreset) {
       case 'dot-zones':
         result = await generateDotZones(
-          effectiveConfig, rng, noise2D, qrCenterX, qrCenterY, qrRadiusPx, finderExclusions
+          effectiveConfig, rng, noise2D, qrCenterX, qrCenterY, qrRadiusPx, finderExclusions,
+          sporeColor, sporeColorSecondary
         );
         break;
         
       case 'zone-system':
         result = await generateZoneSystem(
-          effectiveConfig, rng, noise2D, qrCenterX, qrCenterY, qrRadiusPx, finderExclusions
+          effectiveConfig, rng, noise2D, qrCenterX, qrCenterY, qrRadiusPx, finderExclusions,
+          sporeColor, sporeColorSecondary
         );
         break;
         
       case 'module-masked':
         result = await generateModuleMasked(
           effectiveConfig, rng, noise2D, qrCenterX, qrCenterY, qrRadiusPx, 
-          finderExclusions, moduleMask, moduleSizePx
+          finderExclusions, moduleMask, moduleSizePx,
+          sporeColor, sporeColorSecondary
         );
         break;
         
       case 'material-unified':
         result = await generateMaterialUnified(
           effectiveConfig, rng, noise2D, qrCenterX, qrCenterY, qrRadiusPx,
-          finderExclusions, moduleMask, moduleSizePx
+          finderExclusions, moduleMask, moduleSizePx,
+          sporeColor, sporeColorSecondary
         );
         break;
         
@@ -955,10 +1037,15 @@ export interface SporeFieldMetadata {
 
 /**
  * Create the SVG <image> element for the spore field
+ * 
+ * @param base64Png - Base64 encoded PNG data
+ * @param opacity - Optional overall opacity for the spore field (0-1, default 1.0)
  */
-export function createSporeFieldImageElement(base64Png: string): string {
+export function createSporeFieldImageElement(base64Png: string, opacity: number = 1.0): string {
   const size = 970;
   const offset = (1000 - size) / 2;
   
-  return `<image id="spore-field" x="${offset}" y="${offset}" width="${size}" height="${size}" href="data:image/png;base64,${base64Png}" preserveAspectRatio="xMidYMid meet"/>`;
+  const opacityAttr = opacity < 1.0 ? ` opacity="${opacity.toFixed(2)}"` : '';
+  
+  return `<image id="spore-field" x="${offset}" y="${offset}" width="${size}" height="${size}" href="data:image/png;base64,${base64Png}" preserveAspectRatio="xMidYMid meet"${opacityAttr}/>`;
 }
