@@ -182,7 +182,7 @@ export interface SporeFieldConfig {
   moduleContrastBoost?: number;
 
   // ============================================
-  // QR SCALE (all presets)
+  // QR SETTINGS (all presets)
   // ============================================
   
   /**
@@ -192,6 +192,32 @@ export interface SporeFieldConfig {
    * Range: 0.5-1.5, Default: 1.0
    */
   qrScale?: number;
+  
+  /**
+   * QR code rotation in degrees
+   * Range: 0-360, Default: 0
+   */
+  qrRotation?: number;
+  
+  /**
+   * Color of the QR code dots/modules
+   * Hex color string, Default: '#000000'
+   */
+  qrDotColor?: string;
+  
+  /**
+   * Background color behind the QR code area
+   * Hex color string, Default: '#ffffff'
+   */
+  qrBgColor?: string;
+  
+  /**
+   * Opacity of the QR background
+   * 0 = fully transparent (spores show through)
+   * 1 = fully opaque (solid background)
+   * Range: 0-1, Default: 0
+   */
+  qrBgOpacity?: number;
 
   // ============================================
   // BASE LAYER CONTROLS (all presets)
@@ -225,6 +251,10 @@ export interface PresetControlMeta {
     sporeRadiusMaxFactor: boolean;
     moduleContrastBoost: boolean;
     qrScale: boolean;
+    qrRotation: boolean;
+    qrDotColor: boolean;
+    qrBgColor: boolean;
+    qrBgOpacity: boolean;
   };
 }
 
@@ -280,9 +310,17 @@ export const CONTROL_TOOLTIPS: Record<string, string> = {
   moduleContrastBoost: 
     'Increases QR dot prominence and suppresses nearby spores. Higher values make QR "fight back" against the spore field for better scanning.',
   
-  // QR scale
+  // QR settings
   qrScale:
     'Scale factor for the QR code size. Values above 1.0 make the QR larger (easier to scan), values below 1.0 make it smaller (more spore field visible). Default is 1.0 (85% of inner radar).',
+  qrRotation:
+    'Rotation angle of the QR code in degrees. Useful for aesthetic alignment or to test scan reliability at different orientations.',
+  qrDotColor:
+    'Color of the QR code modules (dots). Default is black. Changing this affects scan reliability - ensure sufficient contrast with background.',
+  qrBgColor:
+    'Background color behind the QR code area. Only visible when QR Background Opacity is above 0.',
+  qrBgOpacity:
+    'Opacity of the QR background. 0 = transparent (spores show through), 1 = solid background. Higher values improve scan reliability but reduce spore integration.',
   
   // Base layer
   'baseLayerConfig.outerRing.color': 

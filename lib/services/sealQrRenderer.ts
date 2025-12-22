@@ -159,7 +159,8 @@ function renderFinderPattern(
   centerX: number,
   centerY: number,
   moduleSize: number,
-  finderModules: number = FINDER_SIZE
+  finderModules: number = FINDER_SIZE,
+  color: string = '#000000'
 ): string {
   // Finder pattern is 7x7 modules
   // Center of the finder pattern
@@ -182,7 +183,7 @@ function renderFinderPattern(
       cy="${centerY}" 
       r="${outerRadius}" 
       fill="none" 
-      stroke="#000000" 
+      stroke="${color}" 
       stroke-width="${outerStroke}"
       opacity="0.95"
     />
@@ -190,7 +191,7 @@ function renderFinderPattern(
       cx="${centerX}" 
       cy="${centerY}" 
       r="${centerDotRadius}" 
-      fill="#000000"
+      fill="${color}"
       opacity="0.95"
     />`;
 }
@@ -219,6 +220,19 @@ export interface QrRenderOptions {
    * Default: 1.0
    */
   contrastBoost?: number;
+  
+  /**
+   * Rotation angle in degrees (0-360)
+   * Default: 0
+   */
+  rotation?: number;
+  
+  /**
+   * Color of QR dots/modules
+   * Hex color string
+   * Default: '#000000'
+   */
+  dotColor?: string;
 }
 
 /**
@@ -256,6 +270,8 @@ export async function renderDotBasedQr(
   
   // Extract options with defaults
   const contrastBoost = options?.contrastBoost ?? 1.0;
+  const rotation = options?.rotation ?? 0;
+  const dotColor = options?.dotColor ?? '#000000';
   
   // Calculate module size based on target radius
   const diameter = radius * 2;
@@ -325,14 +341,14 @@ export async function renderDotBasedQr(
       const cy = qrStartY + (row + 0.5) * moduleSize;
       
       dots.push(
-        `<circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${dotRadius.toFixed(2)}" fill="#000"/>`
+        `<circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${dotRadius.toFixed(2)}" fill="${dotColor}"/>`
       );
     }
   }
   
   // Render finder patterns with radar aesthetic
   const finderElements = finders.map(finder => 
-    renderFinderPattern(finder.centerX, finder.centerY, moduleSize)
+    renderFinderPattern(finder.centerX, finder.centerY, moduleSize, FINDER_SIZE, dotColor)
   ).join('\n');
   
   // SEAL MODE VALIDATION: Ensure we generated circular modules
@@ -345,8 +361,13 @@ export async function renderDotBasedQr(
   
   // Combine into single group
   // CRITICAL: All elements are <circle> - NO <rect> or <path> allowed in SEAL mode
-  const svg = `<g id="qr-cloud" data-render-mode="SEAL" opacity="0.97">
-    <!-- SEAL MODE: ${dots.length} circular modules (no squares) -->
+  // Apply rotation transform around the center point
+  const rotationTransform = rotation !== 0 
+    ? ` transform="rotate(${rotation} ${QR_CLOUD_CENTER_X} ${QR_CLOUD_CENTER_Y})"` 
+    : '';
+  
+  const svg = `<g id="qr-cloud" data-render-mode="SEAL" opacity="0.97"${rotationTransform}>
+    <!-- SEAL MODE: ${dots.length} circular modules (no squares), rotation: ${rotation}° -->
     ${dots.join('\n    ')}
     <!-- Finder patterns (3 radar-style concentric circles) -->
     ${finderElements}

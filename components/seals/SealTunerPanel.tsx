@@ -108,7 +108,77 @@ function SliderControl({
   );
 }
 
-// Color picker with tooltip
+// Color palette - curated 30 colors
+const COLOR_PALETTE = [
+  // Row 1: Blacks, grays, whites
+  '#000000', '#1a1a1a', '#333333', '#4d4d4d', '#666666', '#808080',
+  '#999999', '#b3b3b3', '#cccccc', '#e6e6e6', '#f5f5f5', '#ffffff',
+  // Row 2: Warm colors
+  '#8b0000', '#b22222', '#dc143c', '#ff4500', '#ff6347', '#ff7f50',
+  // Row 3: Cool colors
+  '#000080', '#0000cd', '#4169e1', '#1e90ff', '#00bfff', '#87ceeb',
+  // Row 4: Greens and purples
+  '#006400', '#228b22', '#32cd32', '#4b0082', '#8b008b', '#9932cc',
+];
+
+// Palette color picker
+interface PalettePickerProps {
+  value: string;
+  onChange: (color: string) => void;
+}
+
+function PalettePicker({ value, onChange }: PalettePickerProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const pickerRef = useRef<HTMLDivElement>(null);
+  
+  // Close on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
+  
+  return (
+    <div className="relative" ref={pickerRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-10 h-8 rounded border-2 border-gray-300 cursor-pointer hover:border-gray-400 transition-colors"
+        style={{ backgroundColor: value }}
+        title={value}
+      />
+      {isOpen && (
+        <div className="absolute top-10 left-0 z-50 p-2 bg-white rounded-lg shadow-xl border w-48">
+          <div className="grid grid-cols-6 gap-1">
+            {COLOR_PALETTE.map((color) => (
+              <button
+                key={color}
+                type="button"
+                onClick={() => {
+                  onChange(color);
+                  setIsOpen(false);
+                }}
+                className={`w-6 h-6 rounded border transition-transform hover:scale-110 ${
+                  value === color ? 'ring-2 ring-blue-500 ring-offset-1' : 'border-gray-200'
+                }`}
+                style={{ backgroundColor: color }}
+                title={color}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Color picker with tooltip - now uses palette
 interface ColorControlProps {
   label: string;
   tooltipKey: string;
@@ -132,12 +202,7 @@ function ColorControl({
         </label>
       </Tooltip>
       <div className="flex gap-2 items-center">
-        <input
-          type="color"
-          value={color}
-          onChange={(e) => onColorChange(e.target.value)}
-          className="w-10 h-8 rounded border cursor-pointer"
-        />
+        <PalettePicker value={color} onChange={onColorChange} />
         <input
           type="range"
           min={0}
@@ -149,6 +214,42 @@ function ColorControl({
         />
         <span className="text-xs text-gray-500 w-12">{(opacity * 100).toFixed(0)}%</span>
       </div>
+    </div>
+  );
+}
+
+// Collapsible section component
+interface CollapsibleSectionProps {
+  title: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}
+
+function CollapsibleSection({ title, defaultOpen = false, children }: CollapsibleSectionProps) {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  
+  return (
+    <div className="mb-6 border rounded-lg overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full px-4 py-3 bg-gray-50 hover:bg-gray-100 flex items-center justify-between text-left transition-colors"
+      >
+        <h3 className="text-sm font-semibold">{title}</h3>
+        <svg 
+          className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} 
+          fill="none" 
+          stroke="currentColor" 
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {isOpen && (
+        <div className="p-4 border-t">
+          {children}
+        </div>
+      )}
     </div>
   );
 }
@@ -643,12 +744,10 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
                 />
               </div>
               
-              {/* QR Scale */}
-              <div className="mb-6">
-                <h3 className="text-sm font-semibold mb-2">QR Size</h3>
-                
+              {/* QR Settings - Collapsible */}
+              <CollapsibleSection title="QR Settings" defaultOpen={true}>
                 <SliderControl
-                  label="QR Scale"
+                  label="Scale"
                   tooltipKey="qrScale"
                   value={config.qrScale ?? 1.0}
                   min={0.5}
@@ -657,38 +756,100 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
                   onChange={(v) => updateConfig({ qrScale: v })}
                   format={(v) => `${(v * 100).toFixed(0)}%`}
                 />
-              </div>
-              
-              {/* Quiet Core (zone-system, module-masked, material-unified) */}
-              {enabledControls.quietCoreFactor && (
-                <div className="mb-6">
-                  <h3 className="text-sm font-semibold mb-2">Quiet Core</h3>
-                  
-                  <SliderControl
-                    label="Quiet Core Factor"
-                    tooltipKey="quietCoreFactor"
-                    value={config.quietCoreFactor ?? 0.55}
-                    min={0.3}
-                    max={0.7}
-                    step={0.05}
-                    onChange={(v) => updateConfig({ quietCoreFactor: v })}
-                    format={(v) => `${(v * 100).toFixed(0)}%`}
+                
+                <SliderControl
+                  label="Rotation"
+                  tooltipKey="qrRotation"
+                  value={config.qrRotation ?? 0}
+                  min={0}
+                  max={360}
+                  step={5}
+                  onChange={(v) => updateConfig({ qrRotation: v })}
+                  format={(v) => `${v.toFixed(0)}°`}
+                />
+                
+                <div className="mb-4">
+                  <Tooltip text={CONTROL_TOOLTIPS.qrDotColor || 'Color of the QR code dots'}>
+                    <label className="text-sm font-medium text-gray-700 cursor-help flex items-center gap-1 mb-2">
+                      Dot Color
+                      <span className="text-gray-400 text-xs">ⓘ</span>
+                    </label>
+                  </Tooltip>
+                  <PalettePicker 
+                    value={config.qrDotColor ?? '#000000'} 
+                    onChange={(c) => updateConfig({ qrDotColor: c })} 
                   />
-                  
-                  {enabledControls.finderExclusionMultiplier && (
-                    <SliderControl
-                      label="Finder Exclusion"
-                      tooltipKey="finderExclusionMultiplier"
-                      value={config.finderExclusionMultiplier ?? 1.25}
-                      min={1.0}
-                      max={2.0}
-                      step={0.05}
-                      onChange={(v) => updateConfig({ finderExclusionMultiplier: v })}
-                      format={(v) => `${v.toFixed(2)}×`}
-                    />
-                  )}
                 </div>
-              )}
+                
+                <div className="mb-4">
+                  <Tooltip text={CONTROL_TOOLTIPS.qrBgOpacity || 'Background opacity behind the QR code'}>
+                    <label className="text-sm font-medium text-gray-700 cursor-help flex items-center gap-1 mb-2">
+                      Background Opacity
+                      <span className="text-gray-400 text-xs">ⓘ</span>
+                    </label>
+                  </Tooltip>
+                  <div className="flex gap-2 items-center">
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      value={config.qrBgOpacity ?? 0}
+                      onChange={(e) => updateConfig({ qrBgOpacity: parseFloat(e.target.value) })}
+                      className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                    />
+                    <span className="text-xs text-gray-500 w-12">{((config.qrBgOpacity ?? 0) * 100).toFixed(0)}%</span>
+                  </div>
+                </div>
+                
+                {(config.qrBgOpacity ?? 0) > 0 && (
+                  <div className="mb-4">
+                    <Tooltip text={CONTROL_TOOLTIPS.qrBgColor || 'Background color behind the QR code'}>
+                      <label className="text-sm font-medium text-gray-700 cursor-help flex items-center gap-1 mb-2">
+                        Background Color
+                        <span className="text-gray-400 text-xs">ⓘ</span>
+                      </label>
+                    </Tooltip>
+                    <PalettePicker 
+                      value={config.qrBgColor ?? '#ffffff'} 
+                      onChange={(c) => updateConfig({ qrBgColor: c })} 
+                    />
+                  </div>
+                )}
+                
+                {/* Quiet Core - moved here */}
+                {enabledControls.quietCoreFactor && (
+                  <>
+                    <div className="border-t my-4 pt-4">
+                      <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Scan Safety</div>
+                    </div>
+                    
+                    <SliderControl
+                      label="Quiet Core Factor"
+                      tooltipKey="quietCoreFactor"
+                      value={config.quietCoreFactor ?? 0.55}
+                      min={0.3}
+                      max={0.7}
+                      step={0.05}
+                      onChange={(v) => updateConfig({ quietCoreFactor: v })}
+                      format={(v) => `${(v * 100).toFixed(0)}%`}
+                    />
+                    
+                    {enabledControls.finderExclusionMultiplier && (
+                      <SliderControl
+                        label="Finder Exclusion"
+                        tooltipKey="finderExclusionMultiplier"
+                        value={config.finderExclusionMultiplier ?? 1.25}
+                        min={1.0}
+                        max={2.0}
+                        step={0.05}
+                        onChange={(v) => updateConfig({ finderExclusionMultiplier: v })}
+                        format={(v) => `${v.toFixed(2)}×`}
+                      />
+                    )}
+                  </>
+                )}
+              </CollapsibleSection>
               
               {/* Module Masking (module-masked, material-unified) */}
               {enabledControls.edgeBufferFactor && (
@@ -776,10 +937,8 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
                 </div>
               )}
               
-              {/* Base Layer Controls */}
-              <div className="mb-6">
-                <h3 className="text-sm font-semibold mb-2">Base Layer</h3>
-                
+              {/* Base Layer Controls - Collapsible */}
+              <CollapsibleSection title="Base Layer" defaultOpen={false}>
                 <ColorControl
                   label="Outer Ring"
                   tooltipKey="baseLayerConfig.outerRing.color"
@@ -829,11 +988,9 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
                   {config.baseLayerConfig.text.strokeWidth > 0 && (
                     <div className="flex items-center gap-2 mt-2">
                       <label className="text-xs text-gray-500">Border Color:</label>
-                      <input
-                        type="color"
+                      <PalettePicker
                         value={config.baseLayerConfig.text.strokeColor}
-                        onChange={(e) => updateBaseLayer('text', 'strokeColor', e.target.value)}
-                        className="w-8 h-6 rounded border cursor-pointer"
+                        onChange={(c) => updateBaseLayer('text', 'strokeColor', c)}
                       />
                     </div>
                   )}
@@ -887,7 +1044,7 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
                     </label>
                   </Tooltip>
                 </div>
-              </div>
+              </CollapsibleSection>
               
               {/* Export Calibration PDF */}
               <div className="mb-6 p-4 bg-green-50 rounded border border-green-200">

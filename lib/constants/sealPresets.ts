@@ -60,6 +60,10 @@ const DOT_ZONES_META: PresetControlMeta = {
     sporeRadiusMaxFactor: false,
     moduleContrastBoost: false,
     qrScale: true,
+    qrRotation: true,
+    qrDotColor: true,
+    qrBgColor: true,
+    qrBgOpacity: true,
   },
 };
 
@@ -75,8 +79,12 @@ const DOT_ZONES_DEFAULTS: SporeFieldConfig = {
   zoneAEnd: 0.35,
   zoneBEnd: 0.65,
   
-  // QR scale
+  // QR settings
   qrScale: 1.0,
+  qrRotation: 0,
+  qrDotColor: '#000000',
+  qrBgColor: '#ffffff',
+  qrBgOpacity: 0,
   
   // Not used in this preset
   quietCoreFactor: undefined,
@@ -109,6 +117,10 @@ const ZONE_SYSTEM_META: PresetControlMeta = {
     sporeRadiusMaxFactor: false,
     moduleContrastBoost: false,
     qrScale: true,
+    qrRotation: true,
+    qrDotColor: true,
+    qrBgColor: true,
+    qrBgOpacity: true,
   },
 };
 
@@ -124,8 +136,12 @@ const ZONE_SYSTEM_DEFAULTS: SporeFieldConfig = {
   zoneAEnd: 0.40,
   zoneBEnd: 0.70,
   
-  // QR scale
+  // QR settings
   qrScale: 1.0,
+  qrRotation: 0,
+  qrDotColor: '#000000',
+  qrBgColor: '#ffffff',
+  qrBgOpacity: 0,
   
   // Quiet core enabled
   quietCoreFactor: 0.55,
@@ -160,6 +176,10 @@ const MODULE_MASKED_META: PresetControlMeta = {
     sporeRadiusMaxFactor: false,
     moduleContrastBoost: true,
     qrScale: true,
+    qrRotation: true,
+    qrDotColor: true,
+    qrBgColor: true,
+    qrBgOpacity: true,
   },
 };
 
@@ -175,8 +195,12 @@ const MODULE_MASKED_DEFAULTS: SporeFieldConfig = {
   zoneAEnd: 0.40,
   zoneBEnd: 0.70,
   
-  // QR scale
+  // QR settings
   qrScale: 1.0,
+  qrRotation: 0,
+  qrDotColor: '#000000',
+  qrBgColor: '#ffffff',
+  qrBgOpacity: 0,
   
   // Quiet core
   quietCoreFactor: 0.55,
@@ -215,6 +239,10 @@ const MATERIAL_UNIFIED_META: PresetControlMeta = {
     sporeRadiusMaxFactor: true,
     moduleContrastBoost: true,
     qrScale: true,
+    qrRotation: true,
+    qrDotColor: true,
+    qrBgColor: true,
+    qrBgOpacity: true,
   },
 };
 
@@ -230,8 +258,12 @@ const MATERIAL_UNIFIED_DEFAULTS: SporeFieldConfig = {
   zoneAEnd: 0.40,
   zoneBEnd: 0.70,
   
-  // QR scale
+  // QR settings
   qrScale: 1.0,
+  qrRotation: 0,
+  qrDotColor: '#000000',
+  qrBgColor: '#ffffff',
+  qrBgOpacity: 0,
   
   // Quiet core
   quietCoreFactor: 0.55,
@@ -371,6 +403,18 @@ export function validateConfig(config: SporeFieldConfig): string[] {
   if (enabledControls.qrScale && config.qrScale !== undefined) {
     if (config.qrScale < 0.5 || config.qrScale > 1.5) {
       errors.push('qrScale must be between 0.5 and 1.5');
+    }
+  }
+  
+  if (enabledControls.qrRotation && config.qrRotation !== undefined) {
+    if (config.qrRotation < 0 || config.qrRotation > 360) {
+      errors.push('qrRotation must be between 0 and 360');
+    }
+  }
+  
+  if (enabledControls.qrBgOpacity && config.qrBgOpacity !== undefined) {
+    if (config.qrBgOpacity < 0 || config.qrBgOpacity > 1) {
+      errors.push('qrBgOpacity must be between 0 and 1');
     }
   }
   
