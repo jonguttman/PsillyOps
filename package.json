@@ -37,6 +37,7 @@
     "rehype-raw": "^7.0.0",
     "remark-gfm": "^4.0.1",
     "simplex-noise": "^4.0.3",
+    "svg-to-pdfkit": "^0.1.8",
     "zod": "^3.24.1"
   },
   "devDependencies": {

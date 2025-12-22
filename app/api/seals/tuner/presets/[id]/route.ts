@@ -9,7 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/auth';
-import { prisma } from '@/lib/db';
+import { prisma } from '@/lib/db/prisma';
 import type { SporeFieldConfig } from '@/lib/types/sealConfig';
 import { validateConfig } from '@/lib/constants/sealPresets';
 
