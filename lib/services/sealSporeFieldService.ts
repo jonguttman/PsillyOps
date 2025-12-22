@@ -33,8 +33,12 @@ const MAX_RADIUS = PNG_SIZE * 0.485; // ~97% of radar area
 // QR influence zone - spores taper smoothly toward center where QR will be
 // QR_CLOUD_EFFECTIVE_RADIUS = 223 in SVG (1000x1000), scaled to PNG (512x512)
 const QR_INFLUENCE_RADIUS_PX = 223 / 1000 * PNG_SIZE; // ~114px
-const QR_FALLOFF_INNER = QR_INFLUENCE_RADIUS_PX * 0.55; // Start falloff at 55% of QR radius
-const QR_FALLOFF_OUTER = QR_INFLUENCE_RADIUS_PX * 1.05; // End falloff slightly outside QR
+const QR_FALLOFF_INNER = QR_INFLUENCE_RADIUS_PX * 0.45; // Start falloff earlier (was 0.55)
+const QR_FALLOFF_OUTER = QR_INFLUENCE_RADIUS_PX * 1.15; // End falloff further outside (was 1.05)
+
+// QR edge contrast suppression - opacity drops faster than density near QR
+const QR_OPACITY_FALLOFF_INNER = QR_INFLUENCE_RADIUS_PX * 0.35; // Opacity starts fading earlier
+const QR_OPACITY_FALLOFF_OUTER = QR_INFLUENCE_RADIUS_PX * 1.1;
 
 // Density configuration
 const DENSITY_MULTIPLIER = 1.2;
@@ -48,6 +52,10 @@ const MAX_OPACITY = 0.92;
 
 // Noise configuration
 const NOISE_SCALE = 0.012; // Adjusted for smaller canvas
+
+// Angular modulation for subtle orbital/radar structure (5-8% strength)
+const ANGULAR_MOD_STRENGTH = 0.07; // 7% angular variation
+const ANGULAR_MOD_FREQUENCY = 6; // Number of "arms" in the pattern
 
 /**
  * Seeded pseudo-random number generator
@@ -286,10 +294,19 @@ export async function generateSporeFieldPng(
       
       if (rNorm > 1.0) continue;
       
+      // Calculate polar angle for directional bias
+      const angle = Math.atan2(dy, dx);
+      
       const baseDensity = calculateBaseDensity(rNorm);
       const noiseValue = noise2D(x * NOISE_SCALE, y * NOISE_SCALE);
       const noiseFactor = 0.65 + noiseValue * 0.35;
-      let finalDensity = baseDensity * noiseFactor;
+      
+      // DIRECTIONAL BIAS: Subtle angular modulation for orbital/radar structure
+      // Combines polar angle with noise for organic feel, not obvious streaks
+      const angularNoise = noise2D(angle * 2, rNorm * 10);
+      const angularMod = 1.0 + Math.sin(angle * ANGULAR_MOD_FREQUENCY + angularNoise * 2) * ANGULAR_MOD_STRENGTH;
+      
+      let finalDensity = baseDensity * noiseFactor * angularMod;
       
       // QR INFLUENCE FALLOFF: Gradually reduce spore density where QR will be placed
       // This creates a smooth transition so QR feels embedded, not overlaid
@@ -297,8 +314,8 @@ export async function generateSporeFieldPng(
       if (distance < QR_FALLOFF_OUTER) {
         // smoothstep from inner edge (full reduction) to outer edge (no reduction)
         const qrInfluence = smoothstep(QR_FALLOFF_INNER, QR_FALLOFF_OUTER, distance);
-        // Don't zero out completely - keep some spores for organic feel
-        finalDensity *= 0.15 + qrInfluence * 0.85;
+        // Keep minimal spores for organic feel
+        finalDensity *= 0.08 + qrInfluence * 0.92;
       }
       
       if (rNorm > EDGE_TAPER_START) {
@@ -309,10 +326,12 @@ export async function generateSporeFieldPng(
         const dotRadius = lerp(MAX_DOT_RADIUS, MIN_DOT_RADIUS, rNorm) * (0.7 + rng.next() * 0.6);
         let opacity = clamp(finalDensity * 0.9, MIN_OPACITY, MAX_OPACITY);
         
-        // Additional alpha reduction in QR zone for smoother blend
-        if (distance < QR_FALLOFF_OUTER) {
-          const qrAlphaFade = smoothstep(QR_FALLOFF_INNER * 0.7, QR_FALLOFF_OUTER, distance);
-          opacity *= 0.3 + qrAlphaFade * 0.7;
+        // QR-EDGE CONTRAST SUPPRESSION: Opacity drops FASTER than density near QR
+        // This eliminates any visible QR boundary even subconsciously
+        if (distance < QR_OPACITY_FALLOFF_OUTER) {
+          const qrOpacityFade = smoothstep(QR_OPACITY_FALLOFF_INNER, QR_OPACITY_FALLOFF_OUTER, distance);
+          // Aggressive opacity reduction - drops to 15% at inner edge
+          opacity *= 0.15 + qrOpacityFade * 0.85;
         }
         
         drawCircle(pixels, PNG_SIZE, x, y, dotRadius, opacity);
@@ -325,9 +344,9 @@ export async function generateSporeFieldPng(
     const base64 = pngBuffer.toString('base64');
     
     const metadata: SporeFieldMetadata = {
-      version: 'v3-raster',
+      version: 'v4-raster-orbital',
       canvas: PNG_SIZE,
-      densityCurve: 'base * (1 + coreBoost * 2.5)',
+      densityCurve: 'base * (1 + coreBoost * 2.5) * angularMod',
       noise: 'simplex',
       edgeTaper: true,
       samples: numSamples,
