@@ -3,7 +3,15 @@
  * 
  * POST /api/seals/generate
  * 
- * Generates seal SVGs for given tokens.
+ * Supports two modes:
+ * 1. Generate new seals: { quantity, productId?, config }
+ *    - Creates new QR tokens automatically
+ *    - Optionally links to a product for tracking
+ * 
+ * 2. Use existing tokens: { tokens[], config }
+ *    - Uses pre-existing QR tokens
+ *    - Tokens must already exist in the database
+ * 
  * Returns individual seal SVGs and composed sheet SVGs.
  */
 
@@ -11,15 +19,23 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/auth';
 import { generateSealBatch } from '@/lib/services/sealBatchService';
 import { logAction } from '@/lib/services/loggingService';
-import { ActivityEntity } from '@prisma/client';
-import { SEAL_VERSION, SHEET_LAYOUT_VERSION } from '@/lib/constants/seal';
+import { createTokenBatch } from '@/lib/services/qrTokenService';
+import { ActivityEntity, LabelEntityType } from '@prisma/client';
+import { MAX_TOKENS_PER_BATCH } from '@/lib/constants/seal';
 import type { SealSheetConfig } from '@/lib/services/sealSheetService';
 import { DEFAULT_SHEET_DECORATIONS } from '@/lib/constants/sheet';
 import { prisma } from '@/lib/db/prisma';
 
 interface GenerateSealsRequestBody {
-  tokens: string[];
-  sheetConfig: SealSheetConfig;
+  // Mode 1: Generate new seals
+  quantity?: number;
+  productId?: string;
+  
+  // Mode 2: Use existing tokens
+  tokens?: string[];
+  
+  // Shared config
+  config: SealSheetConfig;
 }
 
 export async function POST(request: NextRequest) {
@@ -53,19 +69,112 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { tokens, sheetConfig } = body;
+    const { quantity, productId, tokens: existingTokens, config: sheetConfig } = body;
 
-    // Validation
-    if (!tokens || !Array.isArray(tokens) || tokens.length === 0) {
+    // Validate config
+    if (!sheetConfig) {
       return NextResponse.json(
-        { error: 'tokens array is required and must contain at least one token' },
+        { error: 'config is required' },
         { status: 400 }
       );
     }
 
-    if (!sheetConfig) {
+    // Determine mode and get tokens
+    let tokens: string[];
+    let tokensCreated = false;
+    
+    if (quantity !== undefined && quantity > 0) {
+      // Mode 1: Generate new tokens
+      if (quantity > MAX_TOKENS_PER_BATCH) {
+        return NextResponse.json(
+          { error: `Maximum ${MAX_TOKENS_PER_BATCH} seals allowed per batch` },
+          { status: 400 }
+        );
+      }
+
+      // Determine entity type and ID
+      let entityType: LabelEntityType = 'CUSTOM';
+      let entityId = `tripdar-seal-batch-${Date.now()}`;
+      
+      if (productId) {
+        // Verify product exists
+        const product = await prisma.product.findUnique({
+          where: { id: productId },
+          select: { id: true, name: true }
+        });
+        
+        if (!product) {
+          return NextResponse.json(
+            { error: 'Product not found' },
+            { status: 400 }
+          );
+        }
+        
+        entityType = 'PRODUCT';
+        entityId = productId;
+      }
+
+      // Create tokens
+      const createdTokens = await createTokenBatch({
+        entityType,
+        entityId,
+        quantity,
+        userId: session.user.id,
+      });
+
+      tokens = createdTokens.map(t => t.token);
+      tokensCreated = true;
+
+      // Log token creation
+      await logAction({
+        entityType: ActivityEntity.LABEL,
+        entityId,
+        action: 'seal_tokens_created',
+        userId: session.user.id,
+        summary: `Created ${quantity} TripDAR seal tokens`,
+        metadata: {
+          quantity,
+          entityType,
+          entityId,
+          productId: productId || null,
+          logCategory: 'certification',
+        },
+        tags: ['seal', 'tripdar', 'token_creation'],
+      });
+
+    } else if (existingTokens && Array.isArray(existingTokens) && existingTokens.length > 0) {
+      // Mode 2: Use existing tokens
+      if (existingTokens.length > MAX_TOKENS_PER_BATCH) {
+        return NextResponse.json(
+          { error: `Maximum ${MAX_TOKENS_PER_BATCH} tokens allowed per batch` },
+          { status: 400 }
+        );
+      }
+
+      // Verify all tokens exist
+      const tokenRecords = await prisma.qRToken.findMany({
+        where: {
+          token: {
+            in: existingTokens,
+          },
+        },
+      });
+
+      if (tokenRecords.length !== existingTokens.length) {
+        const foundTokens = new Set(tokenRecords.map((t) => t.token));
+        const missingTokens = existingTokens.filter((t) => !foundTokens.has(t));
+        return NextResponse.json(
+          {
+            error: `Some tokens not found: ${missingTokens.slice(0, 5).join(', ')}${missingTokens.length > 5 ? ` and ${missingTokens.length - 5} more` : ''}`,
+          },
+          { status: 400 }
+        );
+      }
+
+      tokens = existingTokens;
+    } else {
       return NextResponse.json(
-        { error: 'sheetConfig is required' },
+        { error: 'Either quantity (for new seals) or tokens array (for existing) is required' },
         { status: 400 }
       );
     }
@@ -82,27 +191,6 @@ export async function POST(request: NextRequest) {
       sheetConfig: config,
       userId: session.user.id,
     });
-
-    // Phase 2B: Create SealSheet record and link tokens
-    // Look up QRToken records by token values
-    const tokenRecords = await prisma.qRToken.findMany({
-      where: {
-        token: {
-          in: tokens,
-        },
-      },
-    });
-
-    if (tokenRecords.length !== tokens.length) {
-      const foundTokens = new Set(tokenRecords.map((t) => t.token));
-      const missingTokens = tokens.filter((t) => !foundTokens.has(t));
-      return NextResponse.json(
-        {
-          error: `Some tokens not found: ${missingTokens.join(', ')}`,
-        },
-        { status: 400 }
-      );
-    }
 
     // Create SealSheet record
     const sealSheet = await prisma.sealSheet.create({
@@ -138,10 +226,11 @@ export async function POST(request: NextRequest) {
       entityId: sealSheet.id,
       action: 'seal_sheet_created',
       userId: session.user.id,
-      summary: `Seal sheet created: ${result.metadata.tokenCount} seals`,
+      summary: `Seal sheet created: ${result.metadata.tokenCount} seals${tokensCreated ? ' (new tokens)' : ' (existing tokens)'}`,
       metadata: {
         sheetId: sealSheet.id,
         tokenCount: result.metadata.tokenCount,
+        tokensCreated,
         sealVersion: result.metadata.sealVersion,
         sheetLayoutVersion: result.metadata.sheetLayoutVersion,
         tokensHash: result.metadata.tokensHash,
@@ -163,6 +252,7 @@ export async function POST(request: NextRequest) {
       sealsPerSheet: result.sealsPerSheet,
       layout: result.layout,
       sheetId: sealSheet.id,
+      tokensCreated,
       metadata: {
         sealVersion: result.metadata.sealVersion,
         sheetLayoutVersion: result.metadata.sheetLayoutVersion,
@@ -191,4 +281,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
