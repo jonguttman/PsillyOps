@@ -88,7 +88,7 @@ async function generateQrSvgForSeal(token: string): Promise<string> {
     margin: 0,  // MINIMUM quiet zone - no extra padding, spore field surrounds it
     color: {
       dark: '#000000',
-      light: 'rgba(255,255,255,0.97)'  // Slightly transparent for subtle edge softening
+      light: '#FFFFFF'  // Must be hex - transparency handled by spore field compositing
     },
     width: QR_CLOUD_EFFECTIVE_RADIUS * 2,  // Diameter in SVG units
   });
