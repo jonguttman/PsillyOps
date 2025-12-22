@@ -94,12 +94,19 @@ async function loadBaseSealSvg(): Promise<string> {
 /**
  * Inject spore field and QR cloud into base SVG
  * 
- * Rendering order (bottom to top):
+ * Default rendering order (bottom to top):
  * 1. Raster spore PNG as single <image> element (background atmosphere)
  * 2. Radar rings (SVG - from base)
  * 3. QR cloud / encoded pattern (SVG)
  * 4. Radar sweep lines (SVG - from base)
  * 5. Outer ring typography (SVG - from base)
+ * 
+ * With radarLinesAboveQr = true:
+ * 1. Raster spore PNG
+ * 2. QR cloud
+ * 3. Radar rings (moved above QR)
+ * 4. Radar sweep lines (moved above QR)
+ * 5. Outer ring typography
  * 
  * CRITICAL NODE COUNT:
  * - Spore field = 1 node (<image>)
@@ -113,7 +120,8 @@ async function loadBaseSealSvg(): Promise<string> {
 function injectSealElements(
   baseSvg: string, 
   qrCloudSvg: string, 
-  sporeFieldElement: string
+  sporeFieldElement: string,
+  radarLinesAboveQr: boolean = false
 ): string {
   // First, inject the spore field as the background layer
   // Insert it right after the opening <g id="Layer_1"> to be behind everything
@@ -125,12 +133,40 @@ function injectSealElements(
   
   let result = baseSvg.replace(layer1Pattern, `$1\n    ${sporeFieldElement}`);
   
+  // If radarLinesAboveQr is true, extract radar elements and move them after QR
+  let extractedRadarLines = '';
+  if (radarLinesAboveQr) {
+    // Extract radar circles (class st3) - concentric circles
+    const radarCircles: string[] = [];
+    result = result.replace(/<circle\s+class="st3"[^>]*\/>/g, (match) => {
+      radarCircles.push(match);
+      return '<!-- radar circle moved above QR -->';
+    });
+    
+    // Extract cardinal lines (class st6) - sweep lines
+    const radarLines: string[] = [];
+    result = result.replace(/<line\s+class="st6"[^>]*\/>/g, (match) => {
+      radarLines.push(match);
+      return '<!-- radar line moved above QR -->';
+    });
+    
+    // Combine extracted elements
+    if (radarCircles.length > 0 || radarLines.length > 0) {
+      extractedRadarLines = `
+    <g id="radar-lines-overlay">
+      ${radarCircles.join('\n      ')}
+      ${radarLines.join('\n      ')}
+    </g>`;
+    }
+  }
+  
   // Replace the placeholder group with generated QR cloud
   const placeholderPattern = /<g id="qr-cloud-placeholder">[\s\S]*?<\/g>/;
   
+  // If we have extracted radar lines, add them after the QR
   const qrCloudReplacement = `<g id="qr-cloud-generated">
       ${qrCloudSvg}
-    </g>`;
+    </g>${extractedRadarLines}`;
   
   if (!placeholderPattern.test(result)) {
     throw new Error('Base SVG missing qr-cloud-placeholder group');
@@ -223,7 +259,9 @@ export async function generateSealSvg(
   }
   
   // 7. Inject all elements into base SVG
-  let finalSvg = injectSealElements(processedSvg, qrResult.svg, sporeFieldElement);
+  // Pass radarLinesAboveQr option from config
+  const radarLinesAboveQr = config?.baseLayerConfig?.radarLines?.aboveQr ?? false;
+  let finalSvg = injectSealElements(processedSvg, qrResult.svg, sporeFieldElement, radarLinesAboveQr);
   
   // 8. Add metadata comment with sealVersion, spore field, and QR rendering info
   // CRITICAL: qrRenderMode is explicitly SEAL - this is enforced by the renderer
@@ -325,11 +363,24 @@ function applyBaseLayerConfig(
   
   // Apply text styling (the actual TRIPDAR EXPERIENCE VERIFIED text - st7 class)
   if (config.text) {
-    // Modify the st7 class fill color in the <style> block
-    result = result.replace(
-      /(\.st7\s*\{\s*fill:\s*)#[0-9a-fA-F]+/g,
-      `$1${config.text.color}`
-    );
+    // Modify the st7 class to include fill color and optional stroke
+    const strokeWidth = config.text.strokeWidth || 0;
+    const strokeColor = config.text.strokeColor || '#000000';
+    
+    if (strokeWidth > 0) {
+      // Add stroke properties to st7 class
+      result = result.replace(
+        /\.st7\s*\{\s*fill:\s*#[0-9a-fA-F]+\s*;?\s*\}/g,
+        `.st7 { fill: ${config.text.color}; stroke: ${strokeColor}; stroke-width: ${strokeWidth}px; paint-order: stroke fill; }`
+      );
+    } else {
+      // Just modify the fill color
+      result = result.replace(
+        /(\.st7\s*\{\s*fill:\s*)#[0-9a-fA-F]+/g,
+        `$1${config.text.color}`
+      );
+    }
+    
     // Add opacity to the text_outline group
     result = result.replace(
       /(<g\s+id="text_outline">)/g,

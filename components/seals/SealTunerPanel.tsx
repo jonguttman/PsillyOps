@@ -301,8 +301,8 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
   // Update base layer config helper
   const updateBaseLayer = (
     layer: keyof BaseLayerConfig, 
-    field: 'color' | 'opacity', 
-    value: string | number
+    field: 'color' | 'opacity' | 'strokeWidth' | 'strokeColor' | 'aboveQr', 
+    value: string | number | boolean
   ) => {
     setConfig(prev => ({
       ...prev,
@@ -807,6 +807,38 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
                   onOpacityChange={(o) => updateBaseLayer('text', 'opacity', o)}
                 />
                 
+                {/* Text Border Controls */}
+                <div className="mb-4 pl-4 border-l-2 border-gray-200">
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="text-sm font-medium text-gray-600">Text Border</label>
+                    <span className="text-sm text-gray-500">
+                      {config.baseLayerConfig.text.strokeWidth === 0 
+                        ? 'None' 
+                        : `${config.baseLayerConfig.text.strokeWidth.toFixed(1)}px`}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={3}
+                    step={0.1}
+                    value={config.baseLayerConfig.text.strokeWidth}
+                    onChange={(e) => updateBaseLayer('text', 'strokeWidth', parseFloat(e.target.value))}
+                    className="w-full"
+                  />
+                  {config.baseLayerConfig.text.strokeWidth > 0 && (
+                    <div className="flex items-center gap-2 mt-2">
+                      <label className="text-xs text-gray-500">Border Color:</label>
+                      <input
+                        type="color"
+                        value={config.baseLayerConfig.text.strokeColor}
+                        onChange={(e) => updateBaseLayer('text', 'strokeColor', e.target.value)}
+                        className="w-8 h-6 rounded border cursor-pointer"
+                      />
+                    </div>
+                  )}
+                </div>
+                
                 <ColorControl
                   label="Radar Lines"
                   tooltipKey="baseLayerConfig.radarLines.color"
@@ -815,6 +847,22 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
                   onColorChange={(c) => updateBaseLayer('radarLines', 'color', c)}
                   onOpacityChange={(o) => updateBaseLayer('radarLines', 'opacity', o)}
                 />
+                
+                {/* Radar Lines Above QR Toggle */}
+                <div className="mb-4 pl-4 border-l-2 border-gray-200">
+                  <Tooltip text={CONTROL_TOOLTIPS['baseLayerConfig.radarLines.aboveQr'] || 'Render radar lines above the QR code'}>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={config.baseLayerConfig.radarLines.aboveQr ?? false}
+                        onChange={(e) => updateBaseLayer('radarLines', 'aboveQr', e.target.checked)}
+                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm font-medium text-gray-600">Render Above QR</span>
+                      <span className="text-gray-400 text-xs">ⓘ</span>
+                    </label>
+                  </Tooltip>
+                </div>
               </div>
               
               {/* Export Calibration PDF */}
@@ -827,7 +875,7 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
                 <div className="mb-3">
                   <label className="text-xs font-medium text-gray-600 block mb-1">Sizes to include:</label>
                   <div className="flex flex-wrap gap-2">
-                    {[1.0, 1.25, 1.5, 2.0, 2.5].map(size => (
+                    {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5].map(size => (
                       <label key={size} className="flex items-center gap-1 text-sm">
                         <input
                           type="checkbox"

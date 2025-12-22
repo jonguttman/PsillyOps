@@ -31,10 +31,13 @@ const DEFAULT_BASE_LAYER: BaseLayerConfig = {
   text: {
     color: '#ffffff',
     opacity: 1.0,
+    strokeWidth: 0,      // No border by default
+    strokeColor: '#000000',
   },
   radarLines: {
     color: '#000000',
     opacity: 0.6,
+    aboveQr: false,      // Render below QR by default
   },
 };
 

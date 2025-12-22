@@ -39,11 +39,14 @@ export interface BaseLayerConfig {
   text: {
     color: string;
     opacity: number;
+    strokeWidth: number;  // Border/outline thickness (0 = no border)
+    strokeColor: string;  // Border color
   };
   /** Radar lines (sweep lines, concentric circles) */
   radarLines: {
     color: string;
     opacity: number;
+    aboveQr: boolean;  // If true, render radar lines above the QR code
   };
 }
 
@@ -293,6 +296,14 @@ export const CONTROL_TOOLTIPS: Record<string, string> = {
     'Color of the radar sweep lines and concentric circles. Subtle colors work best to not interfere with QR scanning.',
   'baseLayerConfig.radarLines.opacity': 
     'Opacity of radar decorative elements. Lower values keep focus on the QR, higher values emphasize the radar aesthetic.',
+  'baseLayerConfig.radarLines.aboveQr':
+    'When enabled, radar lines render ABOVE the QR code and spore field, creating a layered effect. When disabled (default), radar lines render below.',
+  'baseLayerConfig.text.color':
+    'Color of the TRIPDAR EXPERIENCE VERIFIED text. White works best on dark backgrounds.',
+  'baseLayerConfig.text.strokeWidth':
+    'Thickness of the text border/outline. Adds definition and improves legibility at small sizes.',
+  'baseLayerConfig.text.strokeColor':
+    'Color of the text border/outline. Usually contrasting with the text fill color.',
 };
 
 /**
