@@ -202,8 +202,8 @@ export async function POST(request: NextRequest) {
     
     const pdfBuffer = await pdfComplete;
     
-    // Return PDF
-    return new NextResponse(pdfBuffer, {
+    // Return PDF - convert Buffer to Uint8Array for NextResponse compatibility
+    return new NextResponse(new Uint8Array(pdfBuffer), {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
