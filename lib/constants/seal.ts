@@ -29,7 +29,10 @@ export const SHEET_LAYOUT_VERSION = 'layout_v1';
 
 // QR Code Configuration
 export const QR_ERROR_CORRECTION_LEVEL = 'M' as const; // 15% recovery - balances density with reliability
-export const SEAL_QR_URL_PREFIX = 'https://originalpsilly.com/seal/';
+
+// Seal QR URL prefix - uses environment variable or falls back to production URL
+// Set NEXT_PUBLIC_BASE_URL in .env for local development (e.g., http://localhost:3000)
+export const SEAL_QR_URL_PREFIX = `${process.env.NEXT_PUBLIC_BASE_URL || 'https://originalpsilly.com'}/seal/`;
 
 // Batch Generation Limits
 export const MAX_TOKENS_PER_BATCH = 250;
