@@ -32,7 +32,7 @@ export interface CreatePartnerParams {
 export interface AssignUserToPartnerParams {
   userId: string;
   partnerId: string;
-  role: UserRole.PARTNER_ADMIN | UserRole.PARTNER_OPERATOR;
+  role: 'PARTNER_ADMIN' | 'PARTNER_OPERATOR';
   assignedById: string;
 }
 
