@@ -78,7 +78,8 @@ async function generateQrSvgForSeal(token: string): Promise<string> {
  */
 function renderQrCloud(qrSvg: string, hash: string, radius: number): string {
   // Get QR SVG content (without outer svg tags for embedding)
-  const qrContentMatch = qrSvg.match(/<svg[^>]*>(.*?)<\/svg>/s);
+  // Use [\s\S]*? instead of .*? with 's' flag for ES2017 compatibility
+  const qrContentMatch = qrSvg.match(/<svg[^>]*>([\s\S]*?)<\/svg>/);
   if (!qrContentMatch) {
     throw new Error('Invalid QR SVG format: could not extract content');
   }
