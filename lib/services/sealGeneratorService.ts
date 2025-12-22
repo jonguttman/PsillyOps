@@ -71,18 +71,23 @@ export function computeQrCloudHash(token: string, version: string): string {
 
 /**
  * Generate QR code SVG string for seal URL
+ * 
+ * QR SIZING NOTES:
+ * - QR should occupy ~52-55% of inner radar diameter for structural dominance
+ * - Margin set to 0 (minimum) - no aesthetic padding, spore field provides context
+ * - QR must feel "found inside the seal" not "placed on top"
  */
 async function generateQrSvgForSeal(token: string): Promise<string> {
   const sealUrl = `${SEAL_QR_URL_PREFIX}${token}`;
   return await QRCode.toString(sealUrl, {
     type: 'svg',
     errorCorrectionLevel: QR_ERROR_CORRECTION_LEVEL,
-    margin: 0,  // No margin - we'll position it ourselves
+    margin: 0,  // MINIMUM quiet zone - no extra padding, spore field surrounds it
     color: {
       dark: '#000000',
       light: '#FFFFFF'
     },
-    width: QR_CLOUD_EFFECTIVE_RADIUS * 2,  // Diameter in SVG units
+    width: QR_CLOUD_EFFECTIVE_RADIUS * 2,  // Diameter in SVG units (~270)
   });
 }
 

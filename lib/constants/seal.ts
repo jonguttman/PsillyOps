@@ -7,9 +7,10 @@
 export const SEAL_VERSION = 'seal_v1';
 
 // QR Cloud Zone Configuration
-export const QR_CLOUD_MAX_RADIUS = 120;  // SVG viewBox units (from base SVG)
-export const QR_CLOUD_PADDING = 0.1;     // 10% padding inside dashed circle
-export const QR_CLOUD_EFFECTIVE_RADIUS = QR_CLOUD_MAX_RADIUS * (1 - QR_CLOUD_PADDING); // 108
+// QR should occupy ~52-55% of the inner radar diameter for structural dominance
+// Inner radar diameter ≈ 485 SVG units (from spore field MAX_RADIUS)
+// Target QR diameter = 485 * 0.55 ≈ 267, so radius ≈ 133
+export const QR_CLOUD_EFFECTIVE_RADIUS = 135;  // Increased from 108 for larger, dominant QR
 
 // Seal Diameter Presets (inches)
 export const SEAL_DIAMETER_PRESETS = [1.25, 1.5, 2.0] as const;
