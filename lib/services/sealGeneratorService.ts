@@ -1,7 +1,7 @@
 /**
  * Seal Generator Service
  * 
- * Generates deterministic seal SVGs by injecting QR cloud into base template.
+ * Generates deterministic seal SVGs by injecting QR cloud and spore field into base template.
  * 
  * ARCHITECTURAL INVARIANT: Generator/UI Separation
  * ================================================
@@ -27,7 +27,15 @@
  * - Same token + version = identical SVG forever
  * - Never modifies base SVG file
  * - QR cloud is deterministic from token hash
+ * - Spore field is raster-first, deterministic per token
  * - Generator must NEVER inject marketing copy or text (text lives only in base SVG or UI layers)
+ * 
+ * SPORE FIELD VISUAL GOAL:
+ * - Dense core that feels alive
+ * - Mid-radius has motion and texture
+ * - Outer 10-15% feels airy and sparse
+ * - No visible bands or math artifacts
+ * - Looks like spores drifting outward, not a pattern
  */
 
 import { createHash } from 'crypto';
@@ -42,6 +50,12 @@ import {
   QR_ERROR_CORRECTION_LEVEL,
   SEAL_QR_URL_PREFIX,
 } from '@/lib/constants/seal';
+import {
+  generateSporeFieldPng,
+  createSporeFieldSvgElement,
+  generateFallbackSvgDots,
+  type SporeFieldMetadata,
+} from './sealSporeFieldService';
 
 // QR Cloud center coordinates (from base SVG viewBox: 0 0 1000 1000)
 const QR_CLOUD_CENTER_X = 500;
@@ -106,40 +120,8 @@ function renderQrCloud(qrSvg: string, hash: string, radius: number): string {
   </g>`;
 }
 
-/**
- * Generate deterministic microfiber dots pattern from hash
- * Integrates with QR cloud for unified visual pattern
- */
-function generateMicrofiberDots(hash: string, radius: number): string {
-  // Use hash to deterministically position dots
-  // Extract bytes from hash for positioning
-  const hashBytes = Buffer.from(hash, 'hex');
-  const dots: Array<{ cx: number; cy: number; r: number }> = [];
-  
-  // Generate ~20-30 dots deterministically from hash
-  const numDots = 25;
-  for (let i = 0; i < numDots && i * 2 + 1 < hashBytes.length; i++) {
-    const xByte = hashBytes[i * 2];
-    const yByte = hashBytes[i * 2 + 1];
-    
-    // Map bytes to positions within circle
-    // Use polar coordinates for even distribution
-    const angle = (xByte / 255) * Math.PI * 2;
-    const distance = (yByte / 255) * radius * 0.8; // Keep dots inside circle
-    
-    const cx = QR_CLOUD_CENTER_X + Math.cos(angle) * distance;
-    const cy = QR_CLOUD_CENTER_Y + Math.sin(angle) * distance;
-    
-    // Vary dot size (1-3 units) based on hash
-    const r = 1 + ((xByte + yByte) % 200) / 100;
-    
-    dots.push({ cx, cy, r });
-  }
-  
-  return dots.map(dot => 
-    `<circle class="st1" cx="${dot.cx.toFixed(1)}" cy="${dot.cy.toFixed(1)}" r="${dot.r.toFixed(1)}"/>`
-  ).join('\n      ');
-}
+// Note: generateMicrofiberDots has been replaced by the raster spore field service
+// The fallback SVG dots are now in sealSporeFieldService.ts
 
 /**
  * Load base seal SVG from public directory and validate checksum
@@ -162,12 +144,34 @@ async function loadBaseSealSvg(): Promise<string> {
 }
 
 /**
- * Replace QR cloud placeholder and update microfiber field with generated patterns
+ * Inject spore field and QR cloud into base SVG
+ * 
+ * Rendering order (bottom to top):
+ * 1. Raster spore PNG (background atmosphere)
+ * 2. Radar rings (SVG - from base)
+ * 3. QR cloud / encoded pattern (SVG)
+ * 4. Radar sweep lines (SVG - from base)
+ * 5. Outer ring typography (SVG - from base)
  * 
  * IMPORTANT: Generator must never inject copy or text.
  * Text lives only in the base SVG or UI layers.
  */
-function injectQrCloud(baseSvg: string, qrCloudSvg: string, microfiberDots: string): string {
+function injectSealElements(
+  baseSvg: string, 
+  qrCloudSvg: string, 
+  sporeFieldElement: string,
+  usedFallback: boolean
+): string {
+  // First, inject the spore field as the background layer
+  // Insert it right after the opening <g id="Layer_1"> to be behind everything
+  const layer1Pattern = /(<g id="Layer_1">)/;
+  
+  if (!layer1Pattern.test(baseSvg)) {
+    throw new Error('Base SVG missing Layer_1 group');
+  }
+  
+  let result = baseSvg.replace(layer1Pattern, `$1\n    ${sporeFieldElement}`);
+  
   // Replace the placeholder group with generated QR cloud
   const placeholderPattern = /<g id="qr-cloud-placeholder">[\s\S]*?<\/g>/;
   
@@ -175,23 +179,22 @@ function injectQrCloud(baseSvg: string, qrCloudSvg: string, microfiberDots: stri
       ${qrCloudSvg}
     </g>`;
   
-  if (!placeholderPattern.test(baseSvg)) {
+  if (!placeholderPattern.test(result)) {
     throw new Error('Base SVG missing qr-cloud-placeholder group');
   }
   
-  let result = baseSvg.replace(placeholderPattern, qrCloudReplacement);
+  result = result.replace(placeholderPattern, qrCloudReplacement);
   
-  // Replace microfiber-field with deterministic dots
+  // Remove the microfiber-field placeholder (replaced by raster spore field)
+  // Keep the group but empty it, or remove entirely
   const microfiberPattern = /<g id="microfiber-field">[\s\S]*?<\/g>/;
-  const microfiberReplacement = `<g id="microfiber-field">
-      ${microfiberDots}
-    </g>`;
+  const microfiberReplacement = usedFallback 
+    ? `<g id="microfiber-field"><!-- Fallback mode: spore field embedded above --></g>`
+    : `<g id="microfiber-field"><!-- Replaced by raster spore field --></g>`;
   
-  if (!microfiberPattern.test(result)) {
-    throw new Error('Base SVG missing microfiber-field group');
+  if (microfiberPattern.test(result)) {
+    result = result.replace(microfiberPattern, microfiberReplacement);
   }
-  
-  result = result.replace(microfiberPattern, microfiberReplacement);
   
   return result;
 }
@@ -201,7 +204,7 @@ function injectQrCloud(baseSvg: string, qrCloudSvg: string, microfiberDots: stri
  * 
  * Same token + version always produces identical SVG.
  * 
- * Returns SVG with metadata comment including sealVersion for audit/debugging.
+ * Returns SVG with metadata comment including sealVersion and spore field info.
  */
 export async function generateSealSvg(token: string, version: string = SEAL_VERSION): Promise<string> {
   // 1. Compute deterministic hash
@@ -216,17 +219,44 @@ export async function generateSealSvg(token: string, version: string = SEAL_VERS
   // 4. Convert QR to cloud pattern within radius
   const qrCloudSvg = renderQrCloud(qrSvg, hash, QR_CLOUD_EFFECTIVE_RADIUS);
   
-  // 5. Generate deterministic microfiber dots
-  const microfiberDots = generateMicrofiberDots(hash, QR_CLOUD_EFFECTIVE_RADIUS);
+  // 5. Generate raster spore field (or fallback to SVG dots)
+  let sporeFieldElement: string;
+  let sporeFieldMetadata: SporeFieldMetadata | null = null;
+  let usedFallback = false;
   
-  // 6. Inject into base SVG
-  let finalSvg = injectQrCloud(baseSvg, qrCloudSvg, microfiberDots);
+  const sporeResult = await generateSporeFieldPng(token, version);
   
-  // 7. Add metadata comment with sealVersion for audit/debugging
+  if (sporeResult) {
+    // Success: use raster spore field
+    sporeFieldElement = createSporeFieldSvgElement(sporeResult.base64, 1000);
+    sporeFieldMetadata = sporeResult.metadata;
+  } else {
+    // Fallback: use legacy SVG dots with warning
+    console.warn(`[SealGenerator] Spore field generation failed for token ${token.substring(0, 10)}..., using fallback SVG dots`);
+    const fallbackDots = generateFallbackSvgDots(token, version, QR_CLOUD_EFFECTIVE_RADIUS * 4, QR_CLOUD_CENTER_X, QR_CLOUD_CENTER_Y);
+    sporeFieldElement = `<g id="spore-field-fallback">\n      ${fallbackDots}\n    </g>`;
+    usedFallback = true;
+  }
+  
+  // 6. Inject all elements into base SVG
+  let finalSvg = injectSealElements(baseSvg, qrCloudSvg, sporeFieldElement, usedFallback);
+  
+  // 7. Add metadata comment with sealVersion and spore field info
+  const sporeInfo = sporeFieldMetadata 
+    ? `sporeField: {
+    version: "${sporeFieldMetadata.version}",
+    canvas: ${sporeFieldMetadata.canvas},
+    densityCurve: "${sporeFieldMetadata.densityCurve}",
+    noise: "${sporeFieldMetadata.noise}",
+    edgeTaper: ${sporeFieldMetadata.edgeTaper}
+  }`
+    : `sporeField: "fallback"`;
+  
   const metadataComment = `<!-- TripDAR Seal Generator
   sealVersion: ${version}
   generator: sealGeneratorService
   tokenHash: ${hash.substring(0, 16)}...
+  ${sporeInfo}
 -->`;
   
   // Insert metadata comment after XML declaration
