@@ -1,8 +1,8 @@
 /**
  * Seal Spore Field Service
  * 
- * Generates a raster-first, radial noise spore cloud for TripDAR seals.
- * The spore field is purely decorative and provides organic, ink-like texture.
+ * Generates a deterministic, organic spore cloud for TripDAR seals using pure SVG.
+ * This approach avoids native canvas dependencies for serverless compatibility.
  * 
  * VISUAL GOAL:
  * - Dense core that feels alive
@@ -15,30 +15,29 @@
  * - Same token + version = identical spore field forever
  * - Never affects QR code scanability
  * - Never overlaps text or outer ring
- * - Graceful fallback if canvas fails
+ * - Pure JavaScript, no native dependencies (serverless compatible)
  */
 
 import { createHash } from 'crypto';
-import { createCanvas } from '@napi-rs/canvas';
 import { createNoise2D } from 'simplex-noise';
 
-// Canvas configuration
-const CANVAS_SIZE = 2048;
-const CENTER = CANVAS_SIZE / 2;
-const MAX_RADIUS = CANVAS_SIZE * 0.45; // ~90% of radar area
+// SVG configuration (using 1000x1000 to match seal viewBox)
+const SVG_SIZE = 1000;
+const CENTER = SVG_SIZE / 2;
+const MAX_RADIUS = SVG_SIZE * 0.45; // ~90% of radar area
 
 // Density configuration
 const DENSITY_MULTIPLIER = 0.9;
 const EDGE_TAPER_START = 0.92;
 
-// Dot configuration
-const MIN_DOT_RADIUS = 0.6;
-const MAX_DOT_RADIUS = 1.4;
+// Dot configuration (scaled for SVG units)
+const MIN_DOT_RADIUS = 0.8;
+const MAX_DOT_RADIUS = 2.5;
 const MIN_OPACITY = 0.15;
 const MAX_OPACITY = 0.85;
 
 // Noise configuration
-const NOISE_SCALE = 0.0025;
+const NOISE_SCALE = 0.006;
 
 /**
  * Seeded pseudo-random number generator
@@ -111,16 +110,19 @@ function calculateBaseDensity(rNorm: number): number {
 }
 
 /**
- * Generate the spore field as a transparent PNG buffer
+ * Generate the spore field as pure SVG (serverless compatible)
+ * 
+ * Uses deterministic noise and radial density to create organic spore pattern.
+ * No native dependencies required.
  * 
  * @param token - The QR token for deterministic seeding
  * @param version - The seal version for deterministic seeding
- * @returns PNG buffer as base64 string, or null if generation fails
+ * @returns SVG group element string with spore dots, or null if generation fails
  */
-export async function generateSporeFieldPng(
+export async function generateSporeFieldSvg(
   token: string,
   version: string
-): Promise<{ base64: string; metadata: SporeFieldMetadata } | null> {
+): Promise<{ svgContent: string; metadata: SporeFieldMetadata } | null> {
   try {
     const seed = computeSeed(token, version);
     const rng = new SeededRandom(seed);
@@ -129,21 +131,15 @@ export async function generateSporeFieldPng(
     // simplex-noise v4+ uses createNoise2D with a PRNG function
     const noise2D = createNoise2D(() => rng.next());
     
-    // Create canvas
-    const canvas = createCanvas(CANVAS_SIZE, CANVAS_SIZE);
-    const ctx = canvas.getContext('2d');
-    
-    // Clear with transparency
-    ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-    
     // Generate spore field using point sampling
     // We sample candidate points and probabilistically place dots
-    const numSamples = 800000; // High sample count for dense coverage
+    const numSamples = 150000; // Adjusted for SVG (fewer samples needed at lower resolution)
+    const dots: string[] = [];
     
     for (let i = 0; i < numSamples; i++) {
-      // Random position within canvas
-      const x = rng.next() * CANVAS_SIZE;
-      const y = rng.next() * CANVAS_SIZE;
+      // Random position within SVG viewBox
+      const x = rng.next() * SVG_SIZE;
+      const y = rng.next() * SVG_SIZE;
       
       // Calculate distance from center
       const dx = x - CENTER;
@@ -176,29 +172,27 @@ export async function generateSporeFieldPng(
         const dotRadius = lerp(MAX_DOT_RADIUS, MIN_DOT_RADIUS, rNorm) * (0.7 + rng.next() * 0.6);
         const opacity = clamp(finalDensity, MIN_OPACITY, MAX_OPACITY);
         
-        // Draw dot
-        ctx.beginPath();
-        ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(0, 0, 0, ${opacity})`;
-        ctx.fill();
+        // Add SVG circle element
+        dots.push(
+          `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${dotRadius.toFixed(2)}" fill="rgba(0,0,0,${opacity.toFixed(2)})"/>`
+        );
       }
     }
     
-    // Convert to PNG buffer
-    const pngBuffer = canvas.toBuffer('image/png');
-    const base64 = pngBuffer.toString('base64');
+    const svgContent = dots.join('\n      ');
     
     const metadata: SporeFieldMetadata = {
       version: 'v1',
-      canvas: CANVAS_SIZE,
+      canvas: SVG_SIZE,
       densityCurve: 'pow(1 - r, 1.8)',
       noise: 'simplex',
       edgeTaper: true,
       samples: numSamples,
       tokenHash: seed.substring(0, 16),
+      dotCount: dots.length,
     };
     
-    return { base64, metadata };
+    return { svgContent, metadata };
   } catch (error) {
     console.error('[SporeField] Generation failed:', error);
     return null;
@@ -216,33 +210,21 @@ export interface SporeFieldMetadata {
   edgeTaper: boolean;
   samples: number;
   tokenHash: string;
+  dotCount?: number;
 }
 
 /**
- * Generate SVG image element for embedding the spore field
+ * Wrap spore field SVG content in a group element
  * 
- * @param base64Png - The base64-encoded PNG data
- * @param svgSize - The target size in SVG units (typically 1000 for the seal)
- * @returns SVG image element string
+ * @param svgContent - The SVG circles content
+ * @returns SVG group element string
  */
 export function createSporeFieldSvgElement(
-  base64Png: string,
-  svgSize: number = 1000
+  svgContent: string
 ): string {
-  // Calculate positioning to center the spore field
-  // The spore field should align with the radar area
-  const fieldSize = svgSize * 0.9; // 90% of SVG size
-  const offset = (svgSize - fieldSize) / 2;
-  
-  return `<image 
-    id="spore-field"
-    x="${offset}" 
-    y="${offset}" 
-    width="${fieldSize}" 
-    height="${fieldSize}"
-    href="data:image/png;base64,${base64Png}"
-    preserveAspectRatio="xMidYMid meet"
-  />`;
+  return `<g id="spore-field">
+      ${svgContent}
+    </g>`;
 }
 
 /**

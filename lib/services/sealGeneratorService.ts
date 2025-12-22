@@ -51,7 +51,7 @@ import {
   SEAL_QR_URL_PREFIX,
 } from '@/lib/constants/seal';
 import {
-  generateSporeFieldPng,
+  generateSporeFieldSvg,
   createSporeFieldSvgElement,
   generateFallbackSvgDots,
   type SporeFieldMetadata,
@@ -219,16 +219,16 @@ export async function generateSealSvg(token: string, version: string = SEAL_VERS
   // 4. Convert QR to cloud pattern within radius
   const qrCloudSvg = renderQrCloud(qrSvg, hash, QR_CLOUD_EFFECTIVE_RADIUS);
   
-  // 5. Generate raster spore field (or fallback to SVG dots)
+  // 5. Generate SVG spore field (or fallback to simple SVG dots)
   let sporeFieldElement: string;
   let sporeFieldMetadata: SporeFieldMetadata | null = null;
   let usedFallback = false;
   
-  const sporeResult = await generateSporeFieldPng(token, version);
+  const sporeResult = await generateSporeFieldSvg(token, version);
   
   if (sporeResult) {
-    // Success: use raster spore field
-    sporeFieldElement = createSporeFieldSvgElement(sporeResult.base64, 1000);
+    // Success: use SVG spore field with noise-based organic pattern
+    sporeFieldElement = createSporeFieldSvgElement(sporeResult.svgContent);
     sporeFieldMetadata = sporeResult.metadata;
   } else {
     // Fallback: use legacy SVG dots with warning
