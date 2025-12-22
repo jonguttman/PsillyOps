@@ -24,17 +24,17 @@ import { createNoise2D } from 'simplex-noise';
 // SVG configuration (using 1000x1000 to match seal viewBox)
 const SVG_SIZE = 1000;
 const CENTER = SVG_SIZE / 2;
-const MAX_RADIUS = SVG_SIZE * 0.45; // ~90% of radar area
+const MAX_RADIUS = SVG_SIZE * 0.485; // ~97% of radar area (expanded)
 
 // Density configuration
-const DENSITY_MULTIPLIER = 0.9;
-const EDGE_TAPER_START = 0.92;
+const DENSITY_MULTIPLIER = 1.2; // Increased for denser coverage
+const EDGE_TAPER_START = 0.92; // Only fade in outer 3-5%
 
 // Dot configuration (scaled for SVG units)
 const MIN_DOT_RADIUS = 0.8;
-const MAX_DOT_RADIUS = 2.5;
-const MIN_OPACITY = 0.15;
-const MAX_OPACITY = 0.85;
+const MAX_DOT_RADIUS = 2.8; // Slightly larger for denser core
+const MIN_OPACITY = 0.18;
+const MAX_OPACITY = 0.92; // Higher max for solid core
 
 // Noise configuration
 const NOISE_SCALE = 0.006;
@@ -99,14 +99,23 @@ function lerp(a: number, b: number, t: number): number {
 }
 
 /**
- * Calculate base density using non-linear falloff
- * pow(1 - r, 1.8) gives:
- * - High density in inner ~50%
- * - Smooth mid-zone texture
- * - Long, gentle taper near edge
+ * Calculate base density using center-heavy curve with aggressive core boost
+ * 
+ * This produces:
+ * - Very dense, nearly solid core
+ * - Gradual organic falloff
+ * - No visible QR bounding box edges
  */
 function calculateBaseDensity(rNorm: number): number {
-  return Math.pow(Math.max(0, 1 - rNorm), 1.8);
+  // Base falloff curve (gentler than before)
+  const base = Math.pow(Math.max(0, 1 - rNorm), 1.2);
+  
+  // Aggressive core boost - smoothstep from center outward
+  // At r=0: coreBoost = 1.0, at r=0.28: coreBoost = 0.0
+  const coreBoost = smoothstep(0.0, 0.28, 1 - rNorm);
+  
+  // Combine: base * (1 + coreBoost * 2.5) gives massive center density
+  return base * (1 + coreBoost * 2.5);
 }
 
 /**
@@ -132,27 +141,41 @@ export async function generateSporeFieldSvg(
     const noise2D = createNoise2D(() => rng.next());
     
     // Generate spore field using point sampling
-    // We sample candidate points and probabilistically place dots
-    const numSamples = 150000; // Adjusted for SVG (fewer samples needed at lower resolution)
+    // Increased sample count + biased sampling toward center for dense core
+    const numSamples = 250000; // Increased for denser coverage
     const dots: string[] = [];
     
     for (let i = 0; i < numSamples; i++) {
       // Random position within SVG viewBox
-      const x = rng.next() * SVG_SIZE;
-      const y = rng.next() * SVG_SIZE;
+      let x = rng.next() * SVG_SIZE;
+      let y = rng.next() * SVG_SIZE;
       
       // Calculate distance from center
-      const dx = x - CENTER;
-      const dy = y - CENTER;
-      const distance = Math.sqrt(dx * dx + dy * dy);
+      let dx = x - CENTER;
+      let dy = y - CENTER;
+      let distance = Math.sqrt(dx * dx + dy * dy);
       
       // Normalized radius (0 = center, 1 = max radius)
-      const rNorm = distance / MAX_RADIUS;
+      let rNorm = distance / MAX_RADIUS;
+      
+      // BIAS TOWARD CENTER: For inner region, add extra samples
+      // This crushes the QR box outline with density
+      if (rNorm < 0.4 && rng.next() < 0.6) {
+        // 60% chance to resample closer to center when already in inner region
+        const angle = rng.next() * Math.PI * 2;
+        const biasedDistance = rng.next() * MAX_RADIUS * 0.35; // Concentrate in inner 35%
+        x = CENTER + Math.cos(angle) * biasedDistance;
+        y = CENTER + Math.sin(angle) * biasedDistance;
+        dx = x - CENTER;
+        dy = y - CENTER;
+        distance = Math.sqrt(dx * dx + dy * dy);
+        rNorm = distance / MAX_RADIUS;
+      }
       
       // Skip if outside the field
       if (rNorm > 1.0) continue;
       
-      // Calculate base density from radial curve
+      // Calculate base density from center-heavy curve
       const baseDensity = calculateBaseDensity(rNorm);
       
       // Apply noise modulation for organic variation
@@ -161,16 +184,17 @@ export async function generateSporeFieldSvg(
       
       let finalDensity = baseDensity * noiseFactor;
       
-      // Apply edge taper to avoid hard cutoff
+      // Apply edge taper only in outer 8% to avoid hard cutoff
       if (rNorm > EDGE_TAPER_START) {
         finalDensity *= smoothstep(1.0, EDGE_TAPER_START, rNorm);
       }
       
       // Probabilistic dot placement
+      // NO QR quiet-zone masking - spores exist everywhere
       if (rng.next() < finalDensity * DENSITY_MULTIPLIER) {
         // Calculate dot properties
         const dotRadius = lerp(MAX_DOT_RADIUS, MIN_DOT_RADIUS, rNorm) * (0.7 + rng.next() * 0.6);
-        const opacity = clamp(finalDensity, MIN_OPACITY, MAX_OPACITY);
+        const opacity = clamp(finalDensity * 0.9, MIN_OPACITY, MAX_OPACITY);
         
         // Add SVG circle element
         dots.push(
@@ -182,9 +206,9 @@ export async function generateSporeFieldSvg(
     const svgContent = dots.join('\n      ');
     
     const metadata: SporeFieldMetadata = {
-      version: 'v1',
+      version: 'v2',
       canvas: SVG_SIZE,
-      densityCurve: 'pow(1 - r, 1.8)',
+      densityCurve: 'base * (1 + coreBoost * 2.5)',
       noise: 'simplex',
       edgeTaper: true,
       samples: numSamples,
