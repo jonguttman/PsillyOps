@@ -318,6 +318,20 @@ export async function getReviewStats(): Promise<ReviewStats> {
   });
   const target = goalConfig ? parseInt(goalConfig.value, 10) : 1000;
   
+  // By mode breakdown
+  const microTotal = await prisma.experienceReview.count({
+    where: { experienceMode: 'MICRO' }
+  });
+  const macroTotal = await prisma.experienceReview.count({
+    where: { experienceMode: 'MACRO' }
+  });
+  const microWeekly = await prisma.experienceReview.count({
+    where: { experienceMode: 'MICRO', createdAt: { gte: weekAgo } }
+  });
+  const macroWeekly = await prisma.experienceReview.count({
+    where: { experienceMode: 'MACRO', createdAt: { gte: weekAgo } }
+  });
+  
   return {
     total,
     weeklySubmissions,
