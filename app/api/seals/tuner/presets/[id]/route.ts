@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/auth';
 import { prisma } from '@/lib/db/prisma';
+import { Prisma } from '@prisma/client';
 import type { SporeFieldConfig } from '@/lib/types/sealConfig';
 import { validateConfig } from '@/lib/constants/sealPresets';
 
@@ -125,7 +126,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         ...(description !== undefined && { description }),
         ...(config && {
           basePreset: config.basePreset,
-          config: config as unknown as Record<string, unknown>,
+          config: config as unknown as Prisma.InputJsonValue,
         }),
       },
     });
