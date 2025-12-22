@@ -280,6 +280,16 @@ export async function generateSealSvg(
  * 
  * This modifies the SVG elements for outer ring, text ring, and radar lines
  * based on the provided configuration.
+ * 
+ * The base SVG (tripdar_seal_base_and_text.svg) CSS structure:
+ * - Combined rule: .st5, .st3, .st4, .st6 { fill: none; stroke: #111; }
+ * - st5: Outer ring (thick border, stroke-width: 14px)
+ * - st3: Radar concentric circles (opacity: .6, stroke-width: 2px)
+ * - st6: Cardinal direction lines (stroke-linecap: round, stroke-width: 6px)
+ * - st7: Text fill color (#fff)
+ * - text_outline group: Contains all text paths
+ * 
+ * Since stroke color is in a combined rule, we use inline style overrides.
  */
 function applyBaseLayerConfig(
   svg: string, 
@@ -287,32 +297,58 @@ function applyBaseLayerConfig(
 ): string {
   let result = svg;
   
-  // Apply outer ring styling
-  // The outer ring typically has id="outer-ring" or class="outer-ring"
+  // Apply outer ring styling (st5 class - thick border circle)
+  // Use inline style to override the combined CSS rule
   if (config.outerRing) {
     result = result.replace(
-      /(<(?:circle|ellipse|path)[^>]*(?:id|class)="[^"]*outer[^"]*ring[^"]*"[^>]*)(fill|stroke)="[^"]*"/gi,
-      `$1$2="${config.outerRing.color}" opacity="${config.outerRing.opacity}"`
+      /<circle\s+class="st5"/g,
+      `<circle class="st5" style="stroke: ${config.outerRing.color};" opacity="${config.outerRing.opacity}"`
     );
   }
   
-  // Apply text ring styling
+  // Apply text ring styling (donut-shaped background behind text - st0 fill, st2 opacity)
+  // This is the dark ring that the text sits on
   if (config.textRing) {
+    // The text ring is a path with class st0 inside a group with class st2
+    // st0 controls fill color, st2 controls opacity
+    // Modify st0 fill color
     result = result.replace(
-      /(<text[^>]*(?:id|class)="[^"]*text[^"]*ring[^"]*"[^>]*)(fill)="[^"]*"/gi,
-      `$1$2="${config.textRing.color}" opacity="${config.textRing.opacity}"`
+      /(\.st0,\s*\.st1\s*\{\s*fill:\s*)#[0-9a-fA-F]+/g,
+      `$1${config.textRing.color}`
     );
+    // Modify st2 opacity
     result = result.replace(
-      /(<textPath[^>]*)(fill)="[^"]*"/gi,
-      `$1$2="${config.textRing.color}" opacity="${config.textRing.opacity}"`
+      /(\.st2\s*\{\s*opacity:\s*)[0-9.]+/g,
+      `$1${config.textRing.opacity}`
     );
   }
   
-  // Apply radar lines styling
-  if (config.radarLines) {
+  // Apply text styling (the actual TRIPDAR EXPERIENCE VERIFIED text - st7 class)
+  if (config.text) {
+    // Modify the st7 class fill color in the <style> block
     result = result.replace(
-      /(<(?:line|path|circle)[^>]*(?:id|class)="[^"]*radar[^"]*"[^>]*)(stroke)="[^"]*"/gi,
-      `$1$2="${config.radarLines.color}" opacity="${config.radarLines.opacity}"`
+      /(\.st7\s*\{\s*fill:\s*)#[0-9a-fA-F]+/g,
+      `$1${config.text.color}`
+    );
+    // Add opacity to the text_outline group
+    result = result.replace(
+      /(<g\s+id="text_outline">)/g,
+      `<g id="text_outline" opacity="${config.text.opacity}">`
+    );
+  }
+  
+  // Apply radar lines styling (st3 for circles, st6 for lines)
+  // Use inline style to override the combined CSS rule
+  if (config.radarLines) {
+    // Override stroke color and opacity for radar circles (class st3)
+    result = result.replace(
+      /<circle\s+class="st3"/g,
+      `<circle class="st3" style="stroke: ${config.radarLines.color};" opacity="${config.radarLines.opacity}"`
+    );
+    // Override stroke color and opacity for cardinal lines (class st6)
+    result = result.replace(
+      /<line\s+class="st6"/g,
+      `<line class="st6" style="stroke: ${config.radarLines.color};" opacity="${config.radarLines.opacity}"`
     );
   }
   

@@ -26,11 +26,15 @@ const DEFAULT_BASE_LAYER: BaseLayerConfig = {
   },
   textRing: {
     color: '#000000',
+    opacity: 0.9,
+  },
+  text: {
+    color: '#ffffff',
     opacity: 1.0,
   },
   radarLines: {
     color: '#000000',
-    opacity: 0.3,
+    opacity: 0.6,
   },
 };
 

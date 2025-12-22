@@ -799,6 +799,15 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
                 />
                 
                 <ColorControl
+                  label="Text"
+                  tooltipKey="baseLayerConfig.text.color"
+                  color={config.baseLayerConfig.text.color}
+                  opacity={config.baseLayerConfig.text.opacity}
+                  onColorChange={(c) => updateBaseLayer('text', 'color', c)}
+                  onOpacityChange={(o) => updateBaseLayer('text', 'opacity', o)}
+                />
+                
+                <ColorControl
                   label="Radar Lines"
                   tooltipKey="baseLayerConfig.radarLines.color"
                   color={config.baseLayerConfig.radarLines.color}

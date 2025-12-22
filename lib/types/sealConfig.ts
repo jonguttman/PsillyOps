@@ -30,8 +30,13 @@ export interface BaseLayerConfig {
     color: string;    // Hex color, e.g., '#000000'
     opacity: number;  // 0-1
   };
-  /** Text ring (TRIPDAR EXPERIENCE VERIFIED, etc.) */
+  /** Text ring (donut-shaped band behind the text) */
   textRing: {
+    color: string;
+    opacity: number;
+  };
+  /** Text (the actual TRIPDAR EXPERIENCE VERIFIED text) */
+  text: {
     color: string;
     opacity: number;
   };
