@@ -30,6 +30,12 @@ const PNG_SIZE = 512; // Smaller for performance, will be scaled by SVG
 const CENTER = PNG_SIZE / 2;
 const MAX_RADIUS = PNG_SIZE * 0.485; // ~97% of radar area
 
+// QR influence zone - spores taper smoothly toward center where QR will be
+// QR_CLOUD_EFFECTIVE_RADIUS = 223 in SVG (1000x1000), scaled to PNG (512x512)
+const QR_INFLUENCE_RADIUS_PX = 223 / 1000 * PNG_SIZE; // ~114px
+const QR_FALLOFF_INNER = QR_INFLUENCE_RADIUS_PX * 0.55; // Start falloff at 55% of QR radius
+const QR_FALLOFF_OUTER = QR_INFLUENCE_RADIUS_PX * 1.05; // End falloff slightly outside QR
+
 // Density configuration
 const DENSITY_MULTIPLIER = 1.2;
 const EDGE_TAPER_START = 0.92;
@@ -285,13 +291,29 @@ export async function generateSporeFieldPng(
       const noiseFactor = 0.65 + noiseValue * 0.35;
       let finalDensity = baseDensity * noiseFactor;
       
+      // QR INFLUENCE FALLOFF: Gradually reduce spore density where QR will be placed
+      // This creates a smooth transition so QR feels embedded, not overlaid
+      // Spores taper toward center but don't disappear completely
+      if (distance < QR_FALLOFF_OUTER) {
+        // smoothstep from inner edge (full reduction) to outer edge (no reduction)
+        const qrInfluence = smoothstep(QR_FALLOFF_INNER, QR_FALLOFF_OUTER, distance);
+        // Don't zero out completely - keep some spores for organic feel
+        finalDensity *= 0.15 + qrInfluence * 0.85;
+      }
+      
       if (rNorm > EDGE_TAPER_START) {
         finalDensity *= smoothstep(1.0, EDGE_TAPER_START, rNorm);
       }
       
       if (rng.next() < finalDensity * DENSITY_MULTIPLIER) {
         const dotRadius = lerp(MAX_DOT_RADIUS, MIN_DOT_RADIUS, rNorm) * (0.7 + rng.next() * 0.6);
-        const opacity = clamp(finalDensity * 0.9, MIN_OPACITY, MAX_OPACITY);
+        let opacity = clamp(finalDensity * 0.9, MIN_OPACITY, MAX_OPACITY);
+        
+        // Additional alpha reduction in QR zone for smoother blend
+        if (distance < QR_FALLOFF_OUTER) {
+          const qrAlphaFade = smoothstep(QR_FALLOFF_INNER * 0.7, QR_FALLOFF_OUTER, distance);
+          opacity *= 0.3 + qrAlphaFade * 0.7;
+        }
         
         drawCircle(pixels, PNG_SIZE, x, y, dotRadius, opacity);
         dotCount++;

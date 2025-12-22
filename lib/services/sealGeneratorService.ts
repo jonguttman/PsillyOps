@@ -75,6 +75,10 @@ export function computeQrCloudHash(token: string, version: string): string {
  * - QR should occupy ~52-55% of inner radar diameter for structural dominance
  * - Margin set to 0 (minimum) - no aesthetic padding, spore field provides context
  * - QR must feel "found inside the seal" not "placed on top"
+ * 
+ * COMPOSITING:
+ * - Light color is slightly transparent to soften hard edges
+ * - Spore field tapers toward QR zone for embedded feel
  */
 async function generateQrSvgForSeal(token: string): Promise<string> {
   const sealUrl = `${SEAL_QR_URL_PREFIX}${token}`;
@@ -84,9 +88,9 @@ async function generateQrSvgForSeal(token: string): Promise<string> {
     margin: 0,  // MINIMUM quiet zone - no extra padding, spore field surrounds it
     color: {
       dark: '#000000',
-      light: '#FFFFFF'
+      light: 'rgba(255,255,255,0.97)'  // Slightly transparent for subtle edge softening
     },
-    width: QR_CLOUD_EFFECTIVE_RADIUS * 2,  // Diameter in SVG units (~270)
+    width: QR_CLOUD_EFFECTIVE_RADIUS * 2,  // Diameter in SVG units
   });
 }
 
