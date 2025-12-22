@@ -36,6 +36,9 @@
 17. [Troubleshooting](#troubleshooting)
 18. [Glossary](#glossary)
 
+**Appendices:**
+- [Appendix A: TripDAR System Complete Guide](#appendix-a-tripdar-system-complete-guide)
+
 ---
 
 ## Overview
@@ -4162,5 +4165,273 @@ sequenceDiagram
     UI->>UI: router.push(destination)
   end
 ```
+
+---
+
+## Appendix A: TripDAR System Complete Guide
+
+This appendix provides a comprehensive overview of the TripDAR system, consolidating all TripDAR-related functionality into a single reference guide.
+
+### What is TripDAR?
+
+TripDAR (Trip Data & Analytics Repository) is a privacy-forward experience data collection and analysis system. It enables:
+
+1. **Experience Predictions**: Define expected experience profiles for products
+2. **Anonymous Feedback**: Collect user experience data without PII
+3. **Certification Seals**: Physical QR stickers indicating product participation
+4. **Analytics & Insights**: Dashboard for analyzing experience data patterns
+
+### TripDAR System Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        TripDAR SYSTEM                           │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐         │
+│  │  PRODUCTS   │    │   SEALS     │    │  PARTNERS   │         │
+│  │             │    │             │    │             │         │
+│  │ - Prediction│    │ - QR Tokens │    │ - Accounts  │         │
+│  │   Profiles  │    │ - Sheets    │    │ - Products  │         │
+│  │ - Vibes     │    │ - Bindings  │    │ - Bindings  │         │
+│  └──────┬──────┘    └──────┬──────┘    └──────┬──────┘         │
+│         │                  │                  │                 │
+│         └──────────────────┼──────────────────┘                 │
+│                            │                                    │
+│                   ┌────────▼────────┐                           │
+│                   │  EXPERIENCE     │                           │
+│                   │  REVIEWS        │                           │
+│                   │                 │                           │
+│                   │ - Anonymous     │                           │
+│                   │ - Mode-aware    │                           │
+│                   │ - Vibe deltas   │                           │
+│                   └────────┬────────┘                           │
+│                            │                                    │
+│                   ┌────────▼────────┐                           │
+│                   │   INSIGHTS      │                           │
+│                   │   DASHBOARD     │                           │
+│                   └─────────────────┘                           │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Quick Start: End-to-End Workflow
+
+#### Step 1: Set Up Product Predictions (Admin/Production)
+
+1. Navigate to **Products** → Select a product → **View**
+2. Scroll to **"Predicted Experience"** section
+3. Toggle between **MICRO** and **MACRO** modes
+4. Adjust the 5 vibe sliders (must sum to 1.0):
+   - **Transcend**: Mystical/beyond-self experiences
+   - **Energize**: Stimulation/intensity
+   - **Create**: Visionary/imagination
+   - **Transform**: Breakthrough/dissolution
+   - **Connect**: Connection/unity
+5. Click **"Save [MODE] Prediction Profile"**
+
+#### Step 2: Generate TripDAR Seals (Admin/Warehouse)
+
+1. Navigate to **Ops** → **TripDAR labels**
+2. Select **"Generate New Seals"** mode
+3. Enter quantity (1-250 seals)
+4. Optionally link to a product
+5. Configure print settings:
+   - Paper: Letter, A4, or Custom
+   - Seal diameter: 0.5", 0.75", 1.0", 1.25", 1.5", 2.0", or 2.5"
+6. Click **"Download PDF"**
+7. Print on label stock and apply to products
+
+#### Step 3: Consumer Scans Seal
+
+When a consumer scans the TripDAR seal QR code:
+
+1. They land on `/seal/[token]` - the certification page
+2. Page shows: "TripDAR Certified — participates in experience data"
+3. They can click **"Compare Your Experience"** to take the survey
+4. Survey collects anonymous feedback comparing their experience to predictions
+
+#### Step 4: Analyze Results (Admin/Analyst)
+
+1. Navigate to **Insights** → **TripDAR**
+2. View dashboard metrics:
+   - Total reviews and weekly submissions
+   - Completion rates and skip rates
+   - Mode breakdown (MICRO vs MACRO)
+3. Browse individual reviews with filters
+4. Export data for ML pipelines (CSV/JSON)
+
+### Seal Generation Deep Dive
+
+#### Understanding Seal States
+
+| State | When | Display to Consumer |
+|-------|------|---------------------|
+| **UNASSIGNED** | Sheet created but not assigned to partner | "TripDAR Ready — not yet activated" |
+| **UNBOUND** | Assigned to partner, not linked to product | "TripDAR Ready — awaiting product assignment" |
+| **ACTIVE** | Fully bound to a product | "TripDAR Certified — participates in experience data" |
+| **REVOKED** | Disabled by admin | Revoked message with reason |
+| **EXPIRED** | Past expiration date | Expired message |
+
+#### Using the Seal Tuner
+
+The Seal Tuner (`Ops → TripDAR labels → Open Seal Tuner`) provides fine-grained control over seal appearance:
+
+**Preset Algorithms:**
+
+| Preset | Best For | Description |
+|--------|----------|-------------|
+| **Dot Zones** | Experimentation | Basic radial density, small particles |
+| **Quiet Core** | Balanced look | Hard QR exclusion zone |
+| **Module Masked** | Best scan reliability | Respects QR module boundaries |
+| **Material Unified** | Visual cohesion | Spores match QR dot size |
+
+**Key Controls:**
+
+- **Spore Count**: 10,000-100,000 particles (lower = cleaner QR)
+- **Zone A End**: Hard exclusion zone size (higher = more reliable scans)
+- **QR Scale**: 50%-150% of default size
+- **Quiet Core Factor**: Central no-spore zone (0.4-0.7 recommended)
+
+**Base Layer Controls:**
+
+- **Outer Ring**: Thick decorative border (color, opacity)
+- **Text Ring**: "TRIPDAR EXPERIENCE VERIFIED" band (color, opacity)
+- **Text**: The actual text characters (color, opacity, border/stroke)
+- **Radar Lines**: Concentric circles and crosshairs (color, opacity, thickness, above/below QR)
+
+**Export Options:**
+
+- Sizes: 0.5", 0.75", 1.0", 1.25", 1.5", 2.0", 2.5"
+- Paper: US Letter or A4
+- Includes cut guides and embedded settings
+
+### TripDAR Partners (Phase 2B+)
+
+Partners are external entities authorized to use TripDAR seals on their products.
+
+#### Partner Roles
+
+| Role | Permissions |
+|------|-------------|
+| **PARTNER_ADMIN** | Full access to partner portal, can manage users |
+| **PARTNER_OPERATOR** | Can bind seals to products, view data |
+
+#### Partner Workflow
+
+1. **Admin creates Partner account** in PsillyOps
+2. **Admin assigns Seal Sheet** to Partner
+3. **Partner defines PartnerProducts** (lightweight product records)
+4. **Partner binds seals** to their products
+5. **Consumers scan** → data flows to TripDAR
+
+#### Partner Portal Access
+
+- **Login**: `/partner/login`
+- **Dashboard**: `/partner/dashboard`
+- **Bind Seals**: `/partner/bind`
+
+Partners can only see their own data and cannot access PsillyOps inventory.
+
+### Mobile Batch Binding (Phase 2C)
+
+For high-volume seal application, Partners can use Mobile Batch Binding:
+
+1. **Start Session**: Select product, start timed session (default: 5 minutes)
+2. **Scan Seals**: Each scan binds the seal to the selected product
+3. **Feedback**: Haptic/audio confirmation on successful scan
+4. **Auto-Expire**: Session ends automatically when timer expires
+5. **Review**: See session summary with scan count
+
+**Session States:**
+- **ACTIVE**: Currently accepting scans
+- **EXPIRED**: Timer ran out
+- **TERMINATED**: Manually ended by user
+
+### Experience Modes Explained
+
+TripDAR supports two experience modes with different vibe vocabularies:
+
+#### MICRO Mode (Microdosing)
+
+| Vibe | Label | Description |
+|------|-------|-------------|
+| Transcend | "Subtle uplift" | Gentle mood elevation |
+| Energize | "Clarity / energy" | Mental sharpness |
+| Create | "Creative flow" | Enhanced creativity |
+| Transform | "Perspective shift" | New viewpoints |
+| Connect | "Emotional openness" | Increased empathy |
+
+#### MACRO Mode (Full Experience)
+
+| Vibe | Label | Description |
+|------|-------|-------------|
+| Transcend | "Mystical / beyond-self" | Ego dissolution |
+| Energize | "Stimulation / intensity" | Physical/mental intensity |
+| Create | "Visionary / imagination" | Visual/creative experiences |
+| Transform | "Breakthrough / dissolution" | Deep transformation |
+| Connect | "Connection / unity" | Oneness with others/nature |
+
+### Data Privacy & Compliance
+
+TripDAR is designed with privacy as a core principle:
+
+- **No PII**: Never collects names, emails, locations, or device IDs
+- **Anonymous Tokens**: Reviews linked to products, not people
+- **Optional Everything**: All survey questions are skippable
+- **No Tracking**: No cookies, no fingerprinting, no cross-site tracking
+- **Neutral Valued**: "No change" responses are valid data points
+
+### Troubleshooting TripDAR
+
+#### Seal Won't Scan
+
+1. **Check print quality**: Ensure adequate contrast
+2. **Verify size**: Minimum 1" diameter recommended
+3. **Test with Tuner**: Use DPI simulation to preview print quality
+4. **Try different preset**: Module Masked has best scan reliability
+
+#### Survey Not Appearing
+
+1. **Check product has prediction profile**: Survey requires active predictions
+2. **Verify token status**: Revoked/expired tokens won't show survey
+3. **Check binding**: Seal must be bound to a product
+
+#### Dashboard Shows No Data
+
+1. **Verify role**: Requires ADMIN or ANALYST role
+2. **Check date range**: Ensure reviews exist in selected period
+3. **Check filters**: Clear all filters to see all data
+
+### TripDAR URLs Reference
+
+| URL | Purpose | Access |
+|-----|---------|--------|
+| `/ops/seals` | Seal generation & tuner | ADMIN, WAREHOUSE |
+| `/seal/[token]` | Public certification page | Public |
+| `/tripdar/survey/[token]` | Experience survey | Public |
+| `/verify/[token]` | Product authenticity | Public |
+| `/insights/tripdar` | Analytics dashboard | ADMIN, ANALYST |
+| `/partner/login` | Partner portal login | Public |
+| `/partner/dashboard` | Partner dashboard | PARTNER_ADMIN, PARTNER_OPERATOR |
+| `/partner/bind` | Seal binding | PARTNER_ADMIN, PARTNER_OPERATOR |
+
+### Glossary of TripDAR Terms
+
+| Term | Definition |
+|------|------------|
+| **Binding** | Linking a seal token to a specific product |
+| **Experience Mode** | MICRO (microdose) or MACRO (full experience) |
+| **Partner** | External entity authorized to use TripDAR seals |
+| **Prediction Profile** | Immutable snapshot of expected experience vibes |
+| **QR Token** | Unique identifier encoded in seal QR code |
+| **Seal Sheet** | Collection of tokens generated together |
+| **Spore Field** | Decorative particle pattern on seal artwork |
+| **Vibe** | One of 5 experience dimensions (Transcend, Energize, Create, Transform, Connect) |
+| **Vibe Delta** | Difference between predicted and actual experience |
+
+---
+
+*End of TripDAR System Appendix*
 
 
