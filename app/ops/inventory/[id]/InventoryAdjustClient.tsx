@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { SlidersHorizontal, X } from 'lucide-react';
 
-type UserRole = 'ADMIN' | 'WAREHOUSE' | 'PRODUCTION' | 'REP';
+type UserRole = 'ADMIN' | 'ANALYST' | 'WAREHOUSE' | 'PRODUCTION' | 'REP' | 'PARTNER_ADMIN' | 'PARTNER_OPERATOR';
 
 type AdjustmentType =
   | 'PRODUCTION_COMPLETE'
