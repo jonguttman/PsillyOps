@@ -77,8 +77,10 @@ export function computeQrCloudHash(token: string, version: string): string {
  * - QR must feel "found inside the seal" not "placed on top"
  * 
  * COMPOSITING:
- * - Light color is slightly transparent to soften hard edges
- * - Spore field tapers toward QR zone for embedded feel
+ * - QR background is TRANSPARENT (light: '#0000' = transparent)
+ * - Only black QR modules are rendered
+ * - Spore field shows through between modules
+ * - No white rect, no white fill behind QR
  */
 async function generateQrSvgForSeal(token: string): Promise<string> {
   const sealUrl = `${SEAL_QR_URL_PREFIX}${token}`;
@@ -88,7 +90,7 @@ async function generateQrSvgForSeal(token: string): Promise<string> {
     margin: 0,  // MINIMUM quiet zone - no extra padding, spore field surrounds it
     color: {
       dark: '#000000',
-      light: '#FFFFFF'  // Must be hex - transparency handled by spore field compositing
+      light: '#0000'  // TRANSPARENT background - spore field shows through
     },
     width: QR_CLOUD_EFFECTIVE_RADIUS * 2,  // Diameter in SVG units
   });
