@@ -103,7 +103,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             id: user.id,
             email: user.email,
             name: user.name,
-            role: user.role
+            role: user.role,
+            partnerId: user.partnerId
           };
         } catch (error) {
           console.log('[AUTH] ========================================');
@@ -123,8 +124,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         console.log('[AUTH] JWT callback - adding user data to token');
         console.log('[AUTH]    - User ID:', user.id);
         console.log('[AUTH]    - User role:', (user as any).role);
+        console.log('[AUTH]    - User partnerId:', (user as any).partnerId);
         token.id = user.id;
         token.role = (user as any).role;
+        token.partnerId = (user as any).partnerId;
       }
       return token;
     },
@@ -133,8 +136,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         console.log('[AUTH] Session callback - adding token data to session');
         console.log('[AUTH]    - Token ID:', token.id);
         console.log('[AUTH]    - Token role:', token.role);
+        console.log('[AUTH]    - Token partnerId:', token.partnerId);
         (session.user as any).id = token.id;
         (session.user as any).role = token.role;
+        (session.user as any).partnerId = token.partnerId;
       }
       return session;
     }
@@ -145,6 +150,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 declare module 'next-auth' {
   interface User {
     role: UserRole;
+    partnerId?: string | null;
   }
   
   interface Session {
@@ -153,6 +159,7 @@ declare module 'next-auth' {
       email: string;
       name: string;
       role: UserRole;
+      partnerId?: string | null;
     };
   }
 }
@@ -161,5 +168,6 @@ declare module '@auth/core/jwt' {
   interface JWT {
     id: string;
     role: UserRole;
+    partnerId?: string | null;
   }
 }
