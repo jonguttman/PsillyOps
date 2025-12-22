@@ -303,7 +303,7 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
     layer: keyof BaseLayerConfig, 
     field: 'color' | 'opacity' | 'strokeWidth' | 'strokeColor' | 'aboveQr', 
     value: string | number | boolean
-  ) => {
+  ): void => {
     setConfig(prev => ({
       ...prev,
       baseLayerConfig: {
@@ -847,6 +847,30 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
                   onColorChange={(c) => updateBaseLayer('radarLines', 'color', c)}
                   onOpacityChange={(o) => updateBaseLayer('radarLines', 'opacity', o)}
                 />
+                
+                {/* Radar Lines Stroke Width */}
+                <div className="mb-4 pl-4 border-l-2 border-gray-200">
+                  <div className="flex justify-between items-center mb-1">
+                    <Tooltip text={CONTROL_TOOLTIPS['baseLayerConfig.radarLines.strokeWidth'] || 'Line thickness multiplier'}>
+                      <label className="text-sm font-medium text-gray-600 cursor-help flex items-center gap-1">
+                        Line Thickness
+                        <span className="text-gray-400 text-xs">ⓘ</span>
+                      </label>
+                    </Tooltip>
+                    <span className="text-sm text-gray-500">
+                      {((config.baseLayerConfig.radarLines.strokeWidth ?? 1.0) * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0.1}
+                    max={3}
+                    step={0.1}
+                    value={config.baseLayerConfig.radarLines.strokeWidth ?? 1.0}
+                    onChange={(e) => updateBaseLayer('radarLines', 'strokeWidth', parseFloat(e.target.value))}
+                    className="w-full"
+                  />
+                </div>
                 
                 {/* Radar Lines Above QR Toggle */}
                 <div className="mb-4 pl-4 border-l-2 border-gray-200">

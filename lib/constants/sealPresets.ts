@@ -38,6 +38,7 @@ const DEFAULT_BASE_LAYER: BaseLayerConfig = {
     color: '#000000',
     opacity: 0.6,
     aboveQr: false,      // Render below QR by default
+    strokeWidth: 1.0,    // Default thickness (multiplier)
   },
 };
 

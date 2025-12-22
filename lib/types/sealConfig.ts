@@ -47,6 +47,7 @@ export interface BaseLayerConfig {
     color: string;
     opacity: number;
     aboveQr: boolean;  // If true, render radar lines above the QR code
+    strokeWidth: number; // Line thickness multiplier (1.0 = default)
   };
 }
 
@@ -298,6 +299,8 @@ export const CONTROL_TOOLTIPS: Record<string, string> = {
     'Opacity of radar decorative elements. Lower values keep focus on the QR, higher values emphasize the radar aesthetic.',
   'baseLayerConfig.radarLines.aboveQr':
     'When enabled, radar lines render ABOVE the QR code and spore field, creating a layered effect. When disabled (default), radar lines render below.',
+  'baseLayerConfig.radarLines.strokeWidth':
+    'Thickness of radar lines as a multiplier. 1.0 = default thickness, 0.5 = half thickness, 2.0 = double thickness.',
   'baseLayerConfig.text.color':
     'Color of the TRIPDAR EXPERIENCE VERIFIED text. White works best on dark backgrounds.',
   'baseLayerConfig.text.strokeWidth':
