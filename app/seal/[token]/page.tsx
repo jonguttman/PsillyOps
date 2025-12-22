@@ -12,7 +12,8 @@
  * to preserve semantic isolation between authenticity and certification.
  */
 
-import { notFound, headers } from 'next/navigation';
+import { notFound } from 'next/navigation';
+import { headers } from 'next/headers';
 import { getTokenByValue } from '@/lib/services/qrTokenService';
 import { getPublicTransparencyRecord } from '@/lib/services/transparencyService';
 import { logAction } from '@/lib/services/loggingService';
