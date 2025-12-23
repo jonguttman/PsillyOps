@@ -313,11 +313,15 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
   const [loadedPreset, setLoadedPreset] = useState<{ name: string; basePreset: string } | null>(null);
   const [hasModifiedSinceLoad, setHasModifiedSinceLoad] = useState(false);
   
+  // Live preset state
+  const [livePreset, setLivePreset] = useState<{ id: string; name: string; basePreset: string } | null>(null);
+  const [isSettingLive, setIsSettingLive] = useState(false);
+  
   const previewRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   
-  // Fetch saved presets when panel opens
+  // Fetch saved presets and live preset when panel opens
   useEffect(() => {
     if (!isOpen) return;
     
@@ -336,7 +340,20 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
       }
     };
     
+    const fetchLivePreset = async () => {
+      try {
+        const response = await fetch('/api/seals/tuner/live');
+        if (response.ok) {
+          const data = await response.json();
+          setLivePreset(data.livePreset || null);
+        }
+      } catch {
+        // Silently fail - live preset display is informational
+      }
+    };
+    
     fetchSavedPresets();
+    fetchLivePreset();
   }, [isOpen]);
   
   // Track modifications after loading a preset
@@ -744,7 +761,7 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
                   </p>
                 ) : (
                   <div className="space-y-1">
-                    {scanEvents.map((event, i) => (
+                    {scanEvents.map((event) => (
                       <div 
                         key={event.timestamp}
                         className={`flex items-center gap-2 text-xs px-2 py-1 rounded ${
@@ -762,6 +779,28 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
                         </span>
                       </div>
                     ))}
+                  </div>
+                )}
+              </div>
+              
+              {/* Current Live Preset */}
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <h4 className="text-xs font-semibold text-gray-500 mb-2">Production Seal Design</h4>
+                {livePreset ? (
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                      <span className="text-sm font-medium text-green-800">LIVE</span>
+                    </div>
+                    <p className="text-sm text-green-700 font-medium">{livePreset.name}</p>
+                    <p className="text-xs text-green-600">
+                      Base: {PRESET_DEFINITIONS[livePreset.basePreset as BasePresetId]?.meta.displayName || livePreset.basePreset}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <p className="text-sm text-amber-700">No live preset set</p>
+                    <p className="text-xs text-amber-600">Using default (Material Unified)</p>
                   </div>
                 )}
               </div>
@@ -1380,6 +1419,74 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
                       {isSaving ? 'Saving...' : 'Save'}
                     </button>
                   </div>
+                </div>
+                
+                {/* Divider */}
+                <div className="border-t border-gray-200 my-3" />
+                
+                {/* Set as Live (Admin only) */}
+                <div>
+                  <label className="text-xs font-medium text-gray-600 block mb-1">
+                    Set as production design
+                  </label>
+                  {loadedPreset ? (
+                    <div>
+                      <p className="text-xs text-gray-500 mb-2">
+                        Promote <strong>{loadedPreset.name}</strong> to production. 
+                        All new seals will use this design.
+                      </p>
+                      <button
+                        onClick={async () => {
+                          const preset = savedPresets.find(p => p.name === loadedPreset.name);
+                          if (!preset) return;
+                          
+                          setIsSettingLive(true);
+                          try {
+                            const response = await fetch(`/api/seals/tuner/presets/${preset.id}`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ action: 'setLive' }),
+                            });
+                            
+                            if (!response.ok) {
+                              const err = await response.json();
+                              throw new Error(err.error || 'Failed to set live');
+                            }
+                            
+                            // Update live preset state
+                            setLivePreset({
+                              id: preset.id,
+                              name: preset.name,
+                              basePreset: preset.basePreset,
+                            });
+                            
+                            alert(`"${preset.name}" is now the live production design!`);
+                          } catch (err) {
+                            alert(err instanceof Error ? err.message : 'Failed to set live preset');
+                          } finally {
+                            setIsSettingLive(false);
+                          }
+                        }}
+                        disabled={isSettingLive || (livePreset?.name === loadedPreset.name)}
+                        className={`w-full px-4 py-2 rounded text-sm font-medium disabled:opacity-50 ${
+                          livePreset?.name === loadedPreset.name
+                            ? 'bg-green-100 text-green-700 border border-green-300'
+                            : 'bg-purple-600 text-white hover:bg-purple-700'
+                        }`}
+                      >
+                        {isSettingLive 
+                          ? 'Setting...' 
+                          : livePreset?.name === loadedPreset.name
+                            ? '✓ Currently Live'
+                            : 'Set as Live Design'
+                        }
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-400 italic py-2">
+                      Load a saved experiment first, then you can set it as the live production design.
+                    </p>
+                  )}
                 </div>
               </div>
             </div>

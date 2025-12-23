@@ -2,12 +2,14 @@
  * Seal Batch Generation Service
  * 
  * Orchestrates batch generation of seals with sheet layout.
+ * Uses the live preset config for seal design.
  */
 
 import { createHash } from 'crypto';
 import { generateSealSvg } from './sealGeneratorService';
 import { composeSealSheet, calculateSealLayout, type SealSheetConfig } from './sealSheetService';
 import { SEAL_VERSION, MAX_TOKENS_PER_BATCH, MAX_PAGES_PER_REQUEST, SHEET_LAYOUT_VERSION } from '@/lib/constants/seal';
+import { getLiveSealConfig } from './sealPresetService';
 
 export interface SealBatchParams {
   tokens: string[];
@@ -72,12 +74,16 @@ export async function generateSealBatch(params: SealBatchParams): Promise<SealBa
   // Same token list should always produce same ordering
   const sortedTokens = [...tokens].sort();
   
-  // 3. Generate seal SVGs (one per token, deterministic order)
+  // 3. Get live seal config (the admin-configured design)
+  const sealConfig = await getLiveSealConfig();
+  
+  // 4. Generate seal SVGs (one per token, deterministic order)
+  // Uses the live preset config for visual design
   const sealSvgs = await Promise.all(
-    sortedTokens.map(token => generateSealSvg(token, SEAL_VERSION))
+    sortedTokens.map(token => generateSealSvg(token, SEAL_VERSION, sealConfig))
   );
   
-  // 4. Compose sheets
+  // 5. Compose sheets
   const sheetSvgs = composeSealSheet(sealSvgs, sheetConfig);
   const pageCount = sheetSvgs.length;
   

@@ -971,6 +971,9 @@ enum QRTokenStatus {
 
 enum PrintJobStatus {
   CREATED
+  GENERATED
+  CONFIRMED
+  CANCELLED
   PAPER_USED
   VOIDED
 }

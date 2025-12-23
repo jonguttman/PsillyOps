@@ -34,7 +34,8 @@ export interface SealSheetConfig {
   paperSize: PaperSize;
   customWidth?: number;  // inches (required if paperSize === 'custom')
   customHeight?: number; // inches (required if paperSize === 'custom')
-  sealDiameter: SealDiameterPreset;
+  /** Seal diameter in inches. Accepts SealDiameterPreset or production sizes (0.75, 1.0, 1.25, 1.5) */
+  sealDiameter: SealDiameterPreset | number;
   marginIn: number;
   decorations: SheetDecorations;
 }

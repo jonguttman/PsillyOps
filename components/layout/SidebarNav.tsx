@@ -24,7 +24,8 @@ import {
   Settings,
   LucideIcon,
   ArrowRightLeft,
-  BarChart3
+  BarChart3,
+  CircleDot
 } from 'lucide-react';
 
 interface NavItem {
@@ -124,6 +125,7 @@ export function SidebarNav({ userRole }: SidebarNavProps) {
     ...(userRole === 'ADMIN' ? [{ href: '/ops/security', label: 'Security', icon: Shield }] : []),
     ...(userRole === 'ADMIN' ? [{ href: '/ops/users', label: 'Users', icon: Users }] : []),
     ...(userRole === 'ADMIN' ? [{ href: '/ops/transparency', label: 'Transparency', icon: Shield }] : []),
+    ...(userRole === 'ADMIN' ? [{ href: '/ops/system/seals', label: 'Seal Config', icon: CircleDot }] : []),
     { href: '/ops/strains', label: 'Strains', icon: Dna },
     { href: '/ops/vendors', label: 'Vendors', icon: Building2 },
     { href: '/ops/help', label: 'Help', icon: HelpCircle },
