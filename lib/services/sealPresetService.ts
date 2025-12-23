@@ -44,7 +44,7 @@ export async function getLivePreset(): Promise<LivePresetInfo | null> {
     id: livePreset.id,
     name: livePreset.name,
     basePreset: livePreset.basePreset,
-    config: livePreset.config as SporeFieldConfig,
+    config: livePreset.config as unknown as SporeFieldConfig,
     updatedAt: livePreset.updatedAt,
   };
 }
