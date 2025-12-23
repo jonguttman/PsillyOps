@@ -54,7 +54,7 @@ export const QR_ERROR_CORRECTION_LEVEL = 'M' as const; // 15% recovery - balance
 
 // Seal QR URL prefix - uses environment variable or falls back to production URL
 // Set NEXT_PUBLIC_BASE_URL in .env for local development (e.g., http://localhost:3000)
-export const SEAL_QR_URL_PREFIX = `${process.env.NEXT_PUBLIC_BASE_URL || 'https://originalpsilly.com'}/seal/`;
+export const SEAL_QR_URL_PREFIX = `${process.env.NEXT_PUBLIC_BASE_URL || 'https://ops.originalpsilly.com'}/seal/`;
 
 // Batch Generation Limits
 export const MAX_TOKENS_PER_BATCH = 250;
