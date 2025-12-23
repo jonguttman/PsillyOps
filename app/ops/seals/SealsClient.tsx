@@ -347,14 +347,14 @@ export function SealsClient() {
 
       // Download the PDF
       const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
       a.download = `tripdar-seals-${jobId || selectedSheetId}-${new Date().toISOString().split('T')[0]}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
 
       setResult({
         success: true,
@@ -451,10 +451,10 @@ export function SealsClient() {
             />
             <div className="flex flex-col">
               <span className={`block text-sm font-medium ${mode === 'print-sheet' ? 'text-emerald-900' : 'text-gray-900'}`}>
-                Print Existing Seal Sheet
+                Download Existing Sheet PDF
               </span>
               <span className={`mt-1 text-sm ${mode === 'print-sheet' ? 'text-emerald-700' : 'text-gray-500'}`}>
-                Print seals from a sheet that already exists
+                Reprint a previously generated sheet with current layout
               </span>
             </div>
             {mode === 'print-sheet' && (
@@ -563,12 +563,12 @@ export function SealsClient() {
                       <span className="text-gray-500">Seals:</span>{' '}
                       <span className="font-medium">{selectedSheet.tokenCount}</span>
                     </div>
-                    <div>
+          <div>
                       <span className="text-gray-500">Version:</span>{' '}
                       <span className="font-medium">{selectedSheet.sealVersion}</span>
                     </div>
                   </div>
-                </div>
+          </div>
               )}
             </>
           )}
@@ -705,7 +705,7 @@ export function SealsClient() {
       <div className="bg-white shadow rounded-lg p-6">
         {mode === 'generate-sheet' ? (
           <>
-            <button
+          <button
               onClick={handleGenerateSheet}
               disabled={isProcessing || !isValid()}
               className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -744,19 +744,19 @@ export function SealsClient() {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
-                  Printing...
+                  Generating PDF...
                 </>
               ) : (
                 <>
                   <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
-                  Print Seal Sheet
+                  Download PDF
                 </>
               )}
             </button>
             <p className="mt-2 text-sm text-gray-500">
-              This will generate a PDF from existing tokens — no new tokens created
+              Uses existing tokens with current layout settings — no new tokens created
             </p>
           </>
         )}
