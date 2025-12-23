@@ -154,7 +154,40 @@ function isInFinderExclusionZone(
 }
 
 /**
+ * Inverse-rotate a point around a center
+ * Used to transform pixel coordinates back to unrotated QR space
+ */
+function inverseRotatePoint(
+  px: number, 
+  py: number, 
+  centerX: number, 
+  centerY: number, 
+  rotationDegrees: number
+): { x: number; y: number } {
+  if (rotationDegrees === 0) return { x: px, y: py };
+  
+  // Inverse rotation = negative angle
+  const angleRad = (-rotationDegrees * Math.PI) / 180;
+  const cos = Math.cos(angleRad);
+  const sin = Math.sin(angleRad);
+  
+  const dx = px - centerX;
+  const dy = py - centerY;
+  
+  return {
+    x: centerX + dx * cos - dy * sin,
+    y: centerY + dx * sin + dy * cos,
+  };
+}
+
+/**
  * Create module mask for module-aware presets
+ * 
+ * ROTATION SUPPORT:
+ * When the QR is rotated, the mask must also rotate to match.
+ * We achieve this by inverse-rotating each pixel position before
+ * checking if it falls within a QR module. This ensures the square
+ * module grid boundary rotates with the QR code.
  */
 function createModuleMask(
   qrTopLeftPx: { x: number; y: number },
@@ -162,7 +195,8 @@ function createModuleMask(
   moduleCount: number,
   modules: boolean[][],
   finderExclusions: { centerX: number; centerY: number; exclusionRadius: number }[],
-  edgeBufferFactor: number
+  edgeBufferFactor: number,
+  rotationDegrees: number = 0
 ): Uint8Array {
   const mask = new Uint8Array(PNG_SIZE * PNG_SIZE);
   
@@ -170,22 +204,32 @@ function createModuleMask(
   const qrRight = qrTopLeftPx.x + moduleCount * moduleSizePx;
   const qrBottom = qrTopLeftPx.y + moduleCount * moduleSizePx;
   
+  // QR center for rotation (center of the module grid)
+  const qrCenterX = qrTopLeftPx.x + (moduleCount * moduleSizePx) / 2;
+  const qrCenterY = qrTopLeftPx.y + (moduleCount * moduleSizePx) / 2;
+  
   for (let py = 0; py < PNG_SIZE; py++) {
     for (let px = 0; px < PNG_SIZE; px++) {
       const idx = py * PNG_SIZE + px;
       
+      // Finder exclusions use ROTATED positions (already handled in caller)
       if (isInFinderExclusionZone(px, py, finderExclusions)) {
         mask[idx] = ModuleMaskValue.FINDER_ZONE;
         continue;
       }
       
-      if (px < qrTopLeftPx.x || px >= qrRight || py < qrTopLeftPx.y || py >= qrBottom) {
+      // Inverse-rotate this pixel to check against unrotated QR grid
+      const unrotated = inverseRotatePoint(px, py, qrCenterX, qrCenterY, rotationDegrees);
+      const ux = unrotated.x;
+      const uy = unrotated.y;
+      
+      if (ux < qrTopLeftPx.x || ux >= qrRight || uy < qrTopLeftPx.y || uy >= qrBottom) {
         mask[idx] = ModuleMaskValue.OUTSIDE_QR;
         continue;
       }
       
-      const col = Math.floor((px - qrTopLeftPx.x) / moduleSizePx);
-      const row = Math.floor((py - qrTopLeftPx.y) / moduleSizePx);
+      const col = Math.floor((ux - qrTopLeftPx.x) / moduleSizePx);
+      const row = Math.floor((uy - qrTopLeftPx.y) / moduleSizePx);
       
       if (row < 0 || row >= moduleCount || col < 0 || col >= moduleCount) {
         mask[idx] = ModuleMaskValue.OUTSIDE_QR;
@@ -194,10 +238,10 @@ function createModuleMask(
       
       const moduleLeft = qrTopLeftPx.x + col * moduleSizePx;
       const moduleTop = qrTopLeftPx.y + row * moduleSizePx;
-      const distToLeft = px - moduleLeft;
-      const distToRight = moduleLeft + moduleSizePx - px;
-      const distToTop = py - moduleTop;
-      const distToBottom = moduleTop + moduleSizePx - py;
+      const distToLeft = ux - moduleLeft;
+      const distToRight = moduleLeft + moduleSizePx - ux;
+      const distToTop = uy - moduleTop;
+      const distToBottom = moduleTop + moduleSizePx - uy;
       const distToEdge = Math.min(distToLeft, distToRight, distToTop, distToBottom);
       
       if (distToEdge < edgeBuffer) {
@@ -923,6 +967,7 @@ export async function generateSporeFieldPng(
     const moduleSizePx = qrGeometry?.moduleSizePx ?? 10;
     
     // Create module mask for module-aware presets
+    // ROTATION: Pass qrRotation so the module mask rotates with the QR code
     const needsModuleMask = effectiveConfig.basePreset === 'module-masked' || 
                            effectiveConfig.basePreset === 'material-unified';
     const moduleMask = needsModuleMask && qrGeometry ? createModuleMask(
@@ -931,7 +976,8 @@ export async function generateSporeFieldPng(
       qrGeometry.moduleCount,
       qrGeometry.modules,
       finderExclusions,
-      effectiveConfig.edgeBufferFactor ?? 0.12
+      effectiveConfig.edgeBufferFactor ?? 0.12,
+      effectiveConfig.qrRotation ?? 0  // Pass rotation for mask alignment
     ) : null;
     
     // ============================================

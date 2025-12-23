@@ -49,6 +49,11 @@ export interface BaseLayerConfig {
     aboveQr: boolean;  // If true, render radar lines above the QR code
     strokeWidth: number; // Line thickness multiplier (1.0 = default)
   };
+  /** Inner radar background (the circular area inside the text ring) */
+  radarBackground?: {
+    color: string;    // Hex color for the background fill
+    opacity: number;  // 0-1, 0 = transparent (default)
+  };
 }
 
 /**
@@ -397,6 +402,10 @@ export const CONTROL_TOOLTIPS: Record<string, string> = {
     'Thickness of the text border/outline. Adds definition and improves legibility at small sizes.',
   'baseLayerConfig.text.strokeColor':
     'Color of the text border/outline. Usually contrasting with the text fill color.',
+  'baseLayerConfig.radarBackground.color':
+    'Background fill color for the inner radar area. Default is transparent. Use white/light colors to invert the seal appearance.',
+  'baseLayerConfig.radarBackground.opacity':
+    'Opacity of the radar background fill. 0 = transparent (default), 1 = solid fill. Creates a filled circle behind the spore field and QR.',
 };
 
 /**

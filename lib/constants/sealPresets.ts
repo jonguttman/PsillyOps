@@ -40,6 +40,10 @@ const DEFAULT_BASE_LAYER: BaseLayerConfig = {
     aboveQr: false,      // Render below QR by default
     strokeWidth: 1.0,    // Default thickness (multiplier)
   },
+  radarBackground: {
+    color: '#ffffff',
+    opacity: 0,          // Transparent by default
+  },
 };
 
 // ============================================

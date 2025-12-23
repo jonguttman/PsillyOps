@@ -84,15 +84,15 @@ function SliderControl({
   const displayValue = format ? format(value) : value.toFixed(2);
   
   return (
-    <div className={`mb-4 ${disabled ? 'opacity-50' : ''}`}>
-      <div className="flex justify-between items-center mb-1">
+    <div className={`mb-3 ${disabled ? 'opacity-50' : ''}`}>
+      <div className="flex justify-between items-center mb-0.5">
         <Tooltip text={tooltip}>
-          <label className="text-sm font-medium text-gray-700 cursor-help flex items-center gap-1">
+          <label className="text-xs font-medium text-gray-700 cursor-help flex items-center gap-1">
             {label}
             <span className="text-gray-400 text-xs">ⓘ</span>
           </label>
         </Tooltip>
-        <span className="text-sm text-gray-500">{displayValue}</span>
+        <span className="text-xs text-gray-500">{displayValue}</span>
       </div>
       <input
         type="range"
@@ -102,7 +102,7 @@ function SliderControl({
         value={value}
         onChange={(e) => onChange(parseFloat(e.target.value))}
         disabled={disabled}
-        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+        className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer"
       />
     </div>
   );
@@ -129,7 +129,9 @@ interface PalettePickerProps {
 
 function PalettePicker({ value, onChange }: PalettePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [position, setPosition] = useState({ top: 0, left: 0 });
   const pickerRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
   
   // Close on click outside
   useEffect(() => {
@@ -144,17 +146,42 @@ function PalettePicker({ value, onChange }: PalettePickerProps) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
   
+  const handleOpen = () => {
+    if (buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      // Position palette to the right of the button, or below if not enough space
+      const spaceRight = window.innerWidth - rect.right;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      
+      if (spaceRight > 200) {
+        // Position to the right
+        setPosition({ top: rect.top, left: rect.right + 4 });
+      } else if (spaceBelow > 150) {
+        // Position below
+        setPosition({ top: rect.bottom + 4, left: rect.left });
+      } else {
+        // Position above
+        setPosition({ top: rect.top - 150, left: rect.left });
+      }
+    }
+    setIsOpen(!isOpen);
+  };
+  
   return (
     <div className="relative" ref={pickerRef}>
       <button
+        ref={buttonRef}
         type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-10 h-8 rounded border-2 border-gray-300 cursor-pointer hover:border-gray-400 transition-colors"
+        onClick={handleOpen}
+        className="w-8 h-6 rounded border-2 border-gray-300 cursor-pointer hover:border-gray-400 transition-colors"
         style={{ backgroundColor: value }}
         title={value}
       />
       {isOpen && (
-        <div className="absolute top-10 left-0 z-50 p-2 bg-white rounded-lg shadow-xl border w-48">
+        <div 
+          className="fixed z-[9999] p-2 bg-white rounded-lg shadow-xl border"
+          style={{ top: position.top, left: position.left }}
+        >
           <div className="grid grid-cols-6 gap-1">
             {COLOR_PALETTE.map((color) => (
               <button
@@ -164,7 +191,7 @@ function PalettePicker({ value, onChange }: PalettePickerProps) {
                   onChange(color);
                   setIsOpen(false);
                 }}
-                className={`w-6 h-6 rounded border transition-transform hover:scale-110 ${
+                className={`w-5 h-5 rounded border transition-transform hover:scale-110 ${
                   value === color ? 'ring-2 ring-blue-500 ring-offset-1' : 'border-gray-200'
                 }`}
                 style={{ backgroundColor: color }}
@@ -194,9 +221,9 @@ function ColorControl({
   const tooltip = CONTROL_TOOLTIPS[tooltipKey] || `Adjust ${label}`;
   
   return (
-    <div className="mb-4">
+    <div className="mb-3">
       <Tooltip text={tooltip}>
-        <label className="text-sm font-medium text-gray-700 cursor-help flex items-center gap-1 mb-2">
+        <label className="text-xs font-medium text-gray-700 cursor-help flex items-center gap-1 mb-1">
           {label}
           <span className="text-gray-400 text-xs">ⓘ</span>
         </label>
@@ -210,9 +237,9 @@ function ColorControl({
           step={0.05}
           value={opacity}
           onChange={(e) => onOpacityChange(parseFloat(e.target.value))}
-          className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+          className="flex-1 h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer"
         />
-        <span className="text-xs text-gray-500 w-12">{(opacity * 100).toFixed(0)}%</span>
+        <span className="text-xs text-gray-500 w-10">{(opacity * 100).toFixed(0)}%</span>
       </div>
     </div>
   );
@@ -229,11 +256,11 @@ function CollapsibleSection({ title, defaultOpen = false, children }: Collapsibl
   const [isOpen, setIsOpen] = useState(defaultOpen);
   
   return (
-    <div className="mb-6 border rounded-lg overflow-hidden">
+    <div className="mb-4 border rounded-lg">
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-4 py-3 bg-gray-50 hover:bg-gray-100 flex items-center justify-between text-left transition-colors"
+        className="w-full px-3 py-2 bg-gray-50 hover:bg-gray-100 flex items-center justify-between text-left transition-colors rounded-t-lg"
       >
         <h3 className="text-sm font-semibold">{title}</h3>
         <svg 
@@ -246,7 +273,7 @@ function CollapsibleSection({ title, defaultOpen = false, children }: Collapsibl
         </svg>
       </button>
       {isOpen && (
-        <div className="p-4 border-t">
+        <div className="p-3 border-t overflow-visible">
           {children}
         </div>
       )}
@@ -405,16 +432,22 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
     field: 'color' | 'opacity' | 'strokeWidth' | 'strokeColor' | 'aboveQr', 
     value: string | number | boolean
   ): void => {
-    setConfig(prev => ({
-      ...prev,
-      baseLayerConfig: {
-        ...prev.baseLayerConfig,
-        [layer]: {
-          ...prev.baseLayerConfig[layer],
-          [field]: value,
+    setConfig(prev => {
+      // Handle optional radarBackground - initialize with defaults if undefined
+      const existingLayer = prev.baseLayerConfig[layer] ?? 
+        (layer === 'radarBackground' ? { color: '#ffffff', opacity: 0 } : {});
+      
+      return {
+        ...prev,
+        baseLayerConfig: {
+          ...prev.baseLayerConfig,
+          [layer]: {
+            ...existingLayer,
+            [field]: value,
+          },
         },
-      },
-    }));
+      };
+    });
   };
   
   // Save preset
@@ -513,8 +546,8 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
         onClick={onClose}
       />
       
-      {/* Panel */}
-      <div className="relative ml-auto w-full max-w-2xl bg-white shadow-xl flex flex-col h-full">
+      {/* Panel - wider to accommodate two-column controls */}
+      <div className="relative ml-auto w-full max-w-4xl bg-white shadow-xl flex flex-col h-full overflow-visible">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b">
           <h2 className="text-xl font-bold">Seal Tuner</h2>
@@ -530,8 +563,8 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
         
         {/* Content - flex container with sticky preview and scrollable controls */}
         <div className="flex-1 flex overflow-hidden">
-          {/* Preview Section - sticky/fixed on left */}
-          <div className="w-1/2 p-4 border-r bg-gray-50 overflow-y-auto">
+          {/* Preview Section - sticky/fixed on left (narrower) */}
+          <div className="w-[360px] min-w-[360px] p-4 border-r bg-gray-50 overflow-y-auto">
               <h3 className="text-sm font-semibold mb-2">Preview</h3>
               
               {/* Preview container */}
@@ -655,12 +688,12 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
               </div>
             </div>
             
-            {/* Controls Section */}
-            <div className="w-1/2 p-4 overflow-y-auto">
-              {/* Preset Buttons */}
-              <div className="mb-6">
+            {/* Controls Section - wider with two-column layout */}
+            <div className="flex-1 p-4 overflow-y-auto overflow-x-visible">
+              {/* Preset Buttons - full width at top */}
+              <div className="mb-4">
                 <h3 className="text-sm font-semibold mb-2">Base Preset</h3>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-4 gap-2">
                   {getPresetIds().map((id) => {
                     const preset = PRESET_DEFINITIONS[id];
                     return (
@@ -674,15 +707,68 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
                         }`}
                       >
                         <div className="font-medium text-sm">{preset.meta.displayName}</div>
-                        <div className="text-xs text-gray-500 truncate">{preset.meta.description}</div>
+                        <div className="text-xs text-gray-500 line-clamp-1">{preset.meta.description}</div>
                       </button>
                     );
                   })}
                 </div>
               </div>
               
-              {/* Core Controls (all presets) */}
-              <div className="mb-6">
+              {/* Two-column grid for control sections */}
+              <div className="grid grid-cols-2 gap-3">
+              
+              {/* LEFT COLUMN TOP: Spore Cloud Colors */}
+              <div className="mb-4">
+                <h3 className="text-sm font-semibold mb-2">Spore Cloud</h3>
+                
+                <div className="mb-3">
+                  <Tooltip text={CONTROL_TOOLTIPS.sporeColor || 'Primary color of spore particles'}>
+                    <label className="text-xs font-medium text-gray-600 cursor-help flex items-center gap-1 mb-1">
+                      Primary Color
+                      <span className="text-gray-400 text-xs">ⓘ</span>
+                    </label>
+                  </Tooltip>
+                  <PalettePicker 
+                    value={config.sporeColor ?? '#000000'} 
+                    onChange={(c) => updateConfig({ sporeColor: c })} 
+                  />
+                </div>
+                
+                <div className="mb-3">
+                  <Tooltip text={CONTROL_TOOLTIPS.sporeColorSecondary || 'Secondary color for gradient effect'}>
+                    <label className="text-xs font-medium text-gray-600 cursor-help flex items-center gap-1 mb-1">
+                      Secondary Color
+                      <span className="text-gray-400 text-xs">ⓘ</span>
+                    </label>
+                  </Tooltip>
+                  <div className="flex gap-2 items-center">
+                    <PalettePicker 
+                      value={config.sporeColorSecondary ?? '#666666'} 
+                      onChange={(c) => updateConfig({ sporeColorSecondary: c })} 
+                    />
+                    <button
+                      onClick={() => updateConfig({ sporeColorSecondary: undefined })}
+                      className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 border rounded"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+                
+                <SliderControl
+                  label="Cloud Opacity"
+                  tooltipKey="sporeCloudOpacity"
+                  value={config.sporeCloudOpacity ?? 1.0}
+                  min={0.1}
+                  max={1.0}
+                  step={0.05}
+                  onChange={(v) => updateConfig({ sporeCloudOpacity: v })}
+                  format={(v) => `${(v * 100).toFixed(0)}%`}
+                />
+              </div>
+              
+              {/* RIGHT COLUMN TOP: Core Density */}
+              <div className="mb-4">
                 <h3 className="text-sm font-semibold mb-2">Core Density</h3>
                 
                 <SliderControl
@@ -718,7 +804,7 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
               </div>
               
               {/* Zone Controls */}
-              <div className="mb-6">
+              <div className="mb-4">
                 <h3 className="text-sm font-semibold mb-2">Zone Boundaries</h3>
                 
                 <SliderControl
@@ -743,6 +829,35 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
                   format={(v) => `${(v * 100).toFixed(0)}%`}
                 />
               </div>
+              
+              {/* Particle Sizing (material-unified only) */}
+              {enabledControls.sporeRadiusMinFactor && (
+                <div className="mb-4">
+                  <h3 className="text-sm font-semibold mb-2">Particle Sizing</h3>
+                  
+                  <SliderControl
+                    label="Min Spore Radius"
+                    tooltipKey="sporeRadiusMinFactor"
+                    value={config.sporeRadiusMinFactor ?? 0.55}
+                    min={0.3}
+                    max={0.8}
+                    step={0.05}
+                    onChange={(v) => updateConfig({ sporeRadiusMinFactor: v })}
+                    format={(v) => `${(v * 100).toFixed(0)}%`}
+                  />
+                  
+                  <SliderControl
+                    label="Max Spore Radius"
+                    tooltipKey="sporeRadiusMaxFactor"
+                    value={config.sporeRadiusMaxFactor ?? 0.85}
+                    min={0.5}
+                    max={1.2}
+                    step={0.05}
+                    onChange={(v) => updateConfig({ sporeRadiusMaxFactor: v })}
+                    format={(v) => `${(v * 100).toFixed(0)}%`}
+                  />
+                </div>
+              )}
               
               {/* QR Settings - Collapsible */}
               <CollapsibleSection title="QR Settings" defaultOpen={true}>
@@ -843,6 +958,20 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
                   }}
                 />
                 
+                {/* Module Contrast Boost */}
+                {enabledControls.moduleContrastBoost && (
+                  <SliderControl
+                    label="Contrast Boost"
+                    tooltipKey="moduleContrastBoost"
+                    value={config.moduleContrastBoost ?? 1.0}
+                    min={1.0}
+                    max={1.5}
+                    step={0.05}
+                    onChange={(v) => updateConfig({ moduleContrastBoost: v })}
+                    format={(v) => `${(v * 100).toFixed(0)}%`}
+                  />
+                )}
+                
                 {/* Quiet Core - scan safety controls */}
                 {enabledControls.quietCoreFactor && (
                   <>
@@ -877,58 +1006,128 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
                 )}
               </CollapsibleSection>
               
-              {/* Spore Cloud Appearance - Collapsible */}
-              <CollapsibleSection title="Spore Cloud" defaultOpen={false}>
-                <div className="mb-4">
-                  <Tooltip text={CONTROL_TOOLTIPS.sporeColor || 'Primary color of spore particles'}>
-                    <label className="text-sm font-medium text-gray-700 cursor-help flex items-center gap-1 mb-2">
-                      Primary Color
-                      <span className="text-gray-400 text-xs">ⓘ</span>
-                    </label>
-                  </Tooltip>
-                  <PalettePicker 
-                    value={config.sporeColor ?? '#000000'} 
-                    onChange={(c) => updateConfig({ sporeColor: c })} 
+              {/* Base Layer Controls - Collapsible */}
+              <CollapsibleSection title="Base Layer" defaultOpen={false}>
+                <ColorControl
+                  label="Outer Ring"
+                  tooltipKey="baseLayerConfig.outerRing.color"
+                  color={config.baseLayerConfig.outerRing.color}
+                  opacity={config.baseLayerConfig.outerRing.opacity}
+                  onColorChange={(c) => updateBaseLayer('outerRing', 'color', c)}
+                  onOpacityChange={(o) => updateBaseLayer('outerRing', 'opacity', o)}
+                />
+                
+                <ColorControl
+                  label="Text Ring"
+                  tooltipKey="baseLayerConfig.textRing.color"
+                  color={config.baseLayerConfig.textRing.color}
+                  opacity={config.baseLayerConfig.textRing.opacity}
+                  onColorChange={(c) => updateBaseLayer('textRing', 'color', c)}
+                  onOpacityChange={(o) => updateBaseLayer('textRing', 'opacity', o)}
+                />
+                
+                <ColorControl
+                  label="Text"
+                  tooltipKey="baseLayerConfig.text.color"
+                  color={config.baseLayerConfig.text.color}
+                  opacity={config.baseLayerConfig.text.opacity}
+                  onColorChange={(c) => updateBaseLayer('text', 'color', c)}
+                  onOpacityChange={(o) => updateBaseLayer('text', 'opacity', o)}
+                />
+                
+                {/* Text Border Controls */}
+                <div className="mb-3 pl-3 border-l-2 border-gray-200">
+                  <div className="flex justify-between items-center mb-0.5">
+                    <label className="text-xs font-medium text-gray-600">Text Border</label>
+                    <span className="text-xs text-gray-500">
+                      {config.baseLayerConfig.text.strokeWidth === 0 
+                        ? 'None' 
+                        : `${config.baseLayerConfig.text.strokeWidth.toFixed(1)}px`}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={3}
+                    step={0.1}
+                    value={config.baseLayerConfig.text.strokeWidth}
+                    onChange={(e) => updateBaseLayer('text', 'strokeWidth', parseFloat(e.target.value))}
+                    className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                  />
+                  {config.baseLayerConfig.text.strokeWidth > 0 && (
+                    <div className="flex items-center gap-2 mt-1">
+                      <label className="text-xs text-gray-500">Border Color:</label>
+                      <PalettePicker
+                        value={config.baseLayerConfig.text.strokeColor}
+                        onChange={(c) => updateBaseLayer('text', 'strokeColor', c)}
+                      />
+                    </div>
+                  )}
+                </div>
+                
+                <ColorControl
+                  label="Radar Lines"
+                  tooltipKey="baseLayerConfig.radarLines.color"
+                  color={config.baseLayerConfig.radarLines.color}
+                  opacity={config.baseLayerConfig.radarLines.opacity}
+                  onColorChange={(c) => updateBaseLayer('radarLines', 'color', c)}
+                  onOpacityChange={(o) => updateBaseLayer('radarLines', 'opacity', o)}
+                />
+                
+                {/* Radar Lines Stroke Width */}
+                <div className="mb-3 pl-3 border-l-2 border-gray-200">
+                  <div className="flex justify-between items-center mb-0.5">
+                    <Tooltip text={CONTROL_TOOLTIPS['baseLayerConfig.radarLines.strokeWidth'] || 'Line thickness multiplier'}>
+                      <label className="text-xs font-medium text-gray-600 cursor-help flex items-center gap-1">
+                        Line Thickness
+                        <span className="text-gray-400 text-xs">ⓘ</span>
+                      </label>
+                    </Tooltip>
+                    <span className="text-xs text-gray-500">
+                      {((config.baseLayerConfig.radarLines.strokeWidth ?? 1.0) * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0.1}
+                    max={5}
+                    step={0.1}
+                    value={config.baseLayerConfig.radarLines.strokeWidth ?? 1.0}
+                    onChange={(e) => updateBaseLayer('radarLines', 'strokeWidth', parseFloat(e.target.value))}
+                    className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer"
                   />
                 </div>
                 
-                <div className="mb-4">
-                  <Tooltip text={CONTROL_TOOLTIPS.sporeColorSecondary || 'Secondary color for gradient effect'}>
-                    <label className="text-sm font-medium text-gray-700 cursor-help flex items-center gap-1 mb-2">
-                      Secondary Color (Gradient)
+                {/* Radar Lines Above QR Toggle */}
+                <div className="mb-3 pl-3 border-l-2 border-gray-200">
+                  <Tooltip text={CONTROL_TOOLTIPS['baseLayerConfig.radarLines.aboveQr'] || 'Render radar lines above the QR code'}>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={config.baseLayerConfig.radarLines.aboveQr ?? false}
+                        onChange={(e) => updateBaseLayer('radarLines', 'aboveQr', e.target.checked)}
+                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-xs font-medium text-gray-600">Render Above QR</span>
                       <span className="text-gray-400 text-xs">ⓘ</span>
                     </label>
                   </Tooltip>
-                  <div className="flex gap-2 items-center">
-                    <PalettePicker 
-                      value={config.sporeColorSecondary ?? '#666666'} 
-                      onChange={(c) => updateConfig({ sporeColorSecondary: c })} 
-                    />
-                    <button
-                      onClick={() => updateConfig({ sporeColorSecondary: undefined })}
-                      className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 border rounded"
-                    >
-                      Clear
-                    </button>
-                    {config.sporeColorSecondary && (
-                      <span className="text-xs text-green-600">✓ Active</span>
-                    )}
-                  </div>
-                  <p className="text-xs text-gray-400 mt-1">
-                    When set, spores blend from primary (center) to secondary (edge)
-                  </p>
                 </div>
                 
-                <SliderControl
-                  label="Cloud Opacity"
-                  tooltipKey="sporeCloudOpacity"
-                  value={config.sporeCloudOpacity ?? 1.0}
-                  min={0.1}
-                  max={1.0}
-                  step={0.05}
-                  onChange={(v) => updateConfig({ sporeCloudOpacity: v })}
-                  format={(v) => `${(v * 100).toFixed(0)}%`}
-                />
+                {/* Radar Background - for inverting the inner circle color */}
+                <div className="mt-3 pt-3 border-t border-gray-200">
+                  <ColorControl
+                    label="Radar Background"
+                    tooltipKey="baseLayerConfig.radarBackground.color"
+                    color={config.baseLayerConfig.radarBackground?.color ?? '#ffffff'}
+                    opacity={config.baseLayerConfig.radarBackground?.opacity ?? 0}
+                    onColorChange={(c) => updateBaseLayer('radarBackground', 'color', c)}
+                    onOpacityChange={(o) => updateBaseLayer('radarBackground', 'opacity', o)}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Fill the inner radar area with a solid color. Set opacity above 0 to enable.
+                  </p>
+                </div>
               </CollapsibleSection>
               
               {/* Module Masking (module-masked, material-unified) */}
@@ -970,164 +1169,11 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
                 </div>
               )}
               
-              {/* Particle Sizing (material-unified only) */}
-              {enabledControls.sporeRadiusMinFactor && (
-                <div className="mb-6">
-                  <h3 className="text-sm font-semibold mb-2">Particle Sizing</h3>
-                  
-                  <SliderControl
-                    label="Min Spore Radius"
-                    tooltipKey="sporeRadiusMinFactor"
-                    value={config.sporeRadiusMinFactor ?? 0.55}
-                    min={0.3}
-                    max={0.8}
-                    step={0.05}
-                    onChange={(v) => updateConfig({ sporeRadiusMinFactor: v })}
-                    format={(v) => `${(v * 100).toFixed(0)}%`}
-                  />
-                  
-                  <SliderControl
-                    label="Max Spore Radius"
-                    tooltipKey="sporeRadiusMaxFactor"
-                    value={config.sporeRadiusMaxFactor ?? 0.85}
-                    min={0.5}
-                    max={1.2}
-                    step={0.05}
-                    onChange={(v) => updateConfig({ sporeRadiusMaxFactor: v })}
-                    format={(v) => `${(v * 100).toFixed(0)}%`}
-                  />
-                </div>
-              )}
+              </div>
+              {/* End of two-column grid */}
               
-              {/* Contrast Boost */}
-              {enabledControls.moduleContrastBoost && (
-                <div className="mb-6">
-                  <h3 className="text-sm font-semibold mb-2">QR Contrast</h3>
-                  
-                  <SliderControl
-                    label="Module Contrast Boost"
-                    tooltipKey="moduleContrastBoost"
-                    value={config.moduleContrastBoost ?? 1.0}
-                    min={1.0}
-                    max={1.5}
-                    step={0.05}
-                    onChange={(v) => updateConfig({ moduleContrastBoost: v })}
-                    format={(v) => `${(v * 100).toFixed(0)}%`}
-                  />
-                </div>
-              )}
-              
-              {/* Base Layer Controls - Collapsible */}
-              <CollapsibleSection title="Base Layer" defaultOpen={false}>
-                <ColorControl
-                  label="Outer Ring"
-                  tooltipKey="baseLayerConfig.outerRing.color"
-                  color={config.baseLayerConfig.outerRing.color}
-                  opacity={config.baseLayerConfig.outerRing.opacity}
-                  onColorChange={(c) => updateBaseLayer('outerRing', 'color', c)}
-                  onOpacityChange={(o) => updateBaseLayer('outerRing', 'opacity', o)}
-                />
-                
-                <ColorControl
-                  label="Text Ring"
-                  tooltipKey="baseLayerConfig.textRing.color"
-                  color={config.baseLayerConfig.textRing.color}
-                  opacity={config.baseLayerConfig.textRing.opacity}
-                  onColorChange={(c) => updateBaseLayer('textRing', 'color', c)}
-                  onOpacityChange={(o) => updateBaseLayer('textRing', 'opacity', o)}
-                />
-                
-                <ColorControl
-                  label="Text"
-                  tooltipKey="baseLayerConfig.text.color"
-                  color={config.baseLayerConfig.text.color}
-                  opacity={config.baseLayerConfig.text.opacity}
-                  onColorChange={(c) => updateBaseLayer('text', 'color', c)}
-                  onOpacityChange={(o) => updateBaseLayer('text', 'opacity', o)}
-                />
-                
-                {/* Text Border Controls */}
-                <div className="mb-4 pl-4 border-l-2 border-gray-200">
-                  <div className="flex justify-between items-center mb-1">
-                    <label className="text-sm font-medium text-gray-600">Text Border</label>
-                    <span className="text-sm text-gray-500">
-                      {config.baseLayerConfig.text.strokeWidth === 0 
-                        ? 'None' 
-                        : `${config.baseLayerConfig.text.strokeWidth.toFixed(1)}px`}
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={3}
-                    step={0.1}
-                    value={config.baseLayerConfig.text.strokeWidth}
-                    onChange={(e) => updateBaseLayer('text', 'strokeWidth', parseFloat(e.target.value))}
-                    className="w-full"
-                  />
-                  {config.baseLayerConfig.text.strokeWidth > 0 && (
-                    <div className="flex items-center gap-2 mt-2">
-                      <label className="text-xs text-gray-500">Border Color:</label>
-                      <PalettePicker
-                        value={config.baseLayerConfig.text.strokeColor}
-                        onChange={(c) => updateBaseLayer('text', 'strokeColor', c)}
-                      />
-                    </div>
-                  )}
-                </div>
-                
-                <ColorControl
-                  label="Radar Lines"
-                  tooltipKey="baseLayerConfig.radarLines.color"
-                  color={config.baseLayerConfig.radarLines.color}
-                  opacity={config.baseLayerConfig.radarLines.opacity}
-                  onColorChange={(c) => updateBaseLayer('radarLines', 'color', c)}
-                  onOpacityChange={(o) => updateBaseLayer('radarLines', 'opacity', o)}
-                />
-                
-                {/* Radar Lines Stroke Width */}
-                <div className="mb-4 pl-4 border-l-2 border-gray-200">
-                  <div className="flex justify-between items-center mb-1">
-                    <Tooltip text={CONTROL_TOOLTIPS['baseLayerConfig.radarLines.strokeWidth'] || 'Line thickness multiplier'}>
-                      <label className="text-sm font-medium text-gray-600 cursor-help flex items-center gap-1">
-                        Line Thickness
-                        <span className="text-gray-400 text-xs">ⓘ</span>
-                      </label>
-                    </Tooltip>
-                    <span className="text-sm text-gray-500">
-                      {((config.baseLayerConfig.radarLines.strokeWidth ?? 1.0) * 100).toFixed(0)}%
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0.1}
-                    max={5}
-                    step={0.1}
-                    value={config.baseLayerConfig.radarLines.strokeWidth ?? 1.0}
-                    onChange={(e) => updateBaseLayer('radarLines', 'strokeWidth', parseFloat(e.target.value))}
-                    className="w-full"
-                  />
-                </div>
-                
-                {/* Radar Lines Above QR Toggle */}
-                <div className="mb-4 pl-4 border-l-2 border-gray-200">
-                  <Tooltip text={CONTROL_TOOLTIPS['baseLayerConfig.radarLines.aboveQr'] || 'Render radar lines above the QR code'}>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={config.baseLayerConfig.radarLines.aboveQr ?? false}
-                        onChange={(e) => updateBaseLayer('radarLines', 'aboveQr', e.target.checked)}
-                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      <span className="text-sm font-medium text-gray-600">Render Above QR</span>
-                      <span className="text-gray-400 text-xs">ⓘ</span>
-                    </label>
-                  </Tooltip>
-                </div>
-              </CollapsibleSection>
-              
-              {/* Export Calibration PDF */}
-              <div className="mb-6 p-4 bg-green-50 rounded border border-green-200">
+              {/* Export Calibration PDF - full width below grid */}
+              <div className="mt-4 p-4 bg-green-50 rounded border border-green-200">
                 <h3 className="text-sm font-semibold mb-2 text-green-800">Export Calibration PDF</h3>
                 <p className="text-xs text-green-600 mb-3">
                   Export print-ready PDF with multiple sizes for testing scan reliability.

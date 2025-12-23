@@ -121,17 +121,28 @@ function injectSealElements(
   baseSvg: string, 
   qrCloudSvg: string, 
   sporeFieldElement: string,
-  radarLinesAboveQr: boolean = false
+  radarLinesAboveQr: boolean = false,
+  radarBackground?: { color: string; opacity: number }
 ): string {
-  // First, inject the spore field as the background layer
-  // Insert it right after the opening <g id="Layer_1"> to be behind everything
+  // First, inject the radar background (if enabled) and spore field as the background layers
+  // Insert right after the opening <g id="Layer_1"> to be behind everything
   const layer1Pattern = /(<g id="Layer_1">)/;
   
   if (!layer1Pattern.test(baseSvg)) {
     throw new Error('Base SVG missing Layer_1 group');
   }
   
-  let result = baseSvg.replace(layer1Pattern, `$1\n    ${sporeFieldElement}`);
+  // Generate radar background circle if opacity > 0
+  // The inner radar area extends to r=320 (outermost radar circle in base SVG)
+  // This creates a filled circle behind the spore field and QR
+  let radarBackgroundElement = '';
+  if (radarBackground && radarBackground.opacity > 0) {
+    radarBackgroundElement = `
+    <!-- Radar background fill -->
+    <circle cx="500" cy="500" r="320" fill="${radarBackground.color}" opacity="${radarBackground.opacity.toFixed(2)}"/>`;
+  }
+  
+  let result = baseSvg.replace(layer1Pattern, `$1${radarBackgroundElement}\n    ${sporeFieldElement}`);
   
   // If radarLinesAboveQr is true, extract radar elements and move them after QR
   let extractedRadarLines = '';
@@ -266,9 +277,10 @@ export async function generateSealSvg(
   }
   
   // 7. Inject all elements into base SVG
-  // Pass radarLinesAboveQr option from config
+  // Pass radarLinesAboveQr option and radar background from config
   const radarLinesAboveQr = config?.baseLayerConfig?.radarLines?.aboveQr ?? false;
-  let finalSvg = injectSealElements(processedSvg, qrResult.svg, sporeFieldElement, radarLinesAboveQr);
+  const radarBackground = config?.baseLayerConfig?.radarBackground;
+  let finalSvg = injectSealElements(processedSvg, qrResult.svg, sporeFieldElement, radarLinesAboveQr, radarBackground);
   
   // 8. Add metadata comment with sealVersion, spore field, and QR rendering info
   // CRITICAL: qrRenderMode is explicitly SEAL - this is enforced by the renderer
