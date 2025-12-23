@@ -12,7 +12,8 @@ import type {
   PresetDefinition, 
   SporeFieldConfig, 
   PresetControlMeta,
-  BaseLayerConfig 
+  BaseLayerConfig,
+  RadarSweepConfig
 } from '@/lib/types/sealConfig';
 
 /**
@@ -44,6 +45,17 @@ const DEFAULT_BASE_LAYER: BaseLayerConfig = {
     color: '#ffffff',
     opacity: 0,          // Transparent by default
   },
+};
+
+/**
+ * Default radar sweep configuration
+ * Disabled by default for safety - QR scanning takes priority
+ */
+const DEFAULT_RADAR_SWEEP: RadarSweepConfig = {
+  enabled: false,
+  color: '#FFFFFF',
+  opacity: 0.85,
+  rotation: 0,
 };
 
 // ============================================
@@ -113,6 +125,7 @@ const DOT_ZONES_DEFAULTS: SporeFieldConfig = {
   sporeRadiusMaxFactor: 0.55,
   
   baseLayerConfig: { ...DEFAULT_BASE_LAYER },
+  radarSweep: { ...DEFAULT_RADAR_SWEEP },
 };
 
 // ============================================
@@ -184,6 +197,7 @@ const ZONE_SYSTEM_DEFAULTS: SporeFieldConfig = {
   sporeRadiusMaxFactor: 0.65,
   
   baseLayerConfig: { ...DEFAULT_BASE_LAYER },
+  radarSweep: { ...DEFAULT_RADAR_SWEEP },
 };
 
 // ============================================
@@ -257,6 +271,7 @@ const MODULE_MASKED_DEFAULTS: SporeFieldConfig = {
   sporeRadiusMaxFactor: 0.70,
   
   baseLayerConfig: { ...DEFAULT_BASE_LAYER },
+  radarSweep: { ...DEFAULT_RADAR_SWEEP },
 };
 
 // ============================================
@@ -330,6 +345,7 @@ const MATERIAL_UNIFIED_DEFAULTS: SporeFieldConfig = {
   moduleContrastBoost: 1.0,
   
   baseLayerConfig: { ...DEFAULT_BASE_LAYER },
+  radarSweep: { ...DEFAULT_RADAR_SWEEP },
 };
 
 // ============================================

@@ -720,6 +720,29 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
                         stroke="blue" 
                         strokeWidth="2"
                       />
+                      {/* Radar Sweep Safe Zone (cyan) - only shown when sweep is enabled */}
+                      {config.radarSweep?.enabled && (
+                        <>
+                          {/* Inner sweep boundary - sweep cannot enter inside this */}
+                          <circle 
+                            cx="500" cy="500" 
+                            r={230 * (config.qrScale ?? 1) * 1.05 + 6}
+                            fill="none" 
+                            stroke="cyan" 
+                            strokeWidth="2"
+                            strokeDasharray="8 4"
+                          />
+                          {/* Outer sweep boundary - sweep cannot extend beyond this */}
+                          <circle 
+                            cx="500" cy="500" 
+                            r={320 * 0.95 - 6}
+                            fill="none" 
+                            stroke="cyan" 
+                            strokeWidth="2"
+                            strokeDasharray="8 4"
+                          />
+                        </>
+                      )}
                     </svg>
                   </div>
                 )}
@@ -1120,6 +1143,99 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
                     )}
                   </>
                 )}
+              </CollapsibleSection>
+              
+              {/* Radar Sweep Overlay - Collapsible */}
+              <CollapsibleSection title="Radar Sweep Overlay" defaultOpen={false}>
+                {/* Enable toggle */}
+                <div className="flex items-center justify-between mb-3">
+                  <Tooltip text={CONTROL_TOOLTIPS['radarSweep.enabled'] || 'Enable decorative radar sweep overlay'}>
+                    <label className="text-xs font-medium text-gray-700 cursor-help flex items-center gap-1">
+                      Enable Overlay
+                      <span className="text-gray-400 text-xs">ⓘ</span>
+                    </label>
+                  </Tooltip>
+                  <button
+                    onClick={() => updateConfig({ 
+                      radarSweep: { 
+                        ...(config.radarSweep || { enabled: false, color: '#FFFFFF', opacity: 0.85, rotation: 0 }),
+                        enabled: !(config.radarSweep?.enabled ?? false)
+                      }
+                    })}
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                      config.radarSweep?.enabled ? 'bg-blue-600' : 'bg-gray-300'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                        config.radarSweep?.enabled ? 'translate-x-4' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+                
+                {/* Sweep controls - only enabled when sweep is on */}
+                <div className={config.radarSweep?.enabled ? '' : 'opacity-50 pointer-events-none'}>
+                  {/* Color */}
+                  <div className="mb-3">
+                    <div className="flex justify-between items-center mb-0.5">
+                      <Tooltip text={CONTROL_TOOLTIPS['radarSweep.color'] || 'Color of the radar sweep graphic'}>
+                        <label className="text-xs font-medium text-gray-600 cursor-help flex items-center gap-1">
+                          Color
+                          <span className="text-gray-400 text-xs">ⓘ</span>
+                        </label>
+                      </Tooltip>
+                      <span className="text-xs text-gray-500 font-mono">
+                        {config.radarSweep?.color || '#FFFFFF'}
+                      </span>
+                    </div>
+                    <input
+                      type="color"
+                      value={config.radarSweep?.color || '#FFFFFF'}
+                      onChange={(e) => updateConfig({
+                        radarSweep: {
+                          ...(config.radarSweep || { enabled: false, color: '#FFFFFF', opacity: 0.85, rotation: 0 }),
+                          color: e.target.value
+                        }
+                      })}
+                      className="w-full h-7 rounded border border-gray-300 cursor-pointer"
+                    />
+                  </div>
+                  
+                  {/* Opacity */}
+                  <SliderControl
+                    label="Opacity"
+                    tooltipKey="radarSweep.opacity"
+                    value={config.radarSweep?.opacity ?? 0.85}
+                    min={0.1}
+                    max={1.0}
+                    step={0.05}
+                    onChange={(v) => updateConfig({
+                      radarSweep: {
+                        ...(config.radarSweep || { enabled: false, color: '#FFFFFF', opacity: 0.85, rotation: 0 }),
+                        opacity: v
+                      }
+                    })}
+                    format={(v) => `${(v * 100).toFixed(0)}%`}
+                  />
+                  
+                  {/* Rotation */}
+                  <SliderControl
+                    label="Rotation"
+                    tooltipKey="radarSweep.rotation"
+                    value={config.radarSweep?.rotation ?? 0}
+                    min={0}
+                    max={360}
+                    step={5}
+                    onChange={(v) => updateConfig({
+                      radarSweep: {
+                        ...(config.radarSweep || { enabled: false, color: '#FFFFFF', opacity: 0.85, rotation: 0 }),
+                        rotation: v
+                      }
+                    })}
+                    format={(v) => `${v}°`}
+                  />
+                </div>
               </CollapsibleSection>
               
               {/* Base Layer Controls - Collapsible */}

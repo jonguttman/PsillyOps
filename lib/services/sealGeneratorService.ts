@@ -58,7 +58,11 @@ import {
   getQrRenderingMetadata,
 } from './sealQrRenderer';
 import { QrRenderMode } from '@/lib/types/qr';
-import type { SporeFieldConfig } from '@/lib/types/sealConfig';
+import type { SporeFieldConfig, RadarSweepConfig } from '@/lib/types/sealConfig';
+import { 
+  generateSweepClipPath, 
+  generateRadarSweepOverlay 
+} from './sealRadarSweepService';
 
 /**
  * Compute deterministic hash for QR cloud generation
@@ -122,7 +126,8 @@ function injectSealElements(
   qrCloudSvg: string, 
   sporeFieldElement: string,
   radarLinesAboveQr: boolean = false,
-  radarBackground?: { color: string; opacity: number }
+  radarBackground?: { color: string; opacity: number },
+  radarSweep?: RadarSweepConfig
 ): string {
   // First, inject the radar background (if enabled) and spore field as the background layers
   // Insert right after the opening <g id="Layer_1"> to be behind everything
@@ -174,16 +179,38 @@ function injectSealElements(
   // Replace the placeholder group with generated QR cloud
   const placeholderPattern = /<g id="qr-cloud-placeholder">[\s\S]*?<\/g>/;
   
+  // Generate radar sweep overlay if enabled
+  let radarSweepElement = '';
+  if (radarSweep?.enabled) {
+    radarSweepElement = generateRadarSweepOverlay(
+      radarSweep.color,
+      radarSweep.opacity,
+      radarSweep.rotation
+    );
+  }
+  
   // If we have extracted radar lines, add them after the QR
+  // Radar sweep goes after QR but before extracted radar lines (if any)
   const qrCloudReplacement = `<g id="qr-cloud-generated">
       ${qrCloudSvg}
-    </g>${extractedRadarLines}`;
+    </g>${radarSweepElement}${extractedRadarLines}`;
   
   if (!placeholderPattern.test(result)) {
     throw new Error('Base SVG missing qr-cloud-placeholder group');
   }
   
   result = result.replace(placeholderPattern, qrCloudReplacement);
+  
+  // Inject radar sweep clip path into defs section if sweep is enabled
+  if (radarSweep?.enabled) {
+    const clipPathDef = generateSweepClipPath();
+    // Insert clip path after opening <defs> tag or after <style> if no defs
+    if (result.includes('<defs>')) {
+      result = result.replace('<defs>', `<defs>\n    ${clipPathDef}`);
+    } else if (result.includes('</style>')) {
+      result = result.replace('</style>', `</style>\n  <defs>\n    ${clipPathDef}\n  </defs>`);
+    }
+  }
   
   // Remove the microfiber-field placeholder (replaced by raster spore field)
   const microfiberPattern = /<g id="microfiber-field">[\s\S]*?<\/g>/;
@@ -277,10 +304,11 @@ export async function generateSealSvg(
   }
   
   // 7. Inject all elements into base SVG
-  // Pass radarLinesAboveQr option and radar background from config
+  // Pass radarLinesAboveQr option, radar background, and radar sweep from config
   const radarLinesAboveQr = config?.baseLayerConfig?.radarLines?.aboveQr ?? false;
   const radarBackground = config?.baseLayerConfig?.radarBackground;
-  let finalSvg = injectSealElements(processedSvg, qrResult.svg, sporeFieldElement, radarLinesAboveQr, radarBackground);
+  const radarSweep = config?.radarSweep;
+  let finalSvg = injectSealElements(processedSvg, qrResult.svg, sporeFieldElement, radarLinesAboveQr, radarBackground, radarSweep);
   
   // 8. Add metadata comment with sealVersion, spore field, and QR rendering info
   // CRITICAL: qrRenderMode is explicitly SEAL - this is enforced by the renderer
@@ -300,6 +328,14 @@ export async function generateSealSvg(
   }`
     : `sporeField: "none"`;
   
+  const radarSweepInfo = config?.radarSweep?.enabled
+    ? `radarSweep: {
+    enabled: true,
+    opacity: ${config.radarSweep.opacity},
+    rotation: ${config.radarSweep.rotation}
+  }`
+    : `radarSweep: "disabled"`;
+
   const configInfo = config 
     ? `config: {
     basePreset: "${config.basePreset}",
@@ -323,6 +359,7 @@ export async function generateSealSvg(
     finderStyle: "${qrMetadata.finderStyle}"
   }
   ${sporeInfo}
+  ${radarSweepInfo}
   ${configInfo}
 -->`;
   

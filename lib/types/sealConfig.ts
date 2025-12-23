@@ -57,6 +57,29 @@ export interface BaseLayerConfig {
 }
 
 /**
+ * Radar Sweep Overlay Configuration
+ * 
+ * RadarSweep overlay is decorative only.
+ * It must NEVER:
+ * - Alter QR geometry
+ * - Mask QR modules
+ * - Affect scan reliability
+ * 
+ * The overlay is clipped to a safe annular region that never
+ * enters the QR quiet zone or extends beyond the inner radar.
+ */
+export interface RadarSweepConfig {
+  /** Whether the radar sweep overlay is enabled */
+  enabled: boolean;
+  /** Hex color for the sweep graphic (applies to both fill and stroke) */
+  color: string;
+  /** Opacity of the sweep overlay (0-1) */
+  opacity: number;
+  /** Rotation angle in degrees (0-360) */
+  rotation: number;
+}
+
+/**
  * Complete spore field configuration
  * 
  * Different presets enable different subsets of these controls.
@@ -271,6 +294,16 @@ export interface SporeFieldConfig {
    * Allows adjusting outer ring, text, and radar lines
    */
   baseLayerConfig: BaseLayerConfig;
+
+  // ============================================
+  // RADAR SWEEP OVERLAY (all presets)
+  // ============================================
+  
+  /**
+   * Optional decorative radar sweep overlay
+   * Rendered above spores but clipped to avoid QR interference
+   */
+  radarSweep?: RadarSweepConfig;
 }
 
 /**
@@ -406,6 +439,16 @@ export const CONTROL_TOOLTIPS: Record<string, string> = {
     'Background fill color for the inner radar area. Default is transparent. Use white/light colors to invert the seal appearance.',
   'baseLayerConfig.radarBackground.opacity':
     'Opacity of the radar background fill. 0 = transparent (default), 1 = solid fill. Creates a filled circle behind the spore field and QR.',
+  
+  // Radar sweep overlay
+  'radarSweep.enabled':
+    'Enable the decorative radar sweep overlay. This is purely visual and never affects QR scanning - it is clipped to a safe zone.',
+  'radarSweep.color':
+    'Color of the radar sweep graphic. Applied to both fill and stroke elements.',
+  'radarSweep.opacity':
+    'Opacity of the radar sweep overlay. Lower values create a more subtle effect.',
+  'radarSweep.rotation':
+    'Rotation angle of the radar sweep in degrees. Allows positioning the sweep for aesthetic balance.',
 };
 
 /**

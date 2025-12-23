@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000">
+  <defs>
+    <style>
+      .ink{fill:#fff}
+      .line{stroke:#fff;stroke-width:18;stroke-linecap:round;stroke-linejoin:round;fill:none}
+      .thin{stroke:#fff;stroke-width:10;stroke-linecap:round;stroke-linejoin:round;fill:none}
+      .ghost{stroke:#fff;stroke-width:6;stroke-linecap:round;stroke-linejoin:round;fill:none;opacity:.55}
+    </style>
+
+    <!-- Soft tribal “cut” notch -->
+    <path id="notch" d="M0,-28 C14,-18 14,18 0,28 C-14,18 -14,-18 0,-28 Z" />
+
+    <!-- Small capsule marker -->
+    <path id="capsule" d="M-22,0 a22,22 0 0 1 44,0 a22,22 0 0 1 -44,0 Z" />
+
+    <!-- A subtle arrow-head / spear -->
+    <path id="spear" d="M0,-34 L18,0 L0,34 L-18,0 Z" />
+  </defs>
+
+  <!-- Group: Sweep Symbol Set -->
+  <g id="tripdar-sweep-symbol" transform="translate(500 500)">
+
+    <!-- Optional faint orbit arc (can remove if you want cleaner) -->
+    <path class="ghost" d="M-260,-40 C-120,-220 120,-220 260,-40" />
+    <path class="ghost" d="M-300,80 C-130,270 130,270 300,80" />
+
+    <!-- Primary arms -->
+    <g id="arms">
+      <!-- Arm 1 (to ~3 o'clock) -->
+      <path class="line" d="M0 0 L340 0" />
+      <use href="#spear" class="ink" transform="translate(340 0) rotate(90)"/>
+
+      <!-- Arm 2 (to ~6:30) -->
+      <path class="line" d="M0 0 L0 360" />
+      <use href="#spear" class="ink" transform="translate(0 360) rotate(180)"/>
+    </g>
+
+    <!-- Center node -->
+    <g id="center">
+      <circle class="ink" cx="0" cy="0" r="44"/>
+      <circle class="thin" cx="0" cy="0" r="70"/>
+      <!-- little “tribal” notches on the ring -->
+      <use href="#notch" class="ink" transform="translate(0 -70) rotate(0) scale(.55)"/>
+      <use href="#notch" class="ink" transform="translate(70 0) rotate(90) scale(.55)"/>
+      <use href="#notch" class="ink" transform="translate(0 70) rotate(180) scale(.55)"/>
+      <use href="#notch" class="ink" transform="translate(-70 0) rotate(270) scale(.55)"/>
+    </g>
+
+    <!-- Secondary “comet” dots (top-left cluster) -->
+    <g id="comet" transform="rotate(-35)">
+      <circle class="ink" cx="-260" cy="-120" r="28"/>
+      <circle class="ink" cx="-190" cy="-82" r="18"/>
+      <circle class="ink" cx="-135" cy="-52" r="14"/>
+      <circle class="ink" cx="-88"  cy="-24" r="10"/>
+      <circle class="ink" cx="-52"  cy="-8"  r="8"/>
+      <path class="thin" d="M-240 -120 L-120 -52" opacity=".75"/>
+    </g>
+
+    <!-- Three “eye” rings (finder-style but tribal) -->
+    <g id="eyes">
+      <!-- Right eye -->
+      <g transform="translate(330 0)">
+        <circle class="thin" cx="0" cy="0" r="70"/>
+        <circle class="thin" cx="0" cy="0" r="44"/>
+        <circle class="ink" cx="0" cy="0" r="16"/>
+        <use href="#notch" class="ink" transform="translate(0 -70) scale(.45)"/>
+      </g>
+
+      <!-- Bottom eye -->
+      <g transform="translate(0 360)">
+        <circle class="thin" cx="0" cy="0" r="70"/>
+        <circle class="thin" cx="0" cy="0" r="44"/>
+        <circle class="ink" cx="0" cy="0" r="16"/>
+        <use href="#notch" class="ink" transform="translate(0 -70) scale(.45)"/>
+      </g>
+
+      <!-- Left eye (smaller, asymmetry for sophistication) -->
+      <g transform="translate(-290 60)">
+        <circle class="thin" cx="0" cy="0" r="58"/>
+        <circle class="thin" cx="0" cy="0" r="36"/>
+        <circle class="ink" cx="0" cy="0" r="14"/>
+        <use href="#notch" class="ink" transform="translate(0 -58) scale(.42)"/>
+      </g>
+    </g>
+
+    <!-- Micro “capsule” marks along the arms -->
+    <g id="arm-marks" opacity=".9">
+      <!-- along right arm -->
+      <use href="#capsule" class="ink" transform="translate(120 0) scale(.45)"/>
+      <use href="#capsule" class="ink" transform="translate(220 0) scale(.32)"/>
+      <!-- along bottom arm -->
+      <use href="#capsule" class="ink" transform="translate(0 140) rotate(90) scale(.40)"/>
+      <use href="#capsule" class="ink" transform="translate(0 250) rotate(90) scale(.28)"/>
+    </g>
+
+    <!-- Small accent ticks -->
+    <g id="ticks" opacity=".7">
+      <path class="thin" d="M-110 210 l-34 18" />
+      <path class="thin" d="M-90 240 l-28 28" />
+      <path class="thin" d="M210 -90 l28 -28" />
+    </g>
+  </g>
+</svg>
