@@ -281,6 +281,15 @@ function CollapsibleSection({ title, defaultOpen = false, children }: Collapsibl
   );
 }
 
+// Saved preset type for the dropdown
+interface SavedPreset {
+  id: string;
+  name: string;
+  basePreset: string;
+  config: SporeFieldConfig;
+  createdAt: string;
+}
+
 export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps) {
   const [selectedPreset, setSelectedPreset] = useState<BasePresetId>('material-unified');
   const [config, setConfig] = useState<SporeFieldConfig>(() => 
@@ -298,9 +307,64 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
   const [exportPaper, setExportPaper] = useState<'letter' | 'a4'>('letter');
   const [scanEvents, setScanEvents] = useState<{ timestamp: string; success: boolean }[]>([]);
   
+  // Saved experiments state
+  const [savedPresets, setSavedPresets] = useState<SavedPreset[]>([]);
+  const [savedPresetsError, setSavedPresetsError] = useState<string | null>(null);
+  const [loadedPreset, setLoadedPreset] = useState<{ name: string; basePreset: string } | null>(null);
+  const [hasModifiedSinceLoad, setHasModifiedSinceLoad] = useState(false);
+  
   const previewRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+  
+  // Fetch saved presets when panel opens
+  useEffect(() => {
+    if (!isOpen) return;
+    
+    const fetchSavedPresets = async () => {
+      try {
+        setSavedPresetsError(null);
+        const response = await fetch('/api/seals/tuner/presets');
+        if (!response.ok) {
+          throw new Error('Failed to load');
+        }
+        const data = await response.json();
+        setSavedPresets(data.presets || []);
+      } catch {
+        setSavedPresetsError("Saved experiments couldn't be loaded.");
+        setSavedPresets([]);
+      }
+    };
+    
+    fetchSavedPresets();
+  }, [isOpen]);
+  
+  // Track modifications after loading a preset
+  const configRef = useRef<SporeFieldConfig | null>(null);
+  useEffect(() => {
+    if (loadedPreset && configRef.current) {
+      // Compare current config to loaded config (simple JSON comparison)
+      const currentJson = JSON.stringify(config);
+      const loadedJson = JSON.stringify(configRef.current);
+      if (currentJson !== loadedJson) {
+        setHasModifiedSinceLoad(true);
+      }
+    }
+  }, [config, loadedPreset]);
+  
+  // Handle loading a saved experiment
+  const handleLoadSavedPreset = (preset: SavedPreset) => {
+    setConfig(preset.config);
+    configRef.current = preset.config;
+    
+    // Only update basePreset if it differs
+    if (preset.basePreset !== selectedPreset) {
+      setSelectedPreset(preset.basePreset as BasePresetId);
+    }
+    
+    setLoadedPreset({ name: preset.name, basePreset: preset.basePreset });
+    setHasModifiedSinceLoad(false);
+  };
   
   // Fetch preview when config changes (debounced)
   // Returns a blob URL for use with <img> tag (cleaner than dangerouslySetInnerHTML)
@@ -419,6 +483,10 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
   const handlePresetChange = (presetId: BasePresetId) => {
     setSelectedPreset(presetId);
     setConfig(clonePresetDefaults(presetId));
+    // Clear loaded preset status when switching base presets
+    setLoadedPreset(null);
+    setHasModifiedSinceLoad(false);
+    configRef.current = null;
   };
   
   // Update config helper
@@ -474,7 +542,18 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
         throw new Error(err.error || 'Failed to save preset');
       }
       
-      alert('Preset saved successfully!');
+      // Refresh the saved presets list
+      const refreshResponse = await fetch('/api/seals/tuner/presets');
+      if (refreshResponse.ok) {
+        const data = await refreshResponse.json();
+        setSavedPresets(data.presets || []);
+      }
+      
+      // Update loaded preset status to reflect the just-saved preset
+      setLoadedPreset({ name: presetName.trim(), basePreset: selectedPreset });
+      configRef.current = config;
+      setHasModifiedSinceLoad(false);
+      
       setPresetName('');
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to save preset');
@@ -830,34 +909,32 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
                 />
               </div>
               
-              {/* Particle Sizing (material-unified only) */}
-              {enabledControls.sporeRadiusMinFactor && (
-                <div className="mb-4">
-                  <h3 className="text-sm font-semibold mb-2">Particle Sizing</h3>
-                  
-                  <SliderControl
-                    label="Min Spore Radius"
-                    tooltipKey="sporeRadiusMinFactor"
-                    value={config.sporeRadiusMinFactor ?? 0.55}
-                    min={0.3}
-                    max={0.8}
-                    step={0.05}
-                    onChange={(v) => updateConfig({ sporeRadiusMinFactor: v })}
-                    format={(v) => `${(v * 100).toFixed(0)}%`}
-                  />
-                  
-                  <SliderControl
-                    label="Max Spore Radius"
-                    tooltipKey="sporeRadiusMaxFactor"
-                    value={config.sporeRadiusMaxFactor ?? 0.85}
-                    min={0.5}
-                    max={1.2}
-                    step={0.05}
-                    onChange={(v) => updateConfig({ sporeRadiusMaxFactor: v })}
-                    format={(v) => `${(v * 100).toFixed(0)}%`}
-                  />
-                </div>
-              )}
+              {/* Particle Sizing */}
+              <div className="mb-4">
+                <h3 className="text-sm font-semibold mb-2">Particle Sizing</h3>
+                
+                <SliderControl
+                  label="Min Spore Radius"
+                  tooltipKey="sporeRadiusMinFactor"
+                  value={config.sporeRadiusMinFactor ?? 0.55}
+                  min={0.2}
+                  max={0.8}
+                  step={0.05}
+                  onChange={(v) => updateConfig({ sporeRadiusMinFactor: v })}
+                  format={(v) => `${(v * 100).toFixed(0)}%`}
+                />
+                
+                <SliderControl
+                  label="Max Spore Radius"
+                  tooltipKey="sporeRadiusMaxFactor"
+                  value={config.sporeRadiusMaxFactor ?? 0.85}
+                  min={0.3}
+                  max={1.2}
+                  step={0.05}
+                  onChange={(v) => updateConfig({ sporeRadiusMaxFactor: v })}
+                  format={(v) => `${(v * 100).toFixed(0)}%`}
+                />
+              </div>
               
               {/* QR Settings - Collapsible */}
               <CollapsibleSection title="QR Settings" defaultOpen={true}>
@@ -1217,24 +1294,92 @@ export default function SealTunerPanel({ isOpen, onClose }: SealTunerPanelProps)
                 </button>
               </div>
               
-              {/* Save Preset */}
-              <div className="mb-6 p-4 bg-gray-50 rounded">
-                <h3 className="text-sm font-semibold mb-2">Save as Preset</h3>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={presetName}
-                    onChange={(e) => setPresetName(e.target.value)}
-                    placeholder="Preset name..."
-                    className="flex-1 px-3 py-2 border rounded text-sm"
-                  />
-                  <button
-                    onClick={handleSavePreset}
-                    disabled={isSaving || !presetName.trim()}
-                    className="px-4 py-2 bg-blue-600 text-white rounded text-sm font-medium disabled:opacity-50"
-                  >
-                    {isSaving ? 'Saving...' : 'Save'}
-                  </button>
+              {/* Lab Notebook Section - Load & Save together */}
+              <div className="mb-6 p-4 bg-gray-50 rounded border border-gray-200">
+                <h3 className="text-sm font-semibold mb-3 text-gray-700">Lab Notebook</h3>
+                
+                {/* Load Saved Experiment */}
+                <div className="mb-4">
+                  <label className="text-xs font-medium text-gray-600 block mb-1">
+                    Load saved experiment
+                  </label>
+                  
+                  {savedPresetsError ? (
+                    <p className="text-xs text-amber-600 italic py-2">
+                      {savedPresetsError}
+                    </p>
+                  ) : savedPresets.length === 0 ? (
+                    <div className="py-2">
+                      <select
+                        disabled
+                        className="w-full px-3 py-2 border rounded text-sm bg-gray-100 text-gray-400 cursor-not-allowed"
+                      >
+                        <option>No saved experiments yet</option>
+                      </select>
+                      <p className="text-xs text-gray-400 mt-1 italic">
+                        Save your current settings to reuse them later.
+                      </p>
+                    </div>
+                  ) : (
+                    <select
+                      value=""
+                      onChange={(e) => {
+                        const preset = savedPresets.find(p => p.id === e.target.value);
+                        if (preset) handleLoadSavedPreset(preset);
+                      }}
+                      className="w-full px-3 py-2 border rounded text-sm bg-white hover:border-gray-400 cursor-pointer"
+                    >
+                      <option value="">Select an experiment...</option>
+                      {savedPresets.map((preset) => {
+                        // Find the display name for the base preset
+                        const basePresetName = PRESET_DEFINITIONS[preset.basePreset as BasePresetId]?.meta.displayName || preset.basePreset;
+                        return (
+                          <option key={preset.id} value={preset.id}>
+                            {preset.name} ({basePresetName})
+                          </option>
+                        );
+                      })}
+                    </select>
+                  )}
+                  
+                  {/* Loaded preset status line */}
+                  {loadedPreset && (
+                    <p className="text-xs text-gray-500 mt-2">
+                      <span className="text-gray-400">Loaded experiment:</span>{' '}
+                      <span className="font-medium text-gray-600">
+                        {PRESET_DEFINITIONS[loadedPreset.basePreset as BasePresetId]?.meta.displayName || loadedPreset.basePreset} – {loadedPreset.name}
+                      </span>
+                      {hasModifiedSinceLoad && (
+                        <span className="text-amber-500 ml-1">(modified)</span>
+                      )}
+                    </p>
+                  )}
+                </div>
+                
+                {/* Divider */}
+                <div className="border-t border-gray-200 my-3" />
+                
+                {/* Save New Experiment */}
+                <div>
+                  <label className="text-xs font-medium text-gray-600 block mb-1">
+                    Save current settings
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={presetName}
+                      onChange={(e) => setPresetName(e.target.value)}
+                      placeholder="Experiment name..."
+                      className="flex-1 px-3 py-2 border rounded text-sm"
+                    />
+                    <button
+                      onClick={handleSavePreset}
+                      disabled={isSaving || !presetName.trim()}
+                      className="px-4 py-2 bg-blue-600 text-white rounded text-sm font-medium disabled:opacity-50 hover:bg-blue-700"
+                    >
+                      {isSaving ? 'Saving...' : 'Save'}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

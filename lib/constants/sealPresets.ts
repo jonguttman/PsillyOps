@@ -60,8 +60,8 @@ const DOT_ZONES_META: PresetControlMeta = {
     lightModuleDensity: false,
     lightModuleMaxOpacity: false,
     finderExclusionMultiplier: false,
-    sporeRadiusMinFactor: false,
-    sporeRadiusMaxFactor: false,
+    sporeRadiusMinFactor: true,
+    sporeRadiusMaxFactor: true,
     moduleContrastBoost: false,
     qrScale: true,
     qrRotation: true,
@@ -106,9 +106,11 @@ const DOT_ZONES_DEFAULTS: SporeFieldConfig = {
   lightModuleDensity: undefined,
   lightModuleMaxOpacity: undefined,
   finderExclusionMultiplier: undefined,
-  sporeRadiusMinFactor: undefined,
-  sporeRadiusMaxFactor: undefined,
   moduleContrastBoost: undefined,
+  
+  // Particle sizing - smaller particles for this preset
+  sporeRadiusMinFactor: 0.35,
+  sporeRadiusMaxFactor: 0.55,
   
   baseLayerConfig: { ...DEFAULT_BASE_LAYER },
 };
@@ -127,8 +129,8 @@ const ZONE_SYSTEM_META: PresetControlMeta = {
     lightModuleDensity: false,
     lightModuleMaxOpacity: false,
     finderExclusionMultiplier: true,
-    sporeRadiusMinFactor: false,
-    sporeRadiusMaxFactor: false,
+    sporeRadiusMinFactor: true,
+    sporeRadiusMaxFactor: true,
     moduleContrastBoost: false,
     qrScale: true,
     qrRotation: true,
@@ -175,9 +177,11 @@ const ZONE_SYSTEM_DEFAULTS: SporeFieldConfig = {
   edgeBufferFactor: undefined,
   lightModuleDensity: undefined,
   lightModuleMaxOpacity: undefined,
-  sporeRadiusMinFactor: undefined,
-  sporeRadiusMaxFactor: undefined,
   moduleContrastBoost: undefined,
+  
+  // Particle sizing - medium particles
+  sporeRadiusMinFactor: 0.40,
+  sporeRadiusMaxFactor: 0.65,
   
   baseLayerConfig: { ...DEFAULT_BASE_LAYER },
 };
@@ -196,8 +200,8 @@ const MODULE_MASKED_META: PresetControlMeta = {
     lightModuleDensity: true,
     lightModuleMaxOpacity: true,
     finderExclusionMultiplier: true,
-    sporeRadiusMinFactor: false,
-    sporeRadiusMaxFactor: false,
+    sporeRadiusMinFactor: true,
+    sporeRadiusMaxFactor: true,
     moduleContrastBoost: true,
     qrScale: true,
     qrRotation: true,
@@ -248,9 +252,9 @@ const MODULE_MASKED_DEFAULTS: SporeFieldConfig = {
   // Contrast boost
   moduleContrastBoost: 1.0,
   
-  // Not used in this preset
-  sporeRadiusMinFactor: undefined,
-  sporeRadiusMaxFactor: undefined,
+  // Particle sizing - medium-small particles
+  sporeRadiusMinFactor: 0.45,
+  sporeRadiusMaxFactor: 0.70,
   
   baseLayerConfig: { ...DEFAULT_BASE_LAYER },
 };
