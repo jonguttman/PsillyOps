@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Multi-Label Product Support
+- **Multiple Label Associations**: Products can now have multiple label templates associated simultaneously (e.g., jar label + box label)
+- **QR/Barcode Carrier Selection**: When 2+ labels are associated, designate which label carries the QR code and which carries the barcode
+- **Smart Element Filtering**: Non-carrier labels automatically exclude QR/barcode elements during rendering to prevent duplication
+- **Per-Template Print Settings**: Each product-label association saves its own print settings (quantity, margins, width, height)
+- **Icon-Based Print Interface**: Each associated label displays an inline print icon for direct access
+- **Edit Mode Toggle**: Clean default view shows only associated labels; click "Edit" to manage associations and carrier selections
+- **Auto-Preview**: Print modals now automatically render label preview when opened
+- **Carrier Status Badges**: Visual indicators show which labels carry QR codes and barcodes
+
+### Label Template Management Enhancements
+- **Template Renaming**: Edit template names inline without creating new versions
+- **Template Archiving**: Archive templates that have no active versions to keep the template list clean
+- **Archive Safety**: System prevents archiving templates with active versions or active associations
+
+### Bug Fixes
+- **Prisma Client Browser Error**: Fixed server-side code leaking into client bundle by refactoring `PredictionEditor` component
+- **Print Settings Persistence**: Resolved issue where label width and height were not saving correctly per template
+
 ### TripDAR Seal Generator — Low-Friction Mode
 - **Generate New Seals Mode**: New default mode in `/ops/seals` that creates QR tokens and seals in one step
 - **Mode Toggle**: UI now offers "Generate New Seals" (default) vs "Use Existing Tokens" modes

@@ -1,9 +1,44 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { VibeWeights, getActivePredictionsByMode } from '@/lib/services/predictionService';
-import { ExperienceMode, PredictionProfile } from '@prisma/client';
-import { getVibeLabels } from '@/lib/services/vibeVocabularyService';
+// NOTE: Only import TYPES from @prisma/client (these are tree-shaken and safe for client)
+import type { ExperienceMode, PredictionProfile } from '@prisma/client';
+
+// Define VibeWeights locally to avoid importing from predictionService (which imports Prisma)
+export interface VibeWeights {
+  transcend: number;
+  energize: number;
+  create: number;
+  transform: number;
+  connect: number;
+}
+
+// Define VibeLabels locally to avoid importing from vibeVocabularyService (which imports Prisma)
+interface VibeLabels {
+  transcend: string;
+  energize: string;
+  create: string;
+  transform: string;
+  connect: string;
+}
+
+// Default vocabulary mappings (duplicated from vibeVocabularyService for client-side use)
+const DEFAULT_VOCABULARY: Record<ExperienceMode, VibeLabels> = {
+  MICRO: {
+    transcend: 'Subtle uplift',
+    energize: 'Clarity / energy',
+    create: 'Creative flow',
+    transform: 'Perspective shift',
+    connect: 'Emotional openness'
+  },
+  MACRO: {
+    transcend: 'Mystical / beyond-self',
+    energize: 'Stimulation / intensity',
+    create: 'Visionary / imagination',
+    transform: 'Breakthrough / dissolution',
+    connect: 'Connection / unity'
+  }
+};
 
 interface PredictionEditorProps {
   productId: string;
@@ -19,10 +54,8 @@ export function PredictionEditor({
   onSave 
 }: PredictionEditorProps) {
   const [currentMode, setCurrentMode] = useState<ExperienceMode>(defaultMode);
-  const [vibeLabels, setVibeLabels] = useState<Record<ExperienceMode, Awaited<ReturnType<typeof getVibeLabels>> | null>>({
-    MICRO: null,
-    MACRO: null
-  });
+  // Use default vocabulary directly (no async fetch needed for defaults)
+  const vibeLabels = DEFAULT_VOCABULARY;
   const [weights, setWeights] = useState<VibeWeights>(() => {
     const profile = initialPredictions[currentMode];
     return {
@@ -37,26 +70,6 @@ export function PredictionEditor({
   const [sum, setSum] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [loadingLabels, setLoadingLabels] = useState(true);
-
-  // Load vibe labels for both modes
-  useEffect(() => {
-    const loadLabels = async () => {
-      setLoadingLabels(true);
-      try {
-        const [micro, macro] = await Promise.all([
-          getVibeLabels('MICRO'),
-          getVibeLabels('MACRO')
-        ]);
-        setVibeLabels({ MICRO: micro, MACRO: macro });
-      } catch (err) {
-        console.error('Failed to load vibe labels:', err);
-      } finally {
-        setLoadingLabels(false);
-      }
-    };
-    loadLabels();
-  }, []);
 
   // Update weights when mode changes
   useEffect(() => {
@@ -156,37 +169,33 @@ export function PredictionEditor({
         )}
       </div>
       
-      {loadingLabels ? (
-        <div className="text-sm text-gray-500">Loading labels...</div>
-      ) : (
-        <div className="space-y-4">
-          <VibeSlider
-            label={currentLabels?.transcend || 'Transcend'}
-            value={weights.transcend}
-            onChange={(value) => updateWeight('transcend', value)}
-          />
-          <VibeSlider
-            label={currentLabels?.energize || 'Energize'}
-            value={weights.energize}
-            onChange={(value) => updateWeight('energize', value)}
-          />
-          <VibeSlider
-            label={currentLabels?.create || 'Create'}
-            value={weights.create}
-            onChange={(value) => updateWeight('create', value)}
-          />
-          <VibeSlider
-            label={currentLabels?.transform || 'Transform'}
-            value={weights.transform}
-            onChange={(value) => updateWeight('transform', value)}
-          />
-          <VibeSlider
-            label={currentLabels?.connect || 'Connect'}
-            value={weights.connect}
-            onChange={(value) => updateWeight('connect', value)}
-          />
-        </div>
-      )}
+      <div className="space-y-4">
+        <VibeSlider
+          label={currentLabels.transcend}
+          value={weights.transcend}
+          onChange={(value) => updateWeight('transcend', value)}
+        />
+        <VibeSlider
+          label={currentLabels.energize}
+          value={weights.energize}
+          onChange={(value) => updateWeight('energize', value)}
+        />
+        <VibeSlider
+          label={currentLabels.create}
+          value={weights.create}
+          onChange={(value) => updateWeight('create', value)}
+        />
+        <VibeSlider
+          label={currentLabels.transform}
+          value={weights.transform}
+          onChange={(value) => updateWeight('transform', value)}
+        />
+        <VibeSlider
+          label={currentLabels.connect}
+          value={weights.connect}
+          onChange={(value) => updateWeight('connect', value)}
+        />
+      </div>
       
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">

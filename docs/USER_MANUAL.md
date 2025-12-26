@@ -3648,10 +3648,97 @@ This allows raster-backed or simpler SVGs to work without manual placeholder ins
 - Click **Activate** next to any version to make it the default
 - Click **Deactivate** to remove the default (no version will be active)
 
+#### Template Management
+
+**Renaming Templates:**
+1. Click the edit icon (✎) next to the template name
+2. Enter the new name
+3. Click **Save** or press Enter
+
+**Archiving Templates:**
+- Templates with no active versions can be archived
+- Click **Archive** to remove the template from the active list
+- Archived templates cannot be recovered (permanent deletion)
+- System prevents archiving templates that have active versions or are associated with products
+
+### Multi-Label Product Support
+
+Products can now have multiple label templates associated simultaneously (e.g., jar label, box label, insert card).
+
+#### Managing Label Associations (Product Settings)
+
+**Default View:**
+- Shows only the labels currently associated with the product
+- Each label displays a printer icon (🖨️) for quick printing
+- Visual badges indicate QR and Barcode carrier status when multiple labels are associated
+
+**Edit Mode:**
+1. Click **Edit** in the top-right of the Associated Labels section
+2. Check/uncheck templates to associate or remove them
+3. Only templates with active versions can be associated
+4. Click **Done** to save and return to default view
+
+**Adding Your First Label:**
+- If no labels are associated, click **Add labels** to enter edit mode
+- Select one or more templates from the list
+- Associated labels will immediately appear with print icons
+
+#### QR Code and Barcode Carriers
+
+When a product has multiple labels associated:
+
+**Single Label:**
+- Automatically includes both QR code and barcode
+
+**Multiple Labels (2+):**
+- Designate one label as the **QR carrier** (displays QR code)
+- Designate one label as the **Barcode carrier** (displays barcode)
+- Other labels automatically exclude these elements during rendering
+- Use the radio buttons in edit mode to assign carriers
+
+**Why This Matters:**
+- Prevents duplicate QR codes or barcodes across multiple labels
+- Ensures each product has exactly one scannable QR and one scannable barcode
+- Non-carrier labels automatically filter out these elements at render time
+
+**Carrier Status Indicators:**
+- In default view, carrier labels show colored badges (QR = purple, Barcode = green)
+- In edit mode, use radio buttons to change carrier assignments
+
+#### Per-Template Print Settings
+
+Each product-label association saves its own print settings:
+
+**Saved Per Template:**
+- Print quantity
+- Top/bottom margins
+- Label width
+- Label height
+
+**How It Works:**
+1. Open the print modal for any associated label
+2. Adjust settings (quantity, margins, dimensions)
+3. Click **Save Settings** to store them for this product-label combination
+4. Next time you print this label for this product, your settings are restored
+
+**Fallback Behavior:**
+- If no per-template settings exist, uses product-level defaults
+- If no product-level defaults exist, uses system defaults (1 label, 0.5in margin)
+
 ### Printing Labels
 
 Labels can be printed from any detail page (Batch, Product, or Inventory):
 
+**For Products (Multiple Label Support):**
+1. Navigate to the product detail page
+2. Scroll to the **Label Settings** section
+3. Click the printer icon (🖨️) next to any associated label
+4. Print modal opens with automatic preview
+5. Adjust settings (quantity, margins) as needed
+6. Click **Save Settings** to store settings for this label
+7. Click **Print** or **Download PDF**
+
+**For Batches and Inventory:**
 1. Navigate to the item detail page
 2. Click **Print Labels** button
 3. Select a label version (active version is pre-selected)

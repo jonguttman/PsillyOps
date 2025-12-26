@@ -92,6 +92,7 @@ model Product {
   productionTemplates     ProductionTemplate[]
   predictionProfiles      PredictionProfile[]
   experienceReviews       ExperienceReview[]
+  labels                  ProductLabel[]
 
   @@index([sku])
   @@index([upc])
@@ -703,8 +704,29 @@ model LabelTemplate {
   createdAt  DateTime               @default(now())
   updatedAt  DateTime               @updatedAt
   versions   LabelTemplateVersion[]
+  products   ProductLabel[]
 
   @@index([entityType])
+}
+
+model ProductLabel {
+  id                    String        @id @default(cuid())
+  productId             String
+  templateId            String
+  isQrCarrier           Boolean       @default(false)
+  isBarcodeCarrier      Boolean       @default(false)
+  createdAt             DateTime      @default(now())
+  // Per-template print settings
+  labelPrintQuantity    Int?
+  sheetMarginTopBottomIn Float?
+  labelWidthIn          Float?
+  labelHeightIn         Float?
+
+  product    Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  template   LabelTemplate @relation(fields: [templateId], references: [id])
+
+  @@unique([productId, templateId])
+  @@index([templateId])
 }
 
 model LabelTemplateVersion {

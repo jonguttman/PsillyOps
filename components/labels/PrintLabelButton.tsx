@@ -35,6 +35,15 @@ interface ProductPrintSettings {
   sheetMarginTopBottomIn: number | null;
 }
 
+// Per-template print settings from ProductLabel association
+interface TemplatePrintSettings {
+  templateId: string;
+  labelPrintQuantity: number | null;
+  sheetMarginTopBottomIn: number | null;
+  labelWidthIn: number | null;
+  labelHeightIn: number | null;
+}
+
 interface PrintLabelButtonProps {
   entityType: 'PRODUCT' | 'BATCH' | 'INVENTORY';
   entityId: string;
@@ -42,6 +51,8 @@ interface PrintLabelButtonProps {
   buttonText?: string;
   className?: string;
   selectedVersionId?: string;
+  iconOnly?: boolean;
+  autoPreview?: boolean;
 }
 
 // Default print settings
@@ -55,19 +66,26 @@ export default function PrintLabelButton({
   entityCode,
   buttonText = 'Print Labels',
   className = '',
-  selectedVersionId: externalVersionId
+  selectedVersionId: externalVersionId,
+  iconOnly = false,
+  autoPreview = false
 }: PrintLabelButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [templates, setTemplates] = useState<LabelTemplate[]>([]);
   const [internalVersionId, setInternalVersionId] = useState<string>('');
   const selectedVersionId = externalVersionId || internalVersionId;
   
-  // Print settings (persisted per product)
+  // Print settings (quantity + margin persisted per product+template; width/height from template version)
   const [quantity, setQuantity] = useState(1);
   const [labelWidthIn, setLabelWidthIn] = useState<number>(DEFAULT_LABEL_WIDTH);
   const [labelHeightIn, setLabelHeightIn] = useState<number>(DEFAULT_LABEL_HEIGHT);
   const [sheetMarginTopBottomIn, setSheetMarginTopBottomIn] = useState<number>(DEFAULT_MARGIN_TOP_BOTTOM);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  
+  // Per-template settings cache (for PRODUCT entities with associations)
+  const [templateSettings, setTemplateSettings] = useState<TemplatePrintSettings[]>([]);
+  // Fallback product-level settings (for back-compat)
+  const [productFallbackSettings, setProductFallbackSettings] = useState<ProductPrintSettings | null>(null);
   
   const [sheetSvgs, setSheetSvgs] = useState<string[]>([]);
   const [sheetMeta, setSheetMeta] = useState<{
@@ -121,30 +139,55 @@ export default function PrintLabelButton({
     });
   };
 
-  // Save print settings to product
+  // Derive templateId from selectedVersionId
+  const selectedTemplateId = useMemo(() => {
+    if (!selectedVersionId || templates.length === 0) return null;
+    for (const t of templates) {
+      if (t.versions.some(v => v.id === selectedVersionId)) {
+        return t.id;
+      }
+    }
+    return null;
+  }, [selectedVersionId, templates]);
+
+  // Save print settings per template (quantity, margin, width, height)
   const savePrintSettings = useCallback(async () => {
-    if (entityType !== 'PRODUCT') return;
+    if (entityType !== 'PRODUCT' || !selectedTemplateId) return;
     
     setIsSavingSettings(true);
     try {
-      await fetch(`/api/products/${entityId}`, {
+      // Save per-template settings via PATCH /api/products/:id/labels
+      await fetch(`/api/products/${entityId}/labels`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          templateId: selectedTemplateId,
           labelPrintQuantity: validation.clampedQuantity,
+          sheetMarginTopBottomIn,
           labelWidthIn,
           labelHeightIn,
-          sheetMarginTopBottomIn,
         })
+      });
+      
+      // Update local cache
+      setTemplateSettings(prev => {
+        const existing = prev.find(s => s.templateId === selectedTemplateId);
+        if (existing) {
+          return prev.map(s => s.templateId === selectedTemplateId 
+            ? { ...s, labelPrintQuantity: validation.clampedQuantity, sheetMarginTopBottomIn, labelWidthIn, labelHeightIn }
+            : s
+          );
+        }
+        return [...prev, { templateId: selectedTemplateId, labelPrintQuantity: validation.clampedQuantity, sheetMarginTopBottomIn, labelWidthIn, labelHeightIn }];
       });
     } catch (err) {
       console.error('Failed to save print settings:', err);
     } finally {
       setIsSavingSettings(false);
     }
-  }, [entityType, entityId, validation.clampedQuantity, labelWidthIn, labelHeightIn, sheetMarginTopBottomIn]);
+  }, [entityType, entityId, selectedTemplateId, validation.clampedQuantity, sheetMarginTopBottomIn, labelWidthIn, labelHeightIn]);
 
-  // Load saved print settings from product
+  // Load saved print settings: per-template from associations, with fallback to product-level
   const loadPrintSettings = useCallback(async () => {
     if (entityType !== 'PRODUCT') {
       setSettingsLoaded(true);
@@ -152,28 +195,37 @@ export default function PrintLabelButton({
     }
     
     try {
-      const res = await fetch(`/api/products/${entityId}`);
-      if (res.ok) {
-        const product = await res.json();
-        const settings: ProductPrintSettings = {
+      // Fetch per-template settings from associations
+      const labelsRes = await fetch(`/api/products/${entityId}/labels`);
+      if (labelsRes.ok) {
+        const labelsData = await labelsRes.json();
+        const associations = labelsData.labels || [];
+        const perTemplateSettings: TemplatePrintSettings[] = associations.map((a: {
+          templateId: string;
+          labelPrintQuantity: number | null;
+          sheetMarginTopBottomIn: number | null;
+          labelWidthIn: number | null;
+          labelHeightIn: number | null;
+        }) => ({
+          templateId: a.templateId,
+          labelPrintQuantity: a.labelPrintQuantity,
+          sheetMarginTopBottomIn: a.sheetMarginTopBottomIn,
+          labelWidthIn: a.labelWidthIn,
+          labelHeightIn: a.labelHeightIn
+        }));
+        setTemplateSettings(perTemplateSettings);
+      }
+      
+      // Also fetch product-level settings as fallback (for back-compat)
+      const productRes = await fetch(`/api/products/${entityId}`);
+      if (productRes.ok) {
+        const product = await productRes.json();
+        setProductFallbackSettings({
           labelPrintQuantity: product.labelPrintQuantity,
           labelWidthIn: product.labelWidthIn,
           labelHeightIn: product.labelHeightIn,
           sheetMarginTopBottomIn: product.sheetMarginTopBottomIn,
-        };
-        
-        if (settings.labelPrintQuantity !== null) {
-          setQuantity(settings.labelPrintQuantity);
-        }
-        if (settings.labelWidthIn !== null) {
-          setLabelWidthIn(settings.labelWidthIn);
-        }
-        if (settings.labelHeightIn !== null) {
-          setLabelHeightIn(settings.labelHeightIn);
-        }
-        if (settings.sheetMarginTopBottomIn !== null) {
-          setSheetMarginTopBottomIn(settings.sheetMarginTopBottomIn);
-        }
+        });
       }
     } catch (err) {
       console.error('Failed to load print settings:', err);
@@ -196,20 +248,96 @@ export default function PrintLabelButton({
     }
   }, [selectedVersionId]);
   
+  // Auto-preview: trigger render when modal opens and settings are loaded
+  const [hasAutoRendered, setHasAutoRendered] = useState(false);
   useEffect(() => {
-    if (selectedVersionId && templates.length > 0 && settingsLoaded) {
+    if (autoPreview && isOpen && settingsLoaded && selectedVersionId && !hasAutoRendered && !isRendering && !sheetSvgs.length) {
+      setHasAutoRendered(true);
+      handleRender();
+    }
+  }, [autoPreview, isOpen, settingsLoaded, selectedVersionId, hasAutoRendered, isRendering, sheetSvgs.length]);
+  
+  // Reset auto-render flag when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setHasAutoRendered(false);
+    }
+  }, [isOpen]);
+  
+  // Apply per-template settings when template changes (for PRODUCT entities)
+  useEffect(() => {
+    if (entityType !== 'PRODUCT' || !selectedTemplateId || !settingsLoaded) return;
+    
+    // Find per-template settings
+    const perTemplate = templateSettings.find(s => s.templateId === selectedTemplateId);
+    
+    // Apply quantity: per-template > product fallback > default
+    if (perTemplate?.labelPrintQuantity !== null && perTemplate?.labelPrintQuantity !== undefined) {
+      setQuantity(perTemplate.labelPrintQuantity);
+    } else if (productFallbackSettings?.labelPrintQuantity !== null && productFallbackSettings?.labelPrintQuantity !== undefined) {
+      setQuantity(productFallbackSettings.labelPrintQuantity);
+    } else {
+      setQuantity(1);
+    }
+    
+    // Apply margin: per-template > product fallback > default
+    if (perTemplate?.sheetMarginTopBottomIn !== null && perTemplate?.sheetMarginTopBottomIn !== undefined) {
+      setSheetMarginTopBottomIn(perTemplate.sheetMarginTopBottomIn);
+    } else if (productFallbackSettings?.sheetMarginTopBottomIn !== null && productFallbackSettings?.sheetMarginTopBottomIn !== undefined) {
+      setSheetMarginTopBottomIn(productFallbackSettings.sheetMarginTopBottomIn);
+    } else {
+      setSheetMarginTopBottomIn(DEFAULT_MARGIN_TOP_BOTTOM);
+    }
+    
+    // Apply width: per-template > product fallback > template version > default
+    if (perTemplate?.labelWidthIn !== null && perTemplate?.labelWidthIn !== undefined) {
+      setLabelWidthIn(perTemplate.labelWidthIn);
+    } else if (productFallbackSettings?.labelWidthIn !== null && productFallbackSettings?.labelWidthIn !== undefined) {
+      setLabelWidthIn(productFallbackSettings.labelWidthIn);
+    }
+    // Note: if neither per-template nor fallback, the version effect below will handle it
+    
+    // Apply height: per-template > product fallback > template version > default
+    if (perTemplate?.labelHeightIn !== null && perTemplate?.labelHeightIn !== undefined) {
+      setLabelHeightIn(perTemplate.labelHeightIn);
+    } else if (productFallbackSettings?.labelHeightIn !== null && productFallbackSettings?.labelHeightIn !== undefined) {
+      setLabelHeightIn(productFallbackSettings.labelHeightIn);
+    }
+    // Note: if neither per-template nor fallback, the version effect below will handle it
+  }, [entityType, selectedTemplateId, templateSettings, productFallbackSettings, settingsLoaded]);
+
+  // Apply label dimensions from template version as final fallback (if no saved settings)
+  useEffect(() => {
+    if (selectedVersionId && templates.length > 0 && settingsLoaded && entityType === 'PRODUCT' && selectedTemplateId) {
+      const perTemplate = templateSettings.find(s => s.templateId === selectedTemplateId);
+      // Only apply version dimensions if no per-template or fallback settings exist
+      const hasWidthSetting = (perTemplate?.labelWidthIn !== null && perTemplate?.labelWidthIn !== undefined) ||
+                              (productFallbackSettings?.labelWidthIn !== null && productFallbackSettings?.labelWidthIn !== undefined);
+      const hasHeightSetting = (perTemplate?.labelHeightIn !== null && perTemplate?.labelHeightIn !== undefined) ||
+                               (productFallbackSettings?.labelHeightIn !== null && productFallbackSettings?.labelHeightIn !== undefined);
+      
+      if (!hasWidthSetting || !hasHeightSetting) {
+        const allVersions = templates.flatMap(t => t.versions);
+        const version = allVersions.find(v => v.id === selectedVersionId);
+        if (version) {
+          if (!hasWidthSetting) {
+            setLabelWidthIn(version.labelWidthIn || DEFAULT_LABEL_WIDTH);
+          }
+          if (!hasHeightSetting) {
+            setLabelHeightIn(version.labelHeightIn || DEFAULT_LABEL_HEIGHT);
+          }
+        }
+      }
+    } else if (selectedVersionId && templates.length > 0 && settingsLoaded && entityType !== 'PRODUCT') {
+      // Non-PRODUCT entities: always use version dimensions
       const allVersions = templates.flatMap(t => t.versions);
       const version = allVersions.find(v => v.id === selectedVersionId);
       if (version) {
-        if (version.labelWidthIn && labelWidthIn === DEFAULT_LABEL_WIDTH) {
-          setLabelWidthIn(version.labelWidthIn);
-        }
-        if (version.labelHeightIn && labelHeightIn === DEFAULT_LABEL_HEIGHT) {
-          setLabelHeightIn(version.labelHeightIn);
-        }
+        setLabelWidthIn(version.labelWidthIn || DEFAULT_LABEL_WIDTH);
+        setLabelHeightIn(version.labelHeightIn || DEFAULT_LABEL_HEIGHT);
       }
     }
-  }, [selectedVersionId, templates, settingsLoaded]);
+  }, [selectedVersionId, templates, settingsLoaded, entityType, selectedTemplateId, templateSettings, productFallbackSettings]);
   
   const checkBarcodeRequirements = async () => {
     if (!selectedVersionId) {
@@ -219,12 +347,41 @@ export default function PrintLabelButton({
     
     setBarcodeCheckLoading(true);
     try {
+      // Get the version data to check for BARCODE elements and get templateId
       const versionRes = await fetch(`/api/labels/versions/${selectedVersionId}`);
       if (versionRes.ok) {
         const versionData = await versionRes.json();
         const elements = versionData.elements || [];
-        const hasBarcode = elements.some((el: { type: string }) => el.type === 'BARCODE');
-        setLabelHasBarcode(hasBarcode);
+        const rawHasBarcode = elements.some((el: { type: string }) => el.type === 'BARCODE');
+        
+        // For PRODUCT entities, check if this label is the barcode carrier
+        // If not the carrier, the barcode won't actually render (carrier filtering)
+        if (entityType === 'PRODUCT' && rawHasBarcode) {
+          // Fetch product label associations to check carrier status
+          const labelsRes = await fetch(`/api/products/${entityId}/labels`);
+          if (labelsRes.ok) {
+            const labelsData = await labelsRes.json();
+            const associations = labelsData.labels || [];
+            
+            if (associations.length === 0) {
+              // No associations = legacy behavior, all labels are carriers
+              setLabelHasBarcode(true);
+            } else {
+              // Find which template is the barcode carrier
+              const barcodeCarrier = associations.find((a: { isBarcodeCarrier: boolean }) => a.isBarcodeCarrier);
+              const carrierTemplateId = barcodeCarrier?.templateId ?? associations[0]?.templateId;
+              
+              // Check if this version's template is the barcode carrier
+              const isBarcodeCarrier = versionData.templateId === carrierTemplateId;
+              setLabelHasBarcode(isBarcodeCarrier);
+            }
+          } else {
+            // Fallback: assume it has barcode if elements say so
+            setLabelHasBarcode(rawHasBarcode);
+          }
+        } else {
+          setLabelHasBarcode(rawHasBarcode);
+        }
       }
       
       if (entityType === 'PRODUCT') {
@@ -483,15 +640,27 @@ export default function PrintLabelButton({
 
   return (
     <>
-      <button
-        onClick={() => setIsOpen(true)}
-        className={`inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 ${className}`}
-      >
-        <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-        </svg>
-        {buttonText}
-      </button>
+      {iconOnly ? (
+        <button
+          onClick={() => setIsOpen(true)}
+          className={`inline-flex items-center justify-center p-1.5 rounded text-gray-600 hover:text-blue-600 hover:bg-blue-50 transition-colors ${className}`}
+          title="Print this label"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+          </svg>
+        </button>
+      ) : (
+        <button
+          onClick={() => setIsOpen(true)}
+          className={`inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 ${className}`}
+        >
+          <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+          </svg>
+          {buttonText}
+        </button>
+      )}
 
       {/* Print Modal */}
       {isOpen && (
@@ -607,7 +776,7 @@ export default function PrintLabelButton({
                         <h4 className="text-sm font-medium text-gray-700 mb-3">
                           Print settings
                           {entityType === 'PRODUCT' && (
-                            <span className="font-normal text-gray-500 ml-1">(saved per product)</span>
+                            <span className="font-normal text-gray-500 ml-1">(saved per label)</span>
                           )}
                         </h4>
                       </div>
@@ -767,6 +936,32 @@ export default function PrintLabelButton({
                             ))}
                           </ul>
                         </div>
+                      )}
+
+                      {/* Save Settings Button - for PRODUCT entities */}
+                      {entityType === 'PRODUCT' && selectedTemplateId && (
+                        <button
+                          onClick={savePrintSettings}
+                          disabled={isSavingSettings}
+                          className="w-full inline-flex justify-center items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isSavingSettings ? (
+                            <>
+                              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-700" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                              </svg>
+                              Saving...
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                              </svg>
+                              Save Settings
+                            </>
+                          )}
+                        </button>
                       )}
 
                       <button

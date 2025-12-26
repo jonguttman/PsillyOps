@@ -266,6 +266,60 @@ export async function updateTemplate(templateId: string, name: string, userId?: 
   return template;
 }
 
+/**
+ * Archive (delete) a label template.
+ * 
+ * SAFETY: Only templates with NO active versions can be archived.
+ * This prevents accidentally removing templates that are in use.
+ * 
+ * Hard deletes the template (cascade deletes all versions).
+ */
+export async function archiveTemplate(templateId: string, userId?: string) {
+  const template = await prisma.labelTemplate.findUnique({
+    where: { id: templateId },
+    include: {
+      versions: {
+        select: { id: true, isActive: true, version: true }
+      }
+    }
+  });
+  
+  if (!template) {
+    throw new AppError(ErrorCodes.NOT_FOUND, 'Label template not found');
+  }
+  
+  // Check for active versions
+  const activeVersions = template.versions.filter(v => v.isActive);
+  if (activeVersions.length > 0) {
+    throw new AppError(
+      ErrorCodes.INVALID_INPUT, 
+      `Cannot archive template with active versions. Deactivate all versions first. Active: ${activeVersions.map(v => v.version).join(', ')}`
+    );
+  }
+  
+  // Delete the template (cascade deletes versions due to onDelete: Cascade)
+  await prisma.labelTemplate.delete({
+    where: { id: templateId }
+  });
+  
+  await logAction({
+    entityType: ActivityEntity.LABEL,
+    entityId: templateId,
+    action: 'label_template_archived',
+    userId,
+    summary: `Archived label template "${template.name}" (${template.versions.length} version(s) deleted)`,
+    before: { 
+      name: template.name, 
+      entityType: template.entityType,
+      versionCount: template.versions.length 
+    },
+    after: undefined,
+    tags: ['label', 'template', 'archived', 'deleted']
+  });
+  
+  return { success: true, templateId, templateName: template.name };
+}
+
 // ========================================
 // VERSION MANAGEMENT
 // ========================================
@@ -828,9 +882,16 @@ export async function renderLabelsShared(params: RenderLabelsParams): Promise<Re
   }
 
   // Get elements (or create default if none exist)
-  const elements = getElementsOrDefault(version.elements as PlaceableElement[] | null, svgTemplate);
+  let elements = getElementsOrDefault(version.elements as PlaceableElement[] | null, svgTemplate);
+  
+  // Apply carrier filtering for PRODUCT entities (non-preview modes only)
+  // This ensures only the designated carrier label includes QR/BARCODE elements
+  if (mode !== 'preview' && entityType === 'PRODUCT' && entityId) {
+    elements = await filterElementsForProductCarrier(entityId, version.templateId, elements);
+  }
   
   // Check if label has BARCODE elements - if so, barcode value is required (except in preview mode)
+  // Note: This check happens AFTER carrier filtering, so non-carrier labels won't trigger this
   const hasBarcodeElement = elements.some(el => el.type === 'BARCODE');
   
   if (mode !== 'preview' && hasBarcodeElement && !barcodeValue) {
@@ -982,6 +1043,103 @@ async function getEntityBarcodeValue(entityType: LabelEntityType, entityId: stri
     default:
       return undefined;
   }
+}
+
+/**
+ * Filter elements based on product carrier selection.
+ * 
+ * When a product has multiple associated labels, only the designated QR-carrier
+ * label should include QR elements, and only the barcode-carrier label should
+ * include BARCODE elements.
+ * 
+ * This function:
+ * 1. Looks up the product's label associations and carrier flags
+ * 2. Determines if the given template is the QR and/or barcode carrier
+ * 3. Filters out QR/BARCODE elements if this template is not the carrier
+ * 
+ * Safe defaults:
+ * - If product has no associations, all elements are kept (legacy behavior)
+ * - If product has exactly 1 association, it's both carriers
+ * - If carriers are unset, auto-pick first associated template
+ * 
+ * @param productId - The product ID
+ * @param templateId - The template ID of the label being rendered
+ * @param elements - The elements to filter
+ * @returns Filtered elements array
+ */
+async function filterElementsForProductCarrier(
+  productId: string,
+  templateId: string,
+  elements: PlaceableElement[]
+): Promise<PlaceableElement[]> {
+  // Look up product's label associations
+  const associations = await prisma.productLabel.findMany({
+    where: { productId },
+    orderBy: { createdAt: 'asc' }
+  });
+
+  // If no associations, keep all elements (legacy behavior / no filtering)
+  if (associations.length === 0) {
+    return elements;
+  }
+
+  // Determine QR carrier
+  let qrCarrierTemplateId: string | null = associations.find(a => a.isQrCarrier)?.templateId ?? null;
+  if (!qrCarrierTemplateId) {
+    // Auto-pick first association
+    qrCarrierTemplateId = associations[0].templateId;
+  }
+
+  // Determine barcode carrier
+  let barcodeCarrierTemplateId: string | null = associations.find(a => a.isBarcodeCarrier)?.templateId ?? null;
+  if (!barcodeCarrierTemplateId) {
+    // Auto-pick first association
+    barcodeCarrierTemplateId = associations[0].templateId;
+  }
+
+  // Check if this template is a carrier
+  const isQrCarrier = templateId === qrCarrierTemplateId;
+  const isBarcodeCarrier = templateId === barcodeCarrierTemplateId;
+
+  // Filter elements based on carrier status
+  return elements.filter(el => {
+    if (el.type === 'QR' && !isQrCarrier) {
+      return false; // Remove QR if not QR carrier
+    }
+    if (el.type === 'BARCODE' && !isBarcodeCarrier) {
+      return false; // Remove BARCODE if not barcode carrier
+    }
+    return true;
+  });
+}
+
+/**
+ * Get the carrier status for a product's label template.
+ * Exported for use by UI components to check carrier status.
+ */
+export async function getProductLabelCarrierStatus(
+  productId: string,
+  templateId: string
+): Promise<{ isQrCarrier: boolean; isBarcodeCarrier: boolean }> {
+  const associations = await prisma.productLabel.findMany({
+    where: { productId },
+    orderBy: { createdAt: 'asc' }
+  });
+
+  if (associations.length === 0) {
+    // No associations = all labels are carriers (legacy)
+    return { isQrCarrier: true, isBarcodeCarrier: true };
+  }
+
+  // Determine QR carrier (explicit or auto-pick first)
+  let qrCarrierTemplateId = associations.find(a => a.isQrCarrier)?.templateId ?? associations[0].templateId;
+  // Determine barcode carrier (explicit or auto-pick first)
+  let barcodeCarrierTemplateId = associations.find(a => a.isBarcodeCarrier)?.templateId ?? associations[0].templateId;
+
+  return {
+    isQrCarrier: templateId === qrCarrierTemplateId,
+    isBarcodeCarrier: templateId === barcodeCarrierTemplateId
+  };
 }
 
 // ========================================
@@ -2002,6 +2160,12 @@ export async function renderLabelPreviewWithMeta(
         textGapIn: el.barcode.textGapIn * scaleY,
       } : undefined,
     }));
+  }
+  
+  // Apply carrier filtering for PRODUCT entities when entity info is provided
+  // This ensures only the designated carrier label includes QR/BARCODE elements
+  if (entityInfo && entityInfo.entityType === 'PRODUCT') {
+    elements = await filterElementsForProductCarrier(entityInfo.entityId, version.templateId, elements);
   }
 
   // Compute pxPerInch from the final SVG (after any size override)
