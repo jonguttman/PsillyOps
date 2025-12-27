@@ -42,6 +42,9 @@ model User {
   assignedSealSheets         SealSheet[]           @relation("SealSheetAssigner")
   experienceBindings         ExperienceBinding[]   @relation("ExperienceBindingBoundBy")
   bindingSessions            BindingSession[]      @relation("BindingSessionStartedBy")
+  createdAIProposals         AIProposal[]          @relation("AIProposalCreator")
+  executedAIProposals        AIProposal[]          @relation("AIProposalExecutor")
+  aiSessions                 AISession[]
 
   @@index([email])
   @@index([role])
@@ -660,6 +663,66 @@ model AICommandLog {
   @@index([createdAt])
 }
 
+// ========================================
+// AI Proposal System (Phase 1)
+// ========================================
+
+model AIProposal {
+  id              String           @id @default(cuid())
+
+  // Core identity
+  action          String           // e.g. INVENTORY_ADJUSTMENT, PURCHASE_ORDER_SUBMIT, VENDOR_EMAIL
+  executionMode   String           // EXECUTABLE | PREVIEW_ONLY
+  phase           Int              // Phase this proposal was created under (1)
+
+  // Proposal payload
+  params          Json             // Normalized input parameters
+  preview         Json             // Computed before/after preview shown to user
+  warnings        Json?            // Optional warnings (e.g. large delta)
+
+  // Authority & state
+  status          AIProposalStatus @default(PENDING)
+  phase1Allowed   Boolean          @default(false)
+
+  // Session & attribution
+  aiSessionId     String
+  origin          String?          // "chatgpt", "voice", "ui" - for future analysis
+  createdByUserId String
+  createdByUser   User             @relation("AIProposalCreator", fields: [createdByUserId], references: [id])
+
+  // Lifecycle
+  expiresAt       DateTime
+  executedAt      DateTime?
+  executedByUserId String?
+  executedByUser   User?           @relation("AIProposalExecutor", fields: [executedByUserId], references: [id])
+
+  // Governance
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([aiSessionId])
+  @@index([status])
+  @@index([action])
+  @@index([expiresAt])
+  @@index([createdByUserId])
+}
+
+model AISession {
+  id              String   @id @default(cuid())
+  sessionToken    String   @unique
+  userId          String
+  origin          String?  // "chatgpt", "voice", "ui"
+  createdAt       DateTime @default(now())
+  lastActivityAt  DateTime @default(now())
+  expiresAt       DateTime
+  
+  user            User     @relation(fields: [userId], references: [id])
+
+  @@index([sessionToken])
+  @@index([userId])
+  @@index([expiresAt])
+}
+
 model AIDocumentImport {
   id           String    @id @default(cuid())
   userId       String?
@@ -1049,6 +1112,14 @@ enum SessionStatus {
   ACTIVE
   EXPIRED
   TERMINATED
+}
+
+enum AIProposalStatus {
+  PENDING     // Created, awaiting confirmation
+  APPLIED     // Successfully executed
+  EXPIRED     // TTL elapsed before execution
+  BLOCKED     // Phase gate blocked execution
+  FAILED      // Execution attempted but failed
 }
 
 model PredictionProfile {
