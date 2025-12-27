@@ -14,7 +14,6 @@
  */
 
 import { NextRequest } from 'next/server';
-import { auth } from '@/lib/auth/auth';
 import { handleApiError, AppError, ErrorCodes } from '@/lib/utils/errors';
 import { hasPermission } from '@/lib/auth/rbac';
 import {
@@ -26,6 +25,7 @@ import {
   resolveVendorRef,
 } from '@/lib/services/aiCommandService';
 import { prisma } from '@/lib/db/prisma';
+import { authenticateAIRequest } from '@/lib/auth/aiAuth';
 
 type EntityType = 'product' | 'material' | 'retailer' | 'location' | 'batch' | 'vendor';
 
@@ -46,17 +46,18 @@ type ResolveResult = {
 
 export async function GET(req: NextRequest) {
   try {
-    // 1. Validate authentication
-    const session = await auth();
-    if (!session) {
+    // 1. Authenticate (API key or session)
+    const aiAuth = await authenticateAIRequest(req);
+    
+    if (!aiAuth.authenticated || !aiAuth.user) {
       return Response.json(
-        { code: 'UNAUTHORIZED', message: 'Not authenticated' },
+        { code: 'UNAUTHORIZED', message: 'Authentication required' },
         { status: 401 }
       );
     }
 
     // 2. Check permission (need at least inventory view for lookups)
-    if (!hasPermission(session.user.role, 'inventory', 'view')) {
+    if (!hasPermission(aiAuth.user.role, 'inventory', 'view')) {
       return Response.json(
         { code: 'FORBIDDEN', message: 'Insufficient permissions' },
         { status: 403 }

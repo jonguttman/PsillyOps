@@ -12,25 +12,26 @@
  */
 
 import { NextRequest } from 'next/server';
-import { auth } from '@/lib/auth/auth';
 import { handleApiError, AppError, ErrorCodes } from '@/lib/utils/errors';
 import { hasPermission } from '@/lib/auth/rbac';
 import { validateAISession } from '@/lib/services/aiContextService';
 import { createProposal, ALL_PROPOSAL_ACTIONS, type ProposalAction } from '@/lib/services/aiProposalService';
+import { authenticateAIRequest } from '@/lib/auth/aiAuth';
 
 export async function POST(req: NextRequest) {
   try {
-    // 1. Validate authentication
-    const session = await auth();
-    if (!session) {
+    // 1. Authenticate (API key or session)
+    const aiAuth = await authenticateAIRequest(req);
+    
+    if (!aiAuth.authenticated || !aiAuth.user) {
       return Response.json(
-        { code: 'UNAUTHORIZED', message: 'Not authenticated' },
+        { code: 'UNAUTHORIZED', message: 'Authentication required' },
         { status: 401 }
       );
     }
 
     // 2. Check AI permission
-    if (!hasPermission(session.user.role, 'ai', 'command')) {
+    if (!hasPermission(aiAuth.user.role, 'ai', 'command')) {
       return Response.json(
         { code: 'FORBIDDEN', message: 'Insufficient permissions for AI operations' },
         { status: 403 }
@@ -54,7 +55,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const aiSession = await validateAISession(aiSessionId);
+    const aiSession = await validateAISession(aiSessionId, aiAuth.user.id);
     if (!aiSession) {
       return Response.json(
         {
@@ -89,7 +90,7 @@ export async function POST(req: NextRequest) {
       action: action as ProposalAction,
       params,
       aiSessionId,
-      userId: session.user.id,
+      userId: aiAuth.user.id,
       origin,
     });
 

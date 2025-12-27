@@ -388,17 +388,17 @@ export async function GET(req: NextRequest) {
     components: {
       schemas: {},
       securitySchemes: {
-        cookieAuth: {
-          type: 'apiKey',
-          in: 'cookie',
-          name: 'next-auth.session-token',
-          description: 'NextAuth session cookie',
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'API Key',
+          description: 'AI API Key from PsillyOps environment configuration',
         },
       },
     },
     security: [
       {
-        cookieAuth: [],
+        bearerAuth: [],
       },
     ],
   };

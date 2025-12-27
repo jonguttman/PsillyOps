@@ -11,24 +11,40 @@
  */
 
 import { NextRequest } from 'next/server';
-import { auth } from '@/lib/auth/auth';
 import { handleApiError } from '@/lib/utils/errors';
 import { hasPermission } from '@/lib/auth/rbac';
 import { getAIContext, getOrCreateAISession } from '@/lib/services/aiContextService';
+import { authenticateAIRequest } from '@/lib/auth/aiAuth';
 
 export async function GET(req: NextRequest) {
   try {
-    // 1. Validate authentication
-    const session = await auth();
-    if (!session) {
+    // #region agent log H1
+    fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'context/route.ts:10',message:'Context route start',data:{path:req.url},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
+
+    // 1. Authenticate (API key or session)
+    const aiAuth = await authenticateAIRequest(req);
+    
+    if (!aiAuth.authenticated || !aiAuth.user) {
+      // #region agent log H3
+      fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'context/route.ts:18',message:'Auth failed',data:{error:aiAuth.error},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(()=>{});
+      // #endregion
       return Response.json(
-        { code: 'UNAUTHORIZED', message: 'Not authenticated' },
+        { 
+          code: 'UNAUTHORIZED', 
+          message: 'Authentication required. Provide Authorization: Bearer <token> header or valid session cookie.',
+          hint: 'Set AI_API_KEY and AI_API_USER_ID in environment, then use that key in Authorization header.'
+        },
         { status: 401 }
       );
     }
 
+    // #region agent log H2
+    fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'context/route.ts:32',message:'Auth success',data:{userId:aiAuth.user.id,userRole:aiAuth.user.role},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2'})}).catch(()=>{});
+    // #endregion
+
     // 2. Check AI permission
-    if (!hasPermission(session.user.role, 'ai', 'command')) {
+    if (!hasPermission(aiAuth.user.role, 'ai', 'command')) {
       return Response.json(
         { code: 'FORBIDDEN', message: 'Insufficient permissions for AI operations' },
         { status: 403 }
@@ -37,16 +53,16 @@ export async function GET(req: NextRequest) {
 
     // 3. Get or create AI session
     const existingToken = req.headers.get('X-AI-Session-ID') || undefined;
-    const origin = req.headers.get('X-AI-Origin') || 'unknown';
+    const origin = req.headers.get('X-AI-Origin') || 'chatgpt';
     
     const { sessionToken, expiresAt, isNew } = await getOrCreateAISession(
-      session.user.id,
+      aiAuth.user.id,
       existingToken,
       origin
     );
 
     // 4. Get context
-    const context = await getAIContext(session.user.id, sessionToken);
+    const context = await getAIContext(aiAuth.user.id, sessionToken);
 
     // 5. Return response with session info
     return Response.json({

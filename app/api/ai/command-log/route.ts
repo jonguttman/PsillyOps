@@ -9,24 +9,25 @@
  */
 
 import { NextRequest } from 'next/server';
-import { auth } from '@/lib/auth/auth';
 import { handleApiError } from '@/lib/utils/errors';
 import { hasPermission } from '@/lib/auth/rbac';
 import { getRecentCommandLogs } from '@/lib/services/aiProposalService';
+import { authenticateAIRequest } from '@/lib/auth/aiAuth';
 
 export async function GET(req: NextRequest) {
   try {
-    // 1. Validate authentication
-    const session = await auth();
-    if (!session) {
+    // 1. Authenticate (API key or session)
+    const aiAuth = await authenticateAIRequest(req);
+    
+    if (!aiAuth.authenticated || !aiAuth.user) {
       return Response.json(
-        { code: 'UNAUTHORIZED', message: 'Not authenticated' },
+        { code: 'UNAUTHORIZED', message: 'Authentication required' },
         { status: 401 }
       );
     }
 
     // 2. Check AI permission
-    if (!hasPermission(session.user.role, 'ai', 'command')) {
+    if (!hasPermission(aiAuth.user.role, 'ai', 'command')) {
       return Response.json(
         { code: 'FORBIDDEN', message: 'Insufficient permissions for AI operations' },
         { status: 403 }
@@ -42,7 +43,7 @@ export async function GET(req: NextRequest) {
     const result = await getRecentCommandLogs({
       limit,
       status,
-      userId: session.user.id,
+      userId: aiAuth.user.id,
     });
 
     // 5. Return result
