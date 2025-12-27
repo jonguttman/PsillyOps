@@ -6,6 +6,8 @@ import { auth } from '@/lib/auth/auth';
 import { prisma } from '@/lib/db/prisma';
 import { handleApiError, AppError, ErrorCodes } from '@/lib/utils/errors';
 import { LOCATION_TYPES } from '../route';
+import { logAction } from '@/lib/services/loggingService';
+import { ActivityEntity } from '@prisma/client';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -143,6 +145,45 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
       },
     });
 
+    // Log location update
+    const beforeState: Record<string, any> = {};
+    const afterState: Record<string, any> = {};
+    
+    if (name !== undefined && name.trim() !== existing.name) {
+      beforeState.name = existing.name;
+      afterState.name = name.trim();
+    }
+    if (type !== undefined && type !== existing.type) {
+      beforeState.type = existing.type;
+      afterState.type = type;
+    }
+    if (isDefaultReceiving !== undefined && isDefaultReceiving !== existing.isDefaultReceiving) {
+      beforeState.isDefaultReceiving = existing.isDefaultReceiving;
+      afterState.isDefaultReceiving = isDefaultReceiving;
+    }
+    if (isDefaultShipping !== undefined && isDefaultShipping !== existing.isDefaultShipping) {
+      beforeState.isDefaultShipping = existing.isDefaultShipping;
+      afterState.isDefaultShipping = isDefaultShipping;
+    }
+    if (active !== undefined && active !== existing.active) {
+      beforeState.active = existing.active;
+      afterState.active = active;
+    }
+
+    // Only log if something actually changed
+    if (Object.keys(afterState).length > 0) {
+      await logAction({
+        entityType: ActivityEntity.LOCATION,
+        entityId: location.id,
+        action: 'location_updated',
+        userId: session.user.id,
+        summary: `Location "${location.name}" updated`,
+        before: beforeState,
+        after: afterState,
+        tags: ['location', 'updated'],
+      });
+    }
+
     return Response.json(location);
   } catch (error) {
     return handleApiError(error);
@@ -187,35 +228,47 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Warn if location has inventory
-    if (existing._count.inventory > 0) {
-      // Soft delete - just mark as inactive
-      await prisma.location.update({
-        where: { id },
-        data: { 
-          active: false,
-          // Clear defaults if this was a default
-          isDefaultReceiving: false,
-          isDefaultShipping: false,
-        },
-      });
+    // Soft delete - mark as inactive
+    await prisma.location.update({
+      where: { id },
+      data: { 
+        active: false,
+        // Clear defaults if this was a default
+        isDefaultReceiving: false,
+        isDefaultShipping: false,
+      },
+    });
 
+    // Log location deactivation
+    await logAction({
+      entityType: ActivityEntity.LOCATION,
+      entityId: id,
+      action: 'location_deactivated',
+      userId: session.user.id,
+      summary: `Location "${existing.name}" deactivated`,
+      before: {
+        active: true,
+        isDefaultReceiving: existing.isDefaultReceiving,
+        isDefaultShipping: existing.isDefaultShipping,
+      },
+      after: {
+        active: false,
+        isDefaultReceiving: false,
+        isDefaultShipping: false,
+      },
+      metadata: {
+        inventoryItemsAffected: existing._count.inventory,
+      },
+      tags: ['location', 'deactivated'],
+    });
+
+    if (existing._count.inventory > 0) {
       return Response.json({ 
         success: true, 
         message: `Location deactivated. ${existing._count.inventory} inventory items remain at this location.`,
         softDeleted: true,
       });
     }
-
-    // If no inventory, we can still soft delete (safer)
-    await prisma.location.update({
-      where: { id },
-      data: { 
-        active: false,
-        isDefaultReceiving: false,
-        isDefaultShipping: false,
-      },
-    });
 
     return Response.json({ success: true, softDeleted: true });
   } catch (error) {

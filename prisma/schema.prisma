@@ -1032,6 +1032,7 @@ enum ActivityEntity {
   WORK_CENTER
   INVOICE
   LABEL
+  LOCATION
   SYSTEM
 }
 

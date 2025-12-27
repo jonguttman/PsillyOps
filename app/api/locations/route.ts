@@ -5,6 +5,8 @@ import { NextRequest } from 'next/server';
 import { auth } from '@/lib/auth/auth';
 import { prisma } from '@/lib/db/prisma';
 import { handleApiError, AppError, ErrorCodes } from '@/lib/utils/errors';
+import { logAction } from '@/lib/services/loggingService';
+import { ActivityEntity } from '@prisma/client';
 
 // Location types
 export const LOCATION_TYPES = [
@@ -124,6 +126,22 @@ export async function POST(req: NextRequest) {
         isDefaultShipping: isDefaultShipping || false,
         active: true,
       },
+    });
+
+    // Log location creation
+    await logAction({
+      entityType: ActivityEntity.LOCATION,
+      entityId: location.id,
+      action: 'location_created',
+      userId: session.user.id,
+      summary: `Location "${location.name}" created`,
+      after: {
+        name: location.name,
+        type: location.type,
+        isDefaultReceiving: location.isDefaultReceiving,
+        isDefaultShipping: location.isDefaultShipping,
+      },
+      tags: ['location', 'created'],
     });
 
     return Response.json(location, { status: 201 });
