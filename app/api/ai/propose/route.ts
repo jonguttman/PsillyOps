@@ -14,7 +14,7 @@
 import { NextRequest } from 'next/server';
 import { handleApiError, AppError, ErrorCodes } from '@/lib/utils/errors';
 import { hasPermission } from '@/lib/auth/rbac';
-import { validateAISession } from '@/lib/services/aiContextService';
+import { validateAISession, getOrCreateAISession } from '@/lib/services/aiContextService';
 import { createProposal, ALL_PROPOSAL_ACTIONS, type ProposalAction } from '@/lib/services/aiProposalService';
 import { authenticateAIRequest } from '@/lib/auth/aiAuth';
 
@@ -38,37 +38,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 3. Validate AI session
-    const aiSessionId = req.headers.get('X-AI-Session-ID');
-    if (!aiSessionId) {
-      return Response.json(
-        {
-          success: false,
-          error: {
-            code: 'SESSION_REQUIRED',
-            message: 'X-AI-Session-ID header is required',
-            suggestion: 'Call GET /api/ai/context first to obtain a session token',
-            speakable: 'I need to initialize a session first. Let me get the current context.',
-          },
-        },
-        { status: 400 }
-      );
-    }
-
-    const aiSession = await validateAISession(aiSessionId);
+    // 3. Get or create AI session (auto-create if not provided)
+    let aiSessionId = req.headers.get('X-AI-Session-ID');
+    let aiSession = aiSessionId ? await validateAISession(aiSessionId) : null;
+    
+    // If no valid session, auto-create one for convenience
     if (!aiSession) {
-      return Response.json(
-        {
-          success: false,
-          error: {
-            code: 'SESSION_INVALID',
-            message: 'AI session is invalid or expired',
-            suggestion: 'Call GET /api/ai/context to obtain a new session token',
-            speakable: 'Your session has expired. Let me refresh the context.',
-          },
-        },
-        { status: 401 }
-      );
+      const origin = req.headers.get('X-AI-Origin') || 'chatgpt';
+      const newSession = await getOrCreateAISession(aiAuth.user.id, undefined, origin);
+      aiSessionId = newSession.sessionToken;
+      aiSession = { id: newSession.sessionToken, userId: aiAuth.user.id, origin };
     }
 
     // 4. Parse and validate request body

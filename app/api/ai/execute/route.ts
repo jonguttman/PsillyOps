@@ -14,7 +14,6 @@
 import { NextRequest } from 'next/server';
 import { handleApiError, AppError, ErrorCodes } from '@/lib/utils/errors';
 import { hasPermission } from '@/lib/auth/rbac';
-import { validateAISession } from '@/lib/services/aiContextService';
 import { executeProposal, getProposal } from '@/lib/services/aiProposalService';
 import { authenticateAIRequest } from '@/lib/auth/aiAuth';
 
@@ -38,40 +37,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 3. Validate AI session
-    const aiSessionId = req.headers.get('X-AI-Session-ID');
-    if (!aiSessionId) {
-      return Response.json(
-        {
-          success: false,
-          error: {
-            code: 'SESSION_REQUIRED',
-            message: 'X-AI-Session-ID header is required',
-            suggestion: 'Call GET /api/ai/context first to obtain a session token',
-            speakable: 'I need to initialize a session first. Let me get the current context.',
-          },
-        },
-        { status: 400 }
-      );
-    }
-
-    const aiSession = await validateAISession(aiSessionId);
-    if (!aiSession) {
-      return Response.json(
-        {
-          success: false,
-          error: {
-            code: 'SESSION_INVALID',
-            message: 'AI session is invalid or expired',
-            suggestion: 'Call GET /api/ai/context to obtain a new session token',
-            speakable: 'Your session has expired. Let me refresh the context.',
-          },
-        },
-        { status: 401 }
-      );
-    }
-
-    // 4. Parse request body
+    // 3. Parse request body
     const body = await req.json();
     const { proposalId } = body;
 
@@ -79,7 +45,7 @@ export async function POST(req: NextRequest) {
       throw new AppError(ErrorCodes.VALIDATION_ERROR, 'proposalId is required');
     }
 
-    // 5. Verify proposal belongs to this session
+    // 4. Verify proposal exists and belongs to this user
     const proposal = await getProposal(proposalId);
     if (!proposal) {
       return Response.json(
@@ -96,15 +62,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (proposal.aiSessionId !== aiSessionId) {
+    // 5. Verify proposal was created by this user (security check)
+    if (proposal.createdByUserId !== aiAuth.user.id) {
       return Response.json(
         {
           success: false,
           error: {
-            code: 'SESSION_MISMATCH',
-            message: 'Proposal belongs to a different session',
-            suggestion: 'Create a new proposal in the current session.',
-            speakable: 'That proposal was created in a different session. Would you like me to create a new one?',
+            code: 'FORBIDDEN',
+            message: 'Proposal belongs to a different user',
+            suggestion: 'You can only execute proposals you created.',
+            speakable: 'That proposal was created by a different user.',
           },
         },
         { status: 403 }

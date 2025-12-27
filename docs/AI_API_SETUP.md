@@ -6,8 +6,8 @@ Add these to your `.env` file:
 
 ```bash
 # AI API Authentication
-AI_API_KEY="your-secure-api-key-here"
-AI_API_USER_ID="your-admin-user-id-from-database"
+AI_API_KEY=******
+AI_API_USER_ID=*****
 
 # AI Configuration (Optional - these have defaults)
 AI_PROPOSAL_TTL_MINUTES=15
