@@ -10,10 +10,6 @@ import { NextRequest } from 'next/server';
 export async function GET(req: NextRequest) {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001';
   
-  // #region agent log H3
-  fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'openapi.json/route.ts:11',message:'OpenAPI schema generation start',data:{baseUrl},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(()=>{});
-  // #endregion
-  
   const schema = {
     openapi: '3.1.0',
     info: {
@@ -402,10 +398,6 @@ export async function GET(req: NextRequest) {
       },
     ],
   };
-
-  // #region agent log H1
-  fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'openapi.json/route.ts:485',message:'Schema generated',data:{hasSchemas:!!schema.components.schemas,openApiVersion:schema.openapi,pathCount:Object.keys(schema.paths).length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
-  // #endregion
 
   return Response.json(schema, {
     headers: {

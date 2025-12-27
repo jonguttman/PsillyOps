@@ -18,17 +18,10 @@ import { authenticateAIRequest } from '@/lib/auth/aiAuth';
 
 export async function GET(req: NextRequest) {
   try {
-    // #region agent log H1
-    fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'context/route.ts:10',message:'Context route start',data:{path:req.url},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
-    // #endregion
-
     // 1. Authenticate (API key or session)
     const aiAuth = await authenticateAIRequest(req);
     
     if (!aiAuth.authenticated || !aiAuth.user) {
-      // #region agent log H3
-      fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'context/route.ts:18',message:'Auth failed',data:{error:aiAuth.error},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(()=>{});
-      // #endregion
       return Response.json(
         { 
           code: 'UNAUTHORIZED', 
@@ -38,10 +31,6 @@ export async function GET(req: NextRequest) {
         { status: 401 }
       );
     }
-
-    // #region agent log H2
-    fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'context/route.ts:32',message:'Auth success',data:{userId:aiAuth.user.id,userRole:aiAuth.user.role},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2'})}).catch(()=>{});
-    // #endregion
 
     // 2. Check AI permission
     if (!hasPermission(aiAuth.user.role, 'ai', 'command')) {
