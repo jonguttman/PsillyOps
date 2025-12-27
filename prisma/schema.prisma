@@ -262,18 +262,22 @@ model BOMItem {
 }
 
 model Location {
-  id                 String          @id @default(cuid())
-  name               String          @unique
-  type               String
-  isDefaultReceiving Boolean         @default(false)
-  isDefaultShipping  Boolean         @default(false)
-  active             Boolean         @default(true)
-  createdAt          DateTime        @default(now())
-  inventory          InventoryItem[]
-  defaultForProducts Product[]       @relation("ProductDefaultLocation")
-  defaultForMaterials RawMaterial[]  @relation("MaterialDefaultLocation")
+  id                  String          @id @default(cuid())
+  name                String          @unique
+  type                String
+  parentId            String?
+  isDefaultReceiving  Boolean         @default(false)
+  isDefaultShipping   Boolean         @default(false)
+  active              Boolean         @default(true)
+  createdAt           DateTime        @default(now())
+  parent              Location?       @relation("LocationHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children            Location[]      @relation("LocationHierarchy")
+  inventory           InventoryItem[]
+  defaultForProducts  Product[]       @relation("ProductDefaultLocation")
+  defaultForMaterials RawMaterial[]   @relation("MaterialDefaultLocation")
 
   @@index([type])
+  @@index([parentId])
 }
 
 model Batch {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -15,8 +15,8 @@ import {
   Truck,
   Archive,
   Check,
-  X,
   AlertCircle,
+  ChevronRight,
 } from 'lucide-react';
 
 // Location types matching the API
@@ -29,10 +29,30 @@ const LOCATION_TYPES = [
   { value: 'SHIPPING_RECEIVING', label: 'Shipping/Receiving', icon: Truck },
 ] as const;
 
+// Types that must be top-level (no parent)
+const TOP_LEVEL_ONLY_TYPES = ['RACK', 'COLD_STORAGE', 'PRODUCTION', 'SHIPPING_RECEIVING'];
+
+// Required parent type for each child type
+const REQUIRED_PARENT_TYPE: Record<string, string> = {
+  SHELF: 'RACK',
+  BIN: 'SHELF',
+};
+
+interface ParentLocation {
+  id: string;
+  name: string;
+  type: string;
+  path: string;
+}
+
 interface Location {
   id: string;
   name: string;
   type: string;
+  parentId?: string | null;
+  parent?: { id: string; name: string; type: string } | null;
+  children?: { id: string; name: string; type: string }[];
+  path?: string;
   isDefaultReceiving: boolean;
   isDefaultShipping: boolean;
   active: boolean;
@@ -51,25 +71,62 @@ export default function LocationsSettingsClient({ locations: initialLocations }:
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [potentialParents, setPotentialParents] = useState<ParentLocation[]>([]);
+  const [loadingParents, setLoadingParents] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
     name: '',
     type: 'SHELF',
+    parentId: '' as string | null,
     isDefaultReceiving: false,
     isDefaultShipping: false,
   });
+
+  // Fetch potential parents when type changes
+  const fetchPotentialParents = useCallback(async (type: string) => {
+    // Top-level types don't have parents
+    if (TOP_LEVEL_ONLY_TYPES.includes(type)) {
+      setPotentialParents([]);
+      return;
+    }
+
+    setLoadingParents(true);
+    try {
+      const res = await fetch(`/api/locations?forParentType=${type}`);
+      if (res.ok) {
+        const parents = await res.json();
+        setPotentialParents(parents);
+      }
+    } catch (err) {
+      console.error('Failed to fetch potential parents:', err);
+    } finally {
+      setLoadingParents(false);
+    }
+  }, []);
+
+  // Check if type requires a parent
+  const requiresParent = (type: string): boolean => {
+    return !!REQUIRED_PARENT_TYPE[type];
+  };
+
+  // Check if type can have a parent
+  const canHaveParent = (type: string): boolean => {
+    return !TOP_LEVEL_ONLY_TYPES.includes(type);
+  };
 
   const openCreateModal = () => {
     setEditingLocation(null);
     setFormData({
       name: '',
       type: 'SHELF',
+      parentId: null,
       isDefaultReceiving: false,
       isDefaultShipping: false,
     });
     setError(null);
     setShowModal(true);
+    fetchPotentialParents('SHELF');
   };
 
   const openEditModal = (location: Location) => {
@@ -77,17 +134,29 @@ export default function LocationsSettingsClient({ locations: initialLocations }:
     setFormData({
       name: location.name,
       type: location.type,
+      parentId: location.parentId || null,
       isDefaultReceiving: location.isDefaultReceiving,
       isDefaultShipping: location.isDefaultShipping,
     });
     setError(null);
     setShowModal(true);
+    fetchPotentialParents(location.type);
   };
 
   const closeModal = () => {
     setShowModal(false);
     setEditingLocation(null);
     setError(null);
+    setPotentialParents([]);
+  };
+
+  const handleTypeChange = (newType: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      type: newType,
+      parentId: TOP_LEVEL_ONLY_TYPES.includes(newType) ? null : prev.parentId,
+    }));
+    fetchPotentialParents(newType);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -95,16 +164,28 @@ export default function LocationsSettingsClient({ locations: initialLocations }:
     setIsSubmitting(true);
     setError(null);
 
+    // Client-side validation for required parent
+    if (requiresParent(formData.type) && !formData.parentId) {
+      setError(`${formData.type} requires a parent ${REQUIRED_PARENT_TYPE[formData.type]}.`);
+      setIsSubmitting(false);
+      return;
+    }
+
     try {
       const url = editingLocation
         ? `/api/locations/${editingLocation.id}`
         : '/api/locations';
       const method = editingLocation ? 'PUT' : 'POST';
 
+      const payload = {
+        ...formData,
+        parentId: formData.parentId || null,
+      };
+
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
@@ -122,6 +203,12 @@ export default function LocationsSettingsClient({ locations: initialLocations }:
   };
 
   const handleDelete = async (location: Location) => {
+    const childCount = location.children?.length || 0;
+    if (childCount > 0) {
+      alert(`Cannot deactivate "${location.name}" because it has ${childCount} active child location(s). Deactivate children first.`);
+      return;
+    }
+
     if (!confirm(`Are you sure you want to deactivate "${location.name}"?${location.inventoryCount > 0 ? ` This location has ${location.inventoryCount} inventory items.` : ''}`)) {
       return;
     }
@@ -165,7 +252,18 @@ export default function LocationsSettingsClient({ locations: initialLocations }:
     return LOCATION_TYPES.find((t) => t.value === type) || { label: type, icon: MapPin };
   };
 
-  const activeLocations = locations.filter((l) => l.active);
+  // Calculate hierarchy depth for indentation
+  const getHierarchyDepth = (location: Location): number => {
+    if (!location.path) return 0;
+    const parts = location.path.split(' → ');
+    return parts.length - 1;
+  };
+
+  // Sort locations by hierarchy path for proper display
+  const sortedActiveLocations = [...locations]
+    .filter((l) => l.active)
+    .sort((a, b) => (a.path || a.name).localeCompare(b.path || b.name));
+
   const inactiveLocations = locations.filter((l) => !l.active);
 
   return (
@@ -205,11 +303,11 @@ export default function LocationsSettingsClient({ locations: initialLocations }:
       <div className="bg-white rounded-lg shadow border border-gray-200">
         <div className="px-6 py-4 border-b border-gray-200">
           <h2 className="text-lg font-semibold text-gray-900">
-            Active Locations ({activeLocations.length})
+            Active Locations ({sortedActiveLocations.length})
           </h2>
         </div>
 
-        {activeLocations.length === 0 ? (
+        {sortedActiveLocations.length === 0 ? (
           <div className="p-8 text-center">
             <MapPin className="w-12 h-12 text-gray-300 mx-auto mb-3" />
             <p className="text-gray-500">No locations configured yet.</p>
@@ -223,7 +321,7 @@ export default function LocationsSettingsClient({ locations: initialLocations }:
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Name
+                    Location
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Type
@@ -243,15 +341,35 @@ export default function LocationsSettingsClient({ locations: initialLocations }:
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {activeLocations.map((location) => {
+                {sortedActiveLocations.map((location) => {
                   const typeInfo = getTypeInfo(location.type);
                   const TypeIcon = typeInfo.icon;
+                  const depth = getHierarchyDepth(location);
+                  const hasChildren = (location.children?.length || 0) > 0;
+                  
                   return (
                     <tr key={location.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4">
-                        <span className="font-medium text-gray-900">
-                          {location.name}
-                        </span>
+                        <div
+                          className="flex items-center gap-2"
+                          style={{ paddingLeft: `${depth * 24}px` }}
+                        >
+                          {/* Hierarchy indicator */}
+                          {depth > 0 && (
+                            <ChevronRight className="w-4 h-4 text-gray-300 flex-shrink-0" />
+                          )}
+                          <div className="flex flex-col">
+                            <span className="font-medium text-gray-900">
+                              {location.name}
+                            </span>
+                            {/* Breadcrumb path for nested items */}
+                            {location.path && depth > 0 && (
+                              <span className="text-xs text-gray-400">
+                                {location.path}
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
@@ -297,8 +415,13 @@ export default function LocationsSettingsClient({ locations: initialLocations }:
                           </button>
                           <button
                             onClick={() => handleDelete(location)}
-                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                            title="Deactivate"
+                            className={`p-1.5 rounded transition-colors ${
+                              hasChildren
+                                ? 'text-gray-300 cursor-not-allowed'
+                                : 'text-gray-400 hover:text-red-600 hover:bg-red-50'
+                            }`}
+                            title={hasChildren ? 'Cannot deactivate: has children' : 'Deactivate'}
+                            disabled={hasChildren}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -422,9 +545,7 @@ export default function LocationsSettingsClient({ locations: initialLocations }:
                   </label>
                   <select
                     value={formData.type}
-                    onChange={(e) =>
-                      setFormData({ ...formData, type: e.target.value })
-                    }
+                    onChange={(e) => handleTypeChange(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
                     {LOCATION_TYPES.map((type) => (
@@ -434,6 +555,57 @@ export default function LocationsSettingsClient({ locations: initialLocations }:
                     ))}
                   </select>
                 </div>
+
+                {/* Parent Location - Only show for types that can have parents */}
+                {canHaveParent(formData.type) && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Parent Location
+                      {requiresParent(formData.type) && (
+                        <span className="text-red-500 ml-1">*</span>
+                      )}
+                    </label>
+                    <select
+                      value={formData.parentId || ''}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          parentId: e.target.value || null,
+                        })
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      required={requiresParent(formData.type)}
+                      disabled={loadingParents}
+                    >
+                      <option value="">
+                        {loadingParents
+                          ? 'Loading...'
+                          : requiresParent(formData.type)
+                          ? `Select a ${REQUIRED_PARENT_TYPE[formData.type]}...`
+                          : '(No parent)'}
+                      </option>
+                      {potentialParents.map((parent) => (
+                        <option key={parent.id} value={parent.id}>
+                          {parent.path || parent.name}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1 text-xs text-gray-500">
+                      {formData.type === 'SHELF'
+                        ? 'Shelves must be placed inside a Rack'
+                        : formData.type === 'BIN'
+                        ? 'Bins must be placed on a Shelf'
+                        : 'Optional parent location'}
+                    </p>
+                    {potentialParents.length === 0 &&
+                      !loadingParents &&
+                      requiresParent(formData.type) && (
+                        <p className="mt-1 text-xs text-amber-600">
+                          No {REQUIRED_PARENT_TYPE[formData.type]} locations found. Create one first.
+                        </p>
+                      )}
+                  </div>
+                )}
 
                 {/* Default Checkboxes */}
                 <div className="space-y-3">
@@ -494,7 +666,7 @@ export default function LocationsSettingsClient({ locations: initialLocations }:
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || (requiresParent(formData.type) && potentialParents.length === 0)}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
                 >
                   {isSubmitting
@@ -511,4 +683,3 @@ export default function LocationsSettingsClient({ locations: initialLocations }:
     </div>
   );
 }
-
