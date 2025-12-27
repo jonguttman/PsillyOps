@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const aiSession = await validateAISession(aiSessionId, aiAuth.user.id);
+    const aiSession = await validateAISession(aiSessionId);
     if (!aiSession) {
       return Response.json(
         {

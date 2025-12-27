@@ -12,7 +12,7 @@
 
 import { NextRequest } from 'next/server';
 import { auth } from '@/lib/auth/auth';
-import prisma from '@/lib/db/prisma';
+import { prisma } from '@/lib/db/prisma';
 import { User } from '@prisma/client';
 
 export interface AIAuthResult {
