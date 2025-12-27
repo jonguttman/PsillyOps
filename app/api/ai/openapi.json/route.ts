@@ -10,8 +10,12 @@ import { NextRequest } from 'next/server';
 export async function GET(req: NextRequest) {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001';
   
+  // #region agent log H3
+  fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'openapi.json/route.ts:11',message:'OpenAPI schema generation start',data:{baseUrl},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(()=>{});
+  // #endregion
+  
   const schema = {
-    openapi: '3.0.0',
+    openapi: '3.1.0',
     info: {
       title: 'PsillyOps AI API',
       description: 'Phase 1 AI-assisted operations API for mushroom production facility management',
@@ -115,13 +119,6 @@ export async function GET(req: NextRequest) {
                 enum: ['product', 'material', 'retailer', 'location', 'batch', 'vendor'],
               },
             },
-            {
-              name: 'X-AI-Session-ID',
-              in: 'header',
-              required: true,
-              description: 'Session token obtained from /api/ai/context',
-              schema: { type: 'string' },
-            },
           ],
           responses: {
             '200': {
@@ -171,15 +168,6 @@ export async function GET(req: NextRequest) {
           operationId: 'createProposal',
           summary: 'Create a proposal for an action',
           description: 'Creates a proposal that previews an action without executing it. Phase 1 allows execution of: INVENTORY_ADJUSTMENT, PURCHASE_ORDER_SUBMIT, VENDOR_EMAIL. Other actions are preview-only.',
-          parameters: [
-            {
-              name: 'X-AI-Session-ID',
-              in: 'header',
-              required: true,
-              description: 'Session token obtained from /api/ai/context',
-              schema: { type: 'string' },
-            },
-          ],
           requestBody: {
             required: true,
             content: {
@@ -275,15 +263,6 @@ export async function GET(req: NextRequest) {
           operationId: 'executeProposal',
           summary: 'Execute a confirmed proposal',
           description: 'Executes a previously created proposal. Phase 1 restrictions apply - only INVENTORY_ADJUSTMENT, PURCHASE_ORDER_SUBMIT, and VENDOR_EMAIL can be executed.',
-          parameters: [
-            {
-              name: 'X-AI-Session-ID',
-              in: 'header',
-              required: true,
-              description: 'Session token obtained from /api/ai/context',
-              schema: { type: 'string' },
-            },
-          ],
           requestBody: {
             required: true,
             content: {
@@ -366,13 +345,6 @@ export async function GET(req: NextRequest) {
                 enum: ['PENDING', 'APPLIED', 'FAILED', 'BLOCKED'],
               },
             },
-            {
-              name: 'X-AI-Session-ID',
-              in: 'header',
-              required: true,
-              description: 'Session token obtained from /api/ai/context',
-              schema: { type: 'string' },
-            },
           ],
           responses: {
             '200': {
@@ -414,6 +386,7 @@ export async function GET(req: NextRequest) {
       },
     },
     components: {
+      schemas: {},
       securitySchemes: {
         cookieAuth: {
           type: 'apiKey',
@@ -429,6 +402,10 @@ export async function GET(req: NextRequest) {
       },
     ],
   };
+
+  // #region agent log H1
+  fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'openapi.json/route.ts:485',message:'Schema generated',data:{hasSchemas:!!schema.components.schemas,openApiVersion:schema.openapi,pathCount:Object.keys(schema.paths).length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
+  // #endregion
 
   return Response.json(schema, {
     headers: {
