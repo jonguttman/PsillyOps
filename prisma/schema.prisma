@@ -74,6 +74,7 @@ model Product {
   reorderPoint            Int                      @default(0)
   wholesalePrice          Float?
   strainId                String?
+  defaultLocationId       String?
   active                  Boolean                  @default(true)
   defaultExperienceMode   ExperienceMode           @default(MACRO)
   createdAt               DateTime                 @default(now())
@@ -89,6 +90,7 @@ model Product {
   inventory               InventoryItem[]
   orderLines              OrderLineItem[]
   strain                  Strain?                  @relation(fields: [strainId], references: [id])
+  defaultLocation         Location?                @relation("ProductDefaultLocation", fields: [defaultLocationId], references: [id])
   productionOrders        ProductionOrder[]
   productionRuns          ProductionRun[]
   productionStepTemplates ProductionStepTemplate[]
@@ -101,6 +103,7 @@ model Product {
   @@index([upc])
   @@index([active])
   @@index([strainId])
+  @@index([defaultLocationId])
 }
 
 model ProductionStepTemplate {
@@ -176,6 +179,7 @@ model RawMaterial {
   archivedAt               DateTime?
   preferredVendorId        String?
   strainId                 String?
+  defaultLocationId        String?
   createdAt                DateTime                  @default(now())
   updatedAt                DateTime                  @updatedAt
   upc                      String?
@@ -188,6 +192,7 @@ model RawMaterial {
   poLineItems              PurchaseOrderLineItem[]
   preferredVendor          Vendor?                   @relation("PreferredVendor", fields: [preferredVendorId], references: [id])
   strain                   Strain?                   @relation(fields: [strainId], references: [id])
+  defaultLocation          Location?                 @relation("MaterialDefaultLocation", fields: [defaultLocationId], references: [id])
 
   @@index([sku])
   @@index([upc])
@@ -195,6 +200,7 @@ model RawMaterial {
   @@index([preferredVendorId])
   @@index([category])
   @@index([strainId])
+  @@index([defaultLocationId])
 }
 
 model Vendor {
@@ -264,6 +270,8 @@ model Location {
   active             Boolean         @default(true)
   createdAt          DateTime        @default(now())
   inventory          InventoryItem[]
+  defaultForProducts Product[]       @relation("ProductDefaultLocation")
+  defaultForMaterials RawMaterial[]  @relation("MaterialDefaultLocation")
 
   @@index([type])
 }

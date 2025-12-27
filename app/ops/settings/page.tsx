@@ -15,7 +15,8 @@ import {
   FileCheck,
   ChevronRight,
   Check,
-  X
+  X,
+  MapPin
 } from 'lucide-react';
 
 export default async function SettingsPage() {
@@ -31,12 +32,13 @@ export default async function SettingsPage() {
   }
 
   // Fetch status indicators for settings
-  const [fallbackRedirect, transparencyRecordCount] = await Promise.all([
+  const [fallbackRedirect, transparencyRecordCount, locationCount] = await Promise.all([
     prisma.qRRedirectRule.findFirst({
       where: { isFallback: true },
       select: { active: true, redirectUrl: true }
     }),
-    prisma.transparencyRecord.count()
+    prisma.transparencyRecord.count(),
+    prisma.location.count({ where: { active: true } })
   ]);
 
   return (
@@ -78,6 +80,18 @@ export default async function SettingsPage() {
           description="Product transparency records and lab testing data"
           status={transparencyRecordCount > 0 ? 'configured' : 'not-configured'}
           statusText={`${transparencyRecordCount} records`}
+        />
+
+        {/* Locations - Active */}
+        <SettingsCard
+          href="/ops/settings/locations"
+          icon={MapPin}
+          iconBg="bg-amber-100"
+          iconColor="text-amber-600"
+          title="Locations"
+          description="Storage locations for inventory (shelves, racks, bins)"
+          status={locationCount > 0 ? 'configured' : 'not-configured'}
+          statusText={locationCount > 0 ? `${locationCount} locations` : 'Not configured'}
         />
 
         {/* Security - Active */}
