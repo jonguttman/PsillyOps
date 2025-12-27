@@ -39,15 +39,17 @@ export async function POST(req: NextRequest) {
     }
 
     // 3. Get or create AI session (auto-create if not provided)
-    let aiSessionId = req.headers.get('X-AI-Session-ID');
-    let aiSession = aiSessionId ? await validateAISession(aiSessionId) : null;
+    const headerSessionId = req.headers.get('X-AI-Session-ID');
+    let aiSession = headerSessionId ? await validateAISession(headerSessionId) : null;
+    let sessionId: string;
     
     // If no valid session, auto-create one for convenience
     if (!aiSession) {
-      const origin = req.headers.get('X-AI-Origin') || 'chatgpt';
-      const newSession = await getOrCreateAISession(aiAuth.user.id, undefined, origin);
-      aiSessionId = newSession.sessionToken;
-      aiSession = { id: newSession.sessionToken, userId: aiAuth.user.id, origin };
+      const sessionOrigin = req.headers.get('X-AI-Origin') || 'chatgpt';
+      const newSession = await getOrCreateAISession(aiAuth.user.id, undefined, sessionOrigin);
+      sessionId = newSession.sessionToken;
+    } else {
+      sessionId = headerSessionId!;
     }
 
     // 4. Parse and validate request body
@@ -63,12 +65,12 @@ export async function POST(req: NextRequest) {
     }
 
     // 5. Create proposal
-    const origin = req.headers.get('X-AI-Origin') || aiSession.origin || 'unknown';
+    const origin = req.headers.get('X-AI-Origin') || 'chatgpt';
     
     const result = await createProposal({
       action: action as ProposalAction,
       params,
-      aiSessionId,
+      aiSessionId: sessionId,
       userId: aiAuth.user.id,
       origin,
     });
