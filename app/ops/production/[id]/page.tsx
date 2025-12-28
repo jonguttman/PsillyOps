@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
 import { formatDate, formatDateTime } from '@/lib/utils/formatters';
 import { startProductionOrder, blockProductionOrder, completeProductionOrder, createBatch } from '@/lib/services/productionService';
+import BlockedOrderActions from './BlockedOrderActions';
 
 const STATUS_COLORS: Record<string, string> = {
   PLANNED: 'bg-gray-100 text-gray-800',
@@ -126,6 +127,8 @@ export default async function ProductionOrderDetailPage({
   const canBlock = order.status === 'PLANNED' || order.status === 'IN_PROGRESS';
   const canComplete = order.status === 'IN_PROGRESS' && allBatchesReleased;
   const canCreateBatch = order.status !== 'COMPLETED' && order.status !== 'CANCELLED';
+  const isBlocked = order.status === 'BLOCKED';
+  const isArchived = !!order.archivedAt;
 
   return (
     <div className="space-y-6">
@@ -406,6 +409,31 @@ export default async function ProductionOrderDetailPage({
               Block Order
             </button>
           </form>
+        </div>
+      )}
+
+      {/* Blocked Order Actions (Archive / Unblock) */}
+      {isBlocked && !isArchived && (
+        <BlockedOrderActions
+          orderId={id}
+          orderNumber={order.orderNumber}
+          productName={order.product.name}
+          isArchived={isArchived}
+        />
+      )}
+
+      {/* Archived Notice */}
+      {isArchived && (
+        <div className="bg-gray-100 border border-gray-300 rounded-lg p-6">
+          <h3 className="text-lg font-medium text-gray-700 mb-2">Order Archived</h3>
+          <p className="text-sm text-gray-600">
+            This order was archived on {formatDateTime(order.archivedAt!)}.
+          </p>
+          {order.archiveReason && (
+            <p className="text-sm text-gray-600 mt-2">
+              <span className="font-medium">Reason:</span> {order.archiveReason}
+            </p>
+          )}
         </div>
       )}
     </div>

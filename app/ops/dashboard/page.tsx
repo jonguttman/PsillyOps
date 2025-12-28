@@ -60,9 +60,9 @@ export default async function AdminDashboardPage() {
       getLowStockMaterials(),
       // Supply watch: manual adjustments (last 48h)
       getRecentAdjustments({ hours: 48, adjustmentType: "MANUAL_CORRECTION" }),
-      // Blocked production orders
+      // Blocked production orders (exclude archived)
       prisma.productionOrder.findMany({
-        where: { status: "BLOCKED" },
+        where: { status: "BLOCKED", archivedAt: null },
         select: { id: true, orderNumber: true, product: { select: { name: true } } },
       }),
       // QC Hold batches

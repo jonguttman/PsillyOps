@@ -508,6 +508,137 @@ export async function completeProductionOrder(
 }
 
 /**
+ * Archive a blocked production order (permanent action)
+ * This removes the order from the active blocked alerts but preserves the record
+ */
+export async function archiveBlockedOrder(
+  orderId: string,
+  reason: string,
+  userId: string
+): Promise<void> {
+  if (!reason || reason.trim().length === 0) {
+    throw new AppError(ErrorCodes.VALIDATION_ERROR, 'Archive reason is required');
+  }
+
+  const order = await prisma.productionOrder.findUnique({
+    where: { id: orderId },
+    include: { product: true }
+  });
+
+  if (!order) {
+    throw new AppError(ErrorCodes.NOT_FOUND, 'Production order not found');
+  }
+
+  if (order.status !== ProductionStatus.BLOCKED) {
+    throw new AppError(
+      ErrorCodes.INVALID_STATUS,
+      'Only blocked orders can be archived'
+    );
+  }
+
+  if (order.archivedAt) {
+    throw new AppError(
+      ErrorCodes.INVALID_STATUS,
+      'Order is already archived'
+    );
+  }
+
+  const before = { 
+    status: order.status,
+    archivedAt: null,
+    archiveReason: null
+  };
+
+  await prisma.productionOrder.update({
+    where: { id: orderId },
+    data: {
+      archivedAt: new Date(),
+      archiveReason: reason.trim()
+    }
+  });
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+
+  await logAction({
+    entityType: ActivityEntity.PRODUCTION_ORDER,
+    entityId: orderId,
+    action: 'archived',
+    userId,
+    summary: `${user?.name || 'User'} archived blocked production order ${order.orderNumber}: ${reason.trim()}`,
+    before,
+    after: {
+      status: order.status,
+      archivedAt: new Date(),
+      archiveReason: reason.trim()
+    },
+    metadata: {
+      orderNumber: order.orderNumber,
+      productName: order.product.name,
+      reason: reason.trim()
+    },
+    tags: ['archived', 'blocked']
+  });
+}
+
+/**
+ * Unblock a production order and return it to PLANNED status
+ * This allows the order to be rescheduled and worked on again
+ */
+export async function unblockProductionOrder(
+  orderId: string,
+  userId: string
+): Promise<void> {
+  const order = await prisma.productionOrder.findUnique({
+    where: { id: orderId },
+    include: { product: true }
+  });
+
+  if (!order) {
+    throw new AppError(ErrorCodes.NOT_FOUND, 'Production order not found');
+  }
+
+  if (order.status !== ProductionStatus.BLOCKED) {
+    throw new AppError(
+      ErrorCodes.INVALID_STATUS,
+      'Only blocked orders can be unblocked'
+    );
+  }
+
+  if (order.archivedAt) {
+    throw new AppError(
+      ErrorCodes.INVALID_STATUS,
+      'Archived orders cannot be unblocked'
+    );
+  }
+
+  const before = { status: order.status };
+
+  await prisma.productionOrder.update({
+    where: { id: orderId },
+    data: {
+      status: ProductionStatus.PLANNED
+    }
+  });
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+
+  await logAction({
+    entityType: ActivityEntity.PRODUCTION_ORDER,
+    entityId: orderId,
+    action: 'unblocked',
+    userId,
+    summary: `${user?.name || 'User'} unblocked production order ${order.orderNumber} and returned it to production queue`,
+    before,
+    after: { status: ProductionStatus.PLANNED },
+    metadata: {
+      orderNumber: order.orderNumber,
+      productName: order.product.name
+    },
+    tags: ['status_change', 'unblocked']
+  });
+}
+
+/**
  * Calculate and update material requirements for a production order
  * @param orderId - The production order ID
  * @param userId - Optional user ID (null for system-triggered recalculations)
