@@ -103,12 +103,10 @@ export function PredictionEditor({
   const handleSave = async () => {
     setError(null);
     
-    // Validate sum
+    // Validate that at least one weight is set
     const total = weights.transcend + weights.energize + weights.create + weights.transform + weights.connect;
-    const diff = Math.abs(total - 1.0);
-    
-    if (diff > 0.01) {
-      setError(`Weights must sum to 1.0 (current: ${total.toFixed(3)})`);
+    if (total === 0) {
+      setError('Please set at least one vibe weight');
       return;
     }
     
@@ -122,7 +120,7 @@ export function PredictionEditor({
     }
   };
   
-  const isValid = Math.abs(sum - 1.0) <= 0.01;
+  const isValid = sum > 0; // Just need at least one weight set
   const currentLabels = vibeLabels[currentMode];
   const hasProfile = !!initialPredictions[currentMode];
   
@@ -130,8 +128,8 @@ export function PredictionEditor({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-gray-900">Predicted Experience</h3>
-        <span className={`text-sm font-medium ${isValid ? 'text-green-600' : 'text-red-600'}`}>
-          Sum: {sum.toFixed(3)} / 1.0
+        <span className="text-sm font-medium text-gray-500">
+          Sum: {sum.toFixed(2)}
         </span>
       </div>
 

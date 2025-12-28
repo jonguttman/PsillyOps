@@ -12,27 +12,24 @@ export interface VibeWeights {
   connect: number;
 }
 
-const TOLERANCE = 0.01; // Allow 0.01 tolerance for floating point precision
-
 /**
- * Validate that vibe weights sum to 1.0 (within tolerance)
+ * Validate vibe weights (must be non-negative and at least one must be set)
  */
 export function validateVibeWeights(vibes: VibeWeights): { valid: boolean; error?: string } {
-  const sum = vibes.transcend + vibes.energize + vibes.create + vibes.transform + vibes.connect;
-  const diff = Math.abs(sum - 1.0);
-  
-  if (diff > TOLERANCE) {
-    return {
-      valid: false,
-      error: `Vibe weights must sum to 1.0 (current sum: ${sum.toFixed(3)})`
-    };
-  }
-  
   // Check for negative values
   if (vibes.transcend < 0 || vibes.energize < 0 || vibes.create < 0 || vibes.transform < 0 || vibes.connect < 0) {
     return {
       valid: false,
       error: 'Vibe weights cannot be negative'
+    };
+  }
+  
+  // Check that at least one weight is set
+  const sum = vibes.transcend + vibes.energize + vibes.create + vibes.transform + vibes.connect;
+  if (sum === 0) {
+    return {
+      valid: false,
+      error: 'At least one vibe weight must be set'
     };
   }
   
