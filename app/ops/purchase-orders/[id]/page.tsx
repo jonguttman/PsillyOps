@@ -39,10 +39,22 @@ export default async function PurchaseOrderDetailPage({ params }: PageProps) {
         },
       },
     }),
-    // Locations for receiving
+    // Locations for receiving (include parent hierarchy for display)
     prisma.location.findMany({
       where: { active: true },
-      select: { id: true, name: true, isDefaultReceiving: true },
+      select: {
+        id: true,
+        name: true,
+        isDefaultReceiving: true,
+        parent: {
+          select: {
+            name: true,
+            parent: {
+              select: { name: true },
+            },
+          },
+        },
+      },
       orderBy: { name: 'asc' },
     }),
     // Activity logs for this PO
@@ -99,10 +111,29 @@ export default async function PurchaseOrderDetailPage({ params }: PageProps) {
 
   const canEdit = ['ADMIN', 'WAREHOUSE'].includes(session.user.role);
 
+  // Build hierarchical display paths for locations
+  const locationsWithPath = locations.map((loc) => {
+    const pathParts: string[] = [];
+    if (loc.parent?.parent?.name) {
+      pathParts.push(loc.parent.parent.name);
+    }
+    if (loc.parent?.name) {
+      pathParts.push(loc.parent.name);
+    }
+    pathParts.push(loc.name);
+    
+    return {
+      id: loc.id,
+      name: loc.name,
+      isDefaultReceiving: loc.isDefaultReceiving,
+      displayPath: pathParts.join(' → '),
+    };
+  });
+
   return (
     <PurchaseOrderDetailClient
       purchaseOrder={transformedPO}
-      locations={locations}
+      locations={locationsWithPath}
       activityLogs={transformedActivity}
       canEdit={canEdit}
     />
