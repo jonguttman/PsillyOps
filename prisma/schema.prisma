@@ -436,6 +436,7 @@ model ProductionOrder {
   completedAt            DateTime?
   archivedAt             DateTime?
   archiveReason          String?
+  dismissedAt            DateTime?
   workCenterId           String?
   templateId             String?
   createdByUserId        String
@@ -457,6 +458,8 @@ model ProductionOrder {
   @@index([workCenterId])
   @@index([scheduledDate])
   @@index([archivedAt])
+  @@index([dismissedAt])
+  @@index([completedAt])
 }
 
 model PurchaseOrder {

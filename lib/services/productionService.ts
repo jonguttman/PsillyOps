@@ -639,6 +639,62 @@ export async function unblockProductionOrder(
 }
 
 /**
+ * Dismiss a completed production order from the Kanban board
+ * This hides the order from the active view but preserves the record
+ */
+export async function dismissCompletedOrder(
+  orderId: string,
+  userId: string
+): Promise<void> {
+  const order = await prisma.productionOrder.findUnique({
+    where: { id: orderId },
+    include: { product: true }
+  });
+
+  if (!order) {
+    throw new AppError(ErrorCodes.NOT_FOUND, 'Production order not found');
+  }
+
+  if (order.status !== ProductionStatus.COMPLETED) {
+    throw new AppError(
+      ErrorCodes.INVALID_STATUS,
+      'Only completed orders can be dismissed'
+    );
+  }
+
+  if (order.dismissedAt) {
+    throw new AppError(
+      ErrorCodes.INVALID_STATUS,
+      'Order is already dismissed'
+    );
+  }
+
+  await prisma.productionOrder.update({
+    where: { id: orderId },
+    data: {
+      dismissedAt: new Date()
+    }
+  });
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+
+  await logAction({
+    entityType: ActivityEntity.PRODUCTION_ORDER,
+    entityId: orderId,
+    action: 'dismissed',
+    userId,
+    summary: `${user?.name || 'User'} dismissed completed production order ${order.orderNumber} from the board`,
+    before: { dismissedAt: null },
+    after: { dismissedAt: new Date() },
+    metadata: {
+      orderNumber: order.orderNumber,
+      productName: order.product.name
+    },
+    tags: ['dismissed', 'completed']
+  });
+}
+
+/**
  * Calculate and update material requirements for a production order
  * @param orderId - The production order ID
  * @param userId - Optional user ID (null for system-triggered recalculations)

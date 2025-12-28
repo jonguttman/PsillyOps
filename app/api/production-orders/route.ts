@@ -1,99 +1,102 @@
-// API Route: Production Orders List & Create
-// STRICT LAYERING: Validate → Call Service → Return JSON
-
 import { NextRequest } from 'next/server';
+import { prisma } from '@/lib/db/prisma';
 import { auth } from '@/lib/auth/auth';
-import { getProductionOrderList, createProductionOrder } from '@/lib/services/productionService';
-import { handleApiError } from '@/lib/utils/errors';
-import { createProductionOrderSchema } from '@/lib/utils/validators';
-import { hasPermission } from '@/lib/auth/rbac';
+import { ProductionStatus } from '@prisma/client';
 
 export async function GET(req: NextRequest) {
   try {
-    // 1. Validate
     const session = await auth();
-    if (!session) {
+    if (!session || !session.user) {
       return Response.json(
         { code: 'UNAUTHORIZED', message: 'Not authenticated' },
         { status: 401 }
       );
     }
 
-    if (!hasPermission(session.user.role, 'production', 'view')) {
+    if (session.user.role === 'REP') {
       return Response.json(
         { code: 'FORBIDDEN', message: 'Insufficient permissions' },
         { status: 403 }
       );
     }
 
-    // Parse query params
-    const searchParams = req.nextUrl.searchParams;
-    const filter = {
-      status: searchParams.get('status') as any || undefined,
-      productId: searchParams.get('productId') || undefined,
-      workCenterId: searchParams.get('workCenterId') || undefined,
-      search: searchParams.get('search') || undefined,
-      scheduledDateFrom: searchParams.get('scheduledDateFrom') 
-        ? new Date(searchParams.get('scheduledDateFrom')!) 
-        : undefined,
-      scheduledDateTo: searchParams.get('scheduledDateTo') 
-        ? new Date(searchParams.get('scheduledDateTo')!) 
-        : undefined,
-      limit: searchParams.get('limit') 
-        ? parseInt(searchParams.get('limit')!) 
-        : undefined,
-      offset: searchParams.get('offset') 
-        ? parseInt(searchParams.get('offset')!) 
-        : undefined
-    };
+    const { searchParams } = new URL(req.url);
+    const showArchived = searchParams.get('showArchived') === 'true';
+    const showDismissed = searchParams.get('showDismissed') === 'true';
 
-    // 2. Call Service
-    const result = await getProductionOrderList(filter);
+    // Calculate 15 days ago for auto-hiding completed orders
+    const fifteenDaysAgo = new Date();
+    fifteenDaysAgo.setDate(fifteenDaysAgo.getDate() - 15);
 
-    // 3. Return JSON
-    return Response.json(result);
-  } catch (error) {
-    return handleApiError(error);
-  }
-}
+    // Build where clause for each status type
+    const blockedFilter = showArchived 
+      ? { status: ProductionStatus.BLOCKED } // Show all blocked (including archived)
+      : { status: ProductionStatus.BLOCKED, archivedAt: null }; // Only non-archived blocked
 
-export async function POST(req: NextRequest) {
-  try {
-    // 1. Validate
-    const session = await auth();
-    if (!session) {
-      return Response.json(
-        { code: 'UNAUTHORIZED', message: 'Not authenticated' },
-        { status: 401 }
-      );
-    }
+    const completedFilter = showDismissed
+      ? { status: ProductionStatus.COMPLETED } // Show all completed
+      : { 
+          status: ProductionStatus.COMPLETED, 
+          dismissedAt: null,
+          completedAt: { gte: fifteenDaysAgo }
+        };
 
-    if (!hasPermission(session.user.role, 'production', 'create')) {
-      return Response.json(
-        { code: 'FORBIDDEN', message: 'Insufficient permissions' },
-        { status: 403 }
-      );
-    }
-
-    const body = await req.json();
-    const validated = createProductionOrderSchema.parse(body);
-
-    // 2. Call Service
-    const orderId = await createProductionOrder({
-      productId: validated.productId,
-      quantityToMake: validated.quantityToMake,
-      batchSize: validated.batchSize,
-      scheduledDate: validated.scheduledDate ? new Date(validated.scheduledDate) : undefined,
-      dueDate: validated.dueDate ? new Date(validated.dueDate) : undefined,
-      workCenterId: validated.workCenterId,
-      templateId: validated.templateId,
-      linkedRetailerOrderIds: validated.linkedRetailerOrderIds,
-      userId: session.user.id
+    const orders = await prisma.productionOrder.findMany({
+      where: {
+        status: { not: ProductionStatus.CANCELLED },
+        OR: [
+          { status: ProductionStatus.PLANNED },
+          { status: ProductionStatus.IN_PROGRESS },
+          blockedFilter,
+          completedFilter
+        ]
+      },
+      include: {
+        product: { select: { id: true, name: true, sku: true } },
+        workCenter: { select: { id: true, name: true } },
+        batches: {
+          select: {
+            id: true,
+            batchCode: true,
+            status: true,
+            qcStatus: true,
+            actualQuantity: true
+          }
+        },
+        materials: {
+          select: {
+            shortage: true
+          }
+        },
+        _count: {
+          select: { batches: true }
+        }
+      },
+      orderBy: [
+        { scheduledDate: 'asc' },
+        { createdAt: 'desc' }
+      ]
     });
 
-    // 3. Return JSON
-    return Response.json({ success: true, orderId }, { status: 201 });
+    // Also return counts for stats (always excluding archived/dismissed)
+    const blockedCount = await prisma.productionOrder.count({
+      where: {
+        status: ProductionStatus.BLOCKED,
+        archivedAt: null
+      }
+    });
+
+    return Response.json({
+      orders,
+      stats: {
+        blockedCount
+      }
+    });
   } catch (error) {
-    return handleApiError(error);
+    console.error('Error fetching production orders:', error);
+    return Response.json(
+      { code: 'INTERNAL_ERROR', message: 'Failed to fetch production orders' },
+      { status: 500 }
+    );
   }
 }
