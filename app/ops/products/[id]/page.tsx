@@ -12,6 +12,8 @@ import { QRTokenInspector } from "@/components/qr/QRTokenInspector";
 import { PredictionEditor } from "@/components/products/PredictionEditor";
 import { getActivePrediction, createPredictionProfile, getActivePredictionsByMode } from "@/lib/services/predictionService";
 import { ExperienceMode } from "@prisma/client";
+import { calculateProductCost } from "@/lib/services/costingService";
+import CalculatedCostDisplay from "./CalculatedCostDisplay";
 
 const UNIT_OPTIONS = [
   "jar",
@@ -153,14 +155,13 @@ export default async function ProductDetailPage({
     notFound();
   }
 
+  // Calculate product cost from BOM
+  const productCost = await calculateProductCost(id);
+
   // Get active predictions for both modes
   const activePredictions = await getActivePredictionsByMode(id);
   const defaultMode = product.defaultExperienceMode;
   const activePrediction = activePredictions[defaultMode];
-
-  if (!product) {
-    notFound();
-  }
 
   // Fetch all active strains for the dropdown
   const strains = await prisma.strain.findMany({
@@ -437,6 +438,11 @@ export default async function ProductDetailPage({
                   : "Not set"}
               </dd>
             </div>
+            <CalculatedCostDisplay
+              totalCostPerUnit={productCost.totalCostPerUnit}
+              bomBreakdown={productCost.bomBreakdown}
+              hasBom={product.bom.length > 0}
+            />
           </dl>
         )}
       </div>
