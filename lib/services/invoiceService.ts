@@ -287,6 +287,7 @@ async function createInvoicePdfBuffer(data: InvoicePdfData): Promise<Buffer> {
 // ========================================
 
 interface ManifestPdfData {
+  orderId: string;
   orderNumber: string;
   orderDate: Date;
   status: OrderStatus;
@@ -372,6 +373,7 @@ export async function generateManifestPdf(orderId: string): Promise<Buffer> {
 
   // Prepare manifest data
   const data: ManifestPdfData = {
+    orderId: order.id,
     orderNumber: order.orderNumber,
     orderDate: order.createdAt,
     status: order.status,
@@ -479,9 +481,10 @@ async function drawManifestHeader(
     color: rgb(...statusInfo.text),
   });
   
-  // QR Code (top right)
+  // QR Code (top right) - links directly to order details page
   try {
-    const qrBuffer = await generateQRCodePng(data.orderNumber, 70);
+    const orderUrl = `${COMPANY_CONFIG.baseUrl}/ops/orders/${data.orderId}`;
+    const qrBuffer = await generateQRCodePng(orderUrl, 70);
     const qrImage = await pdfDoc.embedPng(qrBuffer);
     page.drawImage(qrImage, {
       x: 505,
