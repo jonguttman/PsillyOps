@@ -599,8 +599,8 @@ export default async function ProductDetailPage({
       {/* Manufacturing Setup */}
       <ManufacturingSetup
         productId={id}
-        initialSteps={(product.manufacturingSteps as ManufacturingStep[]) || []}
-        initialEquipment={(product.requiredEquipment as string[]) || []}
+        initialSteps={(product.manufacturingSteps as unknown as ManufacturingStep[]) || []}
+        initialEquipment={(product.requiredEquipment as unknown as string[]) || []}
         onSave={async (steps, equipment) => {
           'use server';
           await saveManufacturingSetup(id, steps, equipment);
