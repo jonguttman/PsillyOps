@@ -76,6 +76,7 @@ export function OrderActionModal({
   shortages,
 }: OrderActionModalProps) {
   const [trackingNumber, setTrackingNumber] = useState("");
+  const [carrier, setCarrier] = useState("");
   const [cancelReason, setCancelReason] = useState("");
   const [reviewChecked, setReviewChecked] = useState({
     quantities: false,
@@ -90,8 +91,9 @@ export function OrderActionModal({
   const handleConfirm = async () => {
     const data: Record<string, unknown> = {};
     
-    if (action === ORDER_ACTIONS.SHIP && trackingNumber) {
-      data.trackingNumber = trackingNumber;
+    if (action === ORDER_ACTIONS.SHIP) {
+      if (trackingNumber) data.trackingNumber = trackingNumber;
+      if (carrier) data.carrier = carrier;
     }
     
     if (action === ORDER_ACTIONS.CANCEL && cancelReason) {
@@ -183,20 +185,42 @@ export function OrderActionModal({
             </div>
           )}
 
-          {/* Tracking Number Input for Ship */}
+          {/* Shipping Details for Ship */}
           {action === ORDER_ACTIONS.SHIP && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Tracking Number <span className="text-gray-400">(optional)</span>
-              </label>
-              <input
-                type="text"
-                value={trackingNumber}
-                onChange={(e) => setTrackingNumber(e.target.value)}
-                placeholder="Enter tracking number"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                disabled={isLoading}
-              />
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Carrier <span className="text-gray-400">(optional)</span>
+                </label>
+                <select
+                  value={carrier}
+                  onChange={(e) => setCarrier(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  disabled={isLoading}
+                >
+                  <option value="">Select carrier...</option>
+                  <option value="UPS">UPS</option>
+                  <option value="FedEx">FedEx</option>
+                  <option value="USPS">USPS</option>
+                  <option value="DHL">DHL</option>
+                  <option value="Local Delivery">Local Delivery</option>
+                  <option value="Customer Pickup">Customer Pickup</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Tracking Number <span className="text-gray-400">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={trackingNumber}
+                  onChange={(e) => setTrackingNumber(e.target.value)}
+                  placeholder="Enter tracking number"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  disabled={isLoading}
+                />
+              </div>
             </div>
           )}
 

@@ -32,19 +32,22 @@ export async function POST(
 
     const { id } = await params;
 
-    // 3. Parse optional tracking number from body
+    // 3. Parse optional tracking number and carrier from body
     let trackingNumber: string | undefined;
+    let carrier: string | undefined;
     try {
       const body = await req.json();
       trackingNumber = body.trackingNumber;
+      carrier = body.carrier;
     } catch {
-      // No body or invalid JSON is fine - tracking number is optional
+      // No body or invalid JSON is fine - tracking number and carrier are optional
     }
 
     // 4. Call Service
     await shipOrder({
       orderId: id,
       trackingNumber,
+      carrier,
       userId: session.user.id,
     });
 

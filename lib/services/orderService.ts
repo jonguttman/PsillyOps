@@ -292,9 +292,10 @@ export async function approveOrder(orderId: string, userId: string): Promise<voi
 export async function shipOrder(params: {
   orderId: string;
   trackingNumber?: string;
+  carrier?: string;
   userId: string;
 }): Promise<void> {
-  const { orderId, trackingNumber, userId } = params;
+  const { orderId, trackingNumber, carrier, userId } = params;
 
   const order = await prisma.retailerOrder.findUnique({
     where: { id: orderId }
@@ -319,7 +320,8 @@ export async function shipOrder(params: {
     data: {
       status: OrderStatus.SHIPPED,
       shippedAt: new Date(),
-      trackingNumber
+      trackingNumber,
+      carrier
     }
   });
 

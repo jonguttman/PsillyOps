@@ -391,6 +391,7 @@ model RetailerOrder {
   approvedAt           DateTime?
   shippedAt            DateTime?
   trackingNumber       String?
+  carrier              String?
   createdByAI          Boolean         @default(false)
   aiReviewedAt         DateTime?
   aiReviewedByUserId   String?
