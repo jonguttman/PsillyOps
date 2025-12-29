@@ -78,10 +78,6 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { action, params, validatedOrder } = body;
 
-    // #region agent log
-    console.log('[DEBUG_PROPOSE]', JSON.stringify({location:'body-received',action,hasParams:!!params,hasValidatedOrder:!!validatedOrder,bodyKeys:Object.keys(body),paramsKeys:params?Object.keys(params):null,validatedOrderKeys:validatedOrder?Object.keys(validatedOrder):null}));
-    // #endregion
-
     if (!action) {
       throw new AppError(
         ErrorCodes.VALIDATION_ERROR, 
@@ -98,16 +94,10 @@ export async function POST(req: NextRequest) {
     let inputSource: 'params' | 'validatedOrder';
 
     if (params) {
-      // #region agent log
-      console.log('[DEBUG_PROPOSE]', JSON.stringify({location:'params-branch',paramsContent:JSON.stringify(params).slice(0,500)}));
-      // #endregion
       // Direct params format (backward compatible)
       normalizedParams = params;
       inputSource = 'params';
     } else if (validatedOrder) {
-      // #region agent log
-      console.log('[DEBUG_PROPOSE]', JSON.stringify({location:'validatedOrder-branch',validatedOrderContent:JSON.stringify(validatedOrder).slice(0,500)}));
-      // #endregion
       // Validated order format from /api/ai/validate-order
       if (action === 'ORDER_CREATION') {
         normalizedParams = normalizeValidatedSalesOrder(validatedOrder as ValidatedSalesOrder);
@@ -122,9 +112,6 @@ export async function POST(req: NextRequest) {
         );
       }
     } else {
-      // #region agent log
-      console.log('[DEBUG_PROPOSE]', JSON.stringify({location:'neither-branch',fullBody:JSON.stringify(body).slice(0,1000)}));
-      // #endregion
       // Neither params nor validatedOrder provided - give GPT-friendly guidance
       const isOrderAction = action === 'ORDER_CREATION' || action === 'PURCHASE_ORDER_CREATION';
       const errorMessage = isOrderAction

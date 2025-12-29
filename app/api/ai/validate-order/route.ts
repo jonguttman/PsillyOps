@@ -225,10 +225,6 @@ export async function POST(req: NextRequest) {
 
     // 5. If autoPropose is true and validation passed, create proposal automatically
     if (autoPropose && result.canCreateProposal && result.proposalParams) {
-      // #region agent log
-      console.log('[DEBUG_VALIDATE]', JSON.stringify({location:'autoPropose-triggered',action:result.proposalParams.action}));
-      // #endregion
-      
       const sessionOrigin = req.headers.get('X-AI-Origin') || 'chatgpt';
       const session = await getOrCreateAISession(aiAuth.user.id, undefined, sessionOrigin);
       
