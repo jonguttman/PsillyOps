@@ -373,7 +373,7 @@ export async function startProductionOrder(
   const assignee = effectiveAssigneeId ? await prisma.user.findUnique({ where: { id: effectiveAssigneeId } }) : null;
 
   // Parse manufacturing steps from product (or use defaults)
-  const manufacturingSteps: ManufacturingStep[] = (product.manufacturingSteps as ManufacturingStep[]) || [
+  const manufacturingSteps: ManufacturingStep[] = (product.manufacturingSteps as unknown as ManufacturingStep[]) || [
     { key: 'prep', label: 'Preparation', order: 1, required: true },
     { key: 'production', label: 'Production', order: 2, required: true },
     { key: 'qc', label: 'Quality Check', order: 3, required: true },
@@ -381,7 +381,7 @@ export async function startProductionOrder(
   ];
 
   // Parse required equipment from product
-  const requiredEquipment: string[] = (product.requiredEquipment as string[]) || [];
+  const requiredEquipment: string[] = (product.requiredEquipment as unknown as string[]) || [];
 
   // Create everything in a transaction
   const result = await prisma.$transaction(async (tx) => {
