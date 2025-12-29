@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { formatDate, formatCurrency } from "@/lib/utils/formatters";
 import { OrderDocuments } from "./OrderDocuments";
+import { OrderActions } from "./OrderActions";
 
 const STATUS_STYLES: Record<string, string> = {
   DRAFT: "bg-gray-100 text-gray-800",
@@ -76,6 +77,14 @@ export default async function OrderDetailPage({
   const hasInvoice = order.invoices.length > 0;
   const invoice = hasInvoice ? order.invoices[0] : null;
 
+  // Calculate shortages for OrderActions component
+  const shortages = order.lineItems
+    .filter((item) => item.quantityAllocated < item.quantityOrdered)
+    .map((item) => ({
+      productName: item.product.name,
+      shortage: item.quantityOrdered - item.quantityAllocated,
+    }));
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -97,12 +106,26 @@ export default async function OrderDetailPage({
             For {order.retailer.name} • Created {formatDate(order.createdAt)}
           </p>
         </div>
-        <Link
-          href="/ops/orders"
-          className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900"
-        >
-          &larr; Back to Orders
-        </Link>
+        <div className="flex items-center gap-4">
+          <OrderActions
+            orderId={order.id}
+            orderNumber={order.orderNumber}
+            status={order.status}
+            userRole={session.user.role}
+            createdByAI={order.createdByAI}
+            aiReviewedAt={order.aiReviewedAt}
+            retailerName={order.retailer.name}
+            itemCount={totalItems}
+            orderTotal={orderSubtotal}
+            shortages={shortages}
+          />
+          <Link
+            href="/ops/orders"
+            className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900"
+          >
+            &larr; Back to Orders
+          </Link>
+        </div>
       </div>
 
       {/* Order Summary Cards */}

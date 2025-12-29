@@ -1022,10 +1022,12 @@ async function executeAction(
       const p = params as OrderCreationParams;
       
       // Create the sales order using existing service
+      // Mark as AI-created so it requires human review before submission
       const orderId = await createOrder({
         retailerId: p.retailerId,
         createdByUserId: userId,
         requestedShipDate: p.requestedShipDate ? new Date(p.requestedShipDate) : undefined,
+        createdByAI: true,
         lineItems: p.items.map(item => ({
           productId: item.productId,
           quantityOrdered: item.quantity,

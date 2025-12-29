@@ -35,6 +35,7 @@ model User {
   assignedRetailers          Retailer[]
   approvedOrders             RetailerOrder[]       @relation("OrderApprover")
   createdOrders              RetailerOrder[]       @relation("OrderCreator")
+  aiReviewedOrders           RetailerOrder[]       @relation("OrderAIReviewer")
   predictionProfiles         PredictionProfile[]
   partnerId                  String?
   partner                    Partner?              @relation(fields: [partnerId], references: [id])
@@ -380,28 +381,33 @@ model Retailer {
 }
 
 model RetailerOrder {
-  id                String          @id @default(cuid())
-  orderNumber       String          @unique
-  retailerId        String
-  createdByUserId   String
-  status            OrderStatus     @default(DRAFT)
-  requestedShipDate DateTime?
-  approvedByUserId  String?
-  approvedAt        DateTime?
-  shippedAt         DateTime?
-  trackingNumber    String?
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  invoices          Invoice[]
-  lineItems         OrderLineItem[]
-  approvedBy        User?           @relation("OrderApprover", fields: [approvedByUserId], references: [id])
-  createdBy         User            @relation("OrderCreator", fields: [createdByUserId], references: [id])
-  retailer          Retailer        @relation(fields: [retailerId], references: [id])
+  id                   String          @id @default(cuid())
+  orderNumber          String          @unique
+  retailerId           String
+  createdByUserId      String
+  status               OrderStatus     @default(DRAFT)
+  requestedShipDate    DateTime?
+  approvedByUserId     String?
+  approvedAt           DateTime?
+  shippedAt            DateTime?
+  trackingNumber       String?
+  createdByAI          Boolean         @default(false)
+  aiReviewedAt         DateTime?
+  aiReviewedByUserId   String?
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+  invoices             Invoice[]
+  lineItems            OrderLineItem[]
+  approvedBy           User?           @relation("OrderApprover", fields: [approvedByUserId], references: [id])
+  createdBy            User            @relation("OrderCreator", fields: [createdByUserId], references: [id])
+  aiReviewer           User?           @relation("OrderAIReviewer", fields: [aiReviewedByUserId], references: [id], onDelete: SetNull)
+  retailer             Retailer        @relation(fields: [retailerId], references: [id])
 
   @@index([retailerId])
   @@index([status])
   @@index([orderNumber])
   @@index([createdByUserId])
+  @@index([createdByAI])
 }
 
 model OrderLineItem {

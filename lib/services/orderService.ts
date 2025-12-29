@@ -13,6 +13,7 @@ export interface CreateOrderParams {
   retailerId: string;
   createdByUserId: string;
   requestedShipDate?: Date;
+  createdByAI?: boolean;
   lineItems: {
     productId: string;
     quantityOrdered: number;
@@ -23,7 +24,7 @@ export interface CreateOrderParams {
  * Create a new retailer order
  */
 export async function createOrder(params: CreateOrderParams): Promise<string> {
-  const { retailerId, createdByUserId, requestedShipDate, lineItems } = params;
+  const { retailerId, createdByUserId, requestedShipDate, createdByAI, lineItems } = params;
 
   const retailer = await prisma.retailer.findUnique({
     where: { id: retailerId }
@@ -43,6 +44,7 @@ export async function createOrder(params: CreateOrderParams): Promise<string> {
       retailerId,
       createdByUserId,
       requestedShipDate,
+      createdByAI: createdByAI ?? false,
       status: OrderStatus.DRAFT,
       lineItems: {
         create: lineItems.map(item => ({
