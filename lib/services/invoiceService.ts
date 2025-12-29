@@ -6,7 +6,7 @@ import { AppError, ErrorCodes } from '@/lib/utils/errors';
 import { logAction, generateSummary } from './loggingService';
 import { ActivityEntity, OrderStatus } from '@prisma/client';
 import { generateOrderNumber, formatCurrency, formatDate } from '@/lib/utils/formatters';
-import { PDFDocument, rgb, StandardFonts, PDFFont, PDFPage } from 'pdf-lib';
+import { PDFDocument, rgb, StandardFonts, PDFFont, PDFPage, degrees } from 'pdf-lib';
 import * as fs from 'fs';
 import * as path from 'path';
 import QRCode from 'qrcode';
@@ -760,7 +760,7 @@ function drawWatermark(page: PDFPage, status: OrderStatus, fonts: { regular: PDF
     size: 60,
     font: fonts.bold,
     color: rgb(0.9, 0.9, 0.9),
-    rotate: { type: 'degrees' as const, angle: -35 },
+    rotate: degrees(-35),
     opacity: 0.3,
   });
 }
