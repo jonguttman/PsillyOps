@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
     const { action, params, validatedOrder } = body;
 
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'propose/route.ts:body-received',message:'Request body received',data:{action,hasParams:!!params,hasValidatedOrder:!!validatedOrder,bodyKeys:Object.keys(body),paramsKeys:params?Object.keys(params):null,validatedOrderKeys:validatedOrder?Object.keys(validatedOrder):null},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,B,E'})}).catch(()=>{});
+    console.log('[DEBUG_PROPOSE]', JSON.stringify({location:'body-received',action,hasParams:!!params,hasValidatedOrder:!!validatedOrder,bodyKeys:Object.keys(body),paramsKeys:params?Object.keys(params):null,validatedOrderKeys:validatedOrder?Object.keys(validatedOrder):null}));
     // #endregion
 
     if (!action) {
@@ -99,14 +99,14 @@ export async function POST(req: NextRequest) {
 
     if (params) {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'propose/route.ts:params-branch',message:'Using params branch',data:{paramsContent:JSON.stringify(params).slice(0,500)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
+      console.log('[DEBUG_PROPOSE]', JSON.stringify({location:'params-branch',paramsContent:JSON.stringify(params).slice(0,500)}));
       // #endregion
       // Direct params format (backward compatible)
       normalizedParams = params;
       inputSource = 'params';
     } else if (validatedOrder) {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'propose/route.ts:validatedOrder-branch',message:'Using validatedOrder branch',data:{validatedOrderContent:JSON.stringify(validatedOrder).slice(0,500)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B,D'})}).catch(()=>{});
+      console.log('[DEBUG_PROPOSE]', JSON.stringify({location:'validatedOrder-branch',validatedOrderContent:JSON.stringify(validatedOrder).slice(0,500)}));
       // #endregion
       // Validated order format from /api/ai/validate-order
       if (action === 'ORDER_CREATION') {
@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
       }
     } else {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'propose/route.ts:neither-branch',message:'REJECTED - neither params nor validatedOrder',data:{fullBody:JSON.stringify(body).slice(0,1000)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'E'})}).catch(()=>{});
+      console.log('[DEBUG_PROPOSE]', JSON.stringify({location:'neither-branch',fullBody:JSON.stringify(body).slice(0,1000)}));
       // #endregion
       // Neither params nor validatedOrder provided
       throw new AppError(
