@@ -32,6 +32,8 @@ import {
   AISalesOrder,
   AIPurchaseOrder,
 } from '@/lib/utils/validators';
+import { createProposal } from '@/lib/services/aiProposalService';
+import { getOrCreateAISession } from '@/lib/services/aiContextService';
 import {
   resolveProductWithConfidence,
   resolveMaterialWithConfidence,
@@ -156,6 +158,18 @@ interface ValidationResult {
    * Consumers SHOULD pass this verbatim to /api/ai/propose.
    */
   proposalParams?: ProposalParams;
+  /**
+   * If autoPropose was true and validation passed, this contains the created proposal.
+   * This eliminates the need for a separate /api/ai/propose call.
+   */
+  proposal?: {
+    proposalId: string;
+    action: string;
+    executionMode: 'EXECUTABLE' | 'PREVIEW_ONLY';
+    preview: Record<string, unknown>;
+    warnings: Array<{ type: string; message: string; severity: string }>;
+    expiresAt: string;
+  };
 }
 
 // ========================================
@@ -183,7 +197,8 @@ export async function POST(req: NextRequest) {
 
     // 3. Parse and validate schema
     const body = await req.json();
-    const parseResult = aiOrderSchema.safeParse(body);
+    const { autoPropose, ...orderData } = body;
+    const parseResult = aiOrderSchema.safeParse(orderData);
     
     if (!parseResult.success) {
       return Response.json({
@@ -208,7 +223,34 @@ export async function POST(req: NextRequest) {
       result = await validatePurchaseOrder(order);
     }
 
-    // 5. Return validation result
+    // 5. If autoPropose is true and validation passed, create proposal automatically
+    if (autoPropose && result.canCreateProposal && result.proposalParams) {
+      // #region agent log
+      console.log('[DEBUG_VALIDATE]', JSON.stringify({location:'autoPropose-triggered',action:result.proposalParams.action}));
+      // #endregion
+      
+      const sessionOrigin = req.headers.get('X-AI-Origin') || 'chatgpt';
+      const session = await getOrCreateAISession(aiAuth.user.id, undefined, sessionOrigin);
+      
+      const proposalResult = await createProposal({
+        action: result.proposalParams.action,
+        params: result.proposalParams.params,
+        aiSessionId: session.sessionToken,
+        userId: aiAuth.user.id,
+        origin: sessionOrigin,
+      });
+      
+      result.proposal = {
+        proposalId: proposalResult.proposalId,
+        action: proposalResult.action,
+        executionMode: proposalResult.executionMode,
+        preview: proposalResult.preview as Record<string, unknown>,
+        warnings: proposalResult.warnings,
+        expiresAt: proposalResult.expiresAt,
+      };
+    }
+
+    // 6. Return validation result (with proposal if autoPropose was used)
     return Response.json(result);
 
   } catch (error) {

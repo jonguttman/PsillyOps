@@ -162,8 +162,8 @@ export async function GET(req: NextRequest) {
       '/api/ai/validate-order': {
         post: {
           operationId: 'validateOrder',
-          summary: 'STEP 1: Validate and resolve AI-parsed order',
-          description: 'Validates order payloads and resolves entity refs to IDs. Returns proposalParams ready to pass to /api/ai/propose. If canCreateProposal is false, ask user to clarify. The backend does NOT re-resolve references during proposal creation.',
+          summary: 'Validate order and optionally create proposal in one call',
+          description: 'Validates order payloads and resolves entity refs to IDs. Set autoPropose:true to automatically create a proposal if validation passes - this returns the proposal directly, eliminating the need for a separate /api/ai/propose call. If canCreateProposal is false, ask user to clarify ambiguous matches.',
           requestBody: {
             required: true,
             content: {
@@ -247,14 +247,20 @@ export async function GET(req: NextRequest) {
                         },
                       },
                     },
+                    autoPropose: {
+                      type: 'boolean',
+                      description: 'RECOMMENDED: Set to true to automatically create a proposal if validation passes. This returns the proposal directly in the response, eliminating the need for a separate /api/ai/propose call.',
+                      default: false,
+                    },
                   },
                 },
                 examples: {
-                  salesOrder: {
-                    summary: 'Sales Order',
+                  salesOrderWithAutoPropose: {
+                    summary: 'Sales Order with autoPropose (RECOMMENDED)',
                     value: {
                       orderType: 'SALES',
                       retailerRef: 'Green Leaf Dispensary',
+                      retailerOrderNumber: 'TOP-704',
                       requestedShipDate: '2024-02-15T00:00:00.000Z',
                       lineItems: [
                         { productRef: 'Mighty Caps PE', quantity: 100 },
@@ -264,6 +270,7 @@ export async function GET(req: NextRequest) {
                         sourceType: 'EMAIL',
                         receivedAt: '2024-02-10T14:30:00.000Z',
                       },
+                      autoPropose: true,
                     },
                   },
                   purchaseOrder: {
@@ -278,6 +285,7 @@ export async function GET(req: NextRequest) {
                       sourceMeta: {
                         sourceType: 'PASTE',
                       },
+                      autoPropose: true,
                     },
                   },
                 },
@@ -312,10 +320,22 @@ export async function GET(req: NextRequest) {
                       confidence: { type: 'number', description: 'Score from 0.0 to 1.0' },
                       proposalParams: {
                         type: 'object',
-                        description: 'Ready-to-use params for /api/ai/propose. Only present when canCreateProposal is true. Pass this verbatim to /api/ai/propose - do NOT manually reconstruct.',
+                        description: 'Ready-to-use params for /api/ai/propose (only if autoPropose was false).',
                         properties: {
                           action: { type: 'string', enum: ['ORDER_CREATION', 'PURCHASE_ORDER_CREATION'] },
                           params: { type: 'object', description: 'Resolved params with IDs' },
+                        },
+                      },
+                      proposal: {
+                        type: 'object',
+                        description: 'The created proposal (only present if autoPropose:true and validation passed). Use proposal.proposalId to call /api/ai/execute.',
+                        properties: {
+                          proposalId: { type: 'string', description: 'Use this ID to call /api/ai/execute' },
+                          action: { type: 'string' },
+                          executionMode: { type: 'string', enum: ['EXECUTABLE', 'PREVIEW_ONLY'] },
+                          preview: { type: 'object' },
+                          warnings: { type: 'array', items: { type: 'object' } },
+                          expiresAt: { type: 'string', format: 'date-time' },
                         },
                       },
                     },
