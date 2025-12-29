@@ -1,9 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { StartProductionModal } from '@/components/production/StartProductionModal';
-import { toast } from 'sonner';
+
+interface Toast {
+  type: 'success' | 'error' | 'warning';
+  message: string;
+}
 
 interface ProductionOrderActionsProps {
   orderId: string;
@@ -34,6 +38,19 @@ export function ProductionOrderActions({
   const [blockReason, setBlockReason] = useState('');
   const [showBlockForm, setShowBlockForm] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
+  const [toast, setToast] = useState<Toast | null>(null);
+
+  // Auto-dismiss toast after 4 seconds
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
+
+  const showToast = (type: Toast['type'], message: string) => {
+    setToast({ type, message });
+  };
 
   const handleStart = async (assignToUserId?: string) => {
     const res = await fetch(`/api/production-orders/${orderId}/start`, {
@@ -48,13 +65,13 @@ export function ProductionOrderActions({
     }
 
     const data = await res.json();
-    toast.success(`Production started! Created ${data.batchCount} batch(es).`);
+    showToast('success', `Production started! Created ${data.batchCount} batch(es).`);
     router.refresh();
   };
 
   const handleBlock = async () => {
     if (!blockReason.trim()) {
-      toast.error('Please provide a reason for blocking');
+      showToast('error', 'Please provide a reason for blocking');
       return;
     }
 
@@ -71,12 +88,12 @@ export function ProductionOrderActions({
         throw new Error(data.message || 'Failed to block production');
       }
 
-      toast.success('Production order blocked');
+      showToast('success', 'Production order blocked');
       setShowBlockForm(false);
       setBlockReason('');
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to block production');
+      showToast('error', err instanceof Error ? err.message : 'Failed to block production');
     } finally {
       setIsBlocking(false);
     }
@@ -94,10 +111,10 @@ export function ProductionOrderActions({
         throw new Error(data.message || 'Failed to complete production');
       }
 
-      toast.success('Production order completed!');
+      showToast('success', 'Production order completed!');
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to complete production');
+      showToast('error', err instanceof Error ? err.message : 'Failed to complete production');
     } finally {
       setIsCompleting(false);
     }
@@ -178,6 +195,32 @@ export function ProductionOrderActions({
           onStart={handleStart}
           onClose={() => setShowStartModal(false)}
         />
+      )}
+
+      {/* Toast Notification */}
+      {toast && (
+        <div
+          className={`fixed bottom-4 right-4 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 z-50 ${
+            toast.type === 'success'
+              ? 'bg-green-500 text-white'
+              : toast.type === 'error'
+              ? 'bg-red-500 text-white'
+              : 'bg-amber-500 text-white'
+          }`}
+          style={{ animation: 'slide-up 0.3s ease-out' }}
+        >
+          {toast.type === 'success' && (
+            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+            </svg>
+          )}
+          {toast.type === 'error' && (
+            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+          )}
+          <span className="text-sm font-medium">{toast.message}</span>
+        </div>
       )}
     </>
   );
