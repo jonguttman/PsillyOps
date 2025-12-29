@@ -30,8 +30,8 @@ export async function POST(
 
     const { id } = await params;
     
-    // Parse optional assignToUserId from body
-    let assignToUserId: string | undefined;
+    // Parse optional assignToUserId from body (undefined = keep defaults, null = explicitly unassigned)
+    let assignToUserId: string | null | undefined;
     try {
       const body = await req.json();
       assignToUserId = body.assignToUserId;

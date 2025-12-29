@@ -15,7 +15,7 @@ interface StartProductionModalProps {
   productName: string;
   quantityToMake: number;
   currentAssignee?: { id: string; name: string | null } | null;
-  onStart: (assignToUserId?: string) => Promise<void>;
+  onStart: (assignToUserId?: string | null) => Promise<void>;
   onClose: () => void;
 }
 
@@ -31,7 +31,7 @@ export function StartProductionModal({
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [selectedUserId, setSelectedUserId] = useState<string | undefined>(currentAssignee?.id);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(currentAssignee?.id ?? null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -117,8 +117,8 @@ export function StartProductionModal({
                     type="radio"
                     name="assignee"
                     value=""
-                    checked={!selectedUserId}
-                    onChange={() => setSelectedUserId(undefined)}
+                    checked={selectedUserId === null}
+                    onChange={() => setSelectedUserId(null)}
                     className="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500"
                   />
                   <span className="ml-3 text-sm text-gray-600">Unassigned (assign later)</span>

@@ -334,7 +334,7 @@ interface ManufacturingStep {
 export async function startProductionOrder(
   orderId: string,
   userId: string,
-  assignToUserId?: string // Optional: assign to specific user (defaults to order's assignee)
+  assignToUserId?: string | null // Optional: assign to specific user (undefined = inherit order, null = unassigned)
 ): Promise<{ productionRunId: string; batchIds: string[] }> {
   const order = await prisma.productionOrder.findUnique({
     where: { id: orderId },
@@ -365,8 +365,12 @@ export async function startProductionOrder(
   const batchSize = order.batchSize || product.defaultBatchSize || order.quantityToMake;
   const numBatches = Math.ceil(order.quantityToMake / batchSize);
   
-  // Determine assignee: explicit param > order's assignee > creator
-  const effectiveAssigneeId = assignToUserId || order.assignedToUserId || order.createdByUserId;
+  // Determine assignee:
+  // - undefined => inherit from order.assignedToUserId
+  // - null => explicitly unassigned
+  // - string => explicit assignee
+  const effectiveAssigneeId =
+    assignToUserId === undefined ? order.assignedToUserId : assignToUserId;
 
   const before = { status: order.status, startedAt: order.startedAt };
   const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -395,8 +399,12 @@ export async function startProductionOrder(
         startedAt: new Date(),
         createdById: userId,
         assignedToUserId: effectiveAssigneeId,
-        assignedByUserId: userId,
-        assignedAt: new Date(),
+        ...(effectiveAssigneeId
+          ? {
+              assignedByUserId: userId,
+              assignedAt: new Date(),
+            }
+          : {}),
       }
     });
 
@@ -492,12 +500,23 @@ export async function startProductionOrder(
       data: {
         status: ProductionStatus.IN_PROGRESS,
         startedAt: new Date(),
-        // Update assignment if changed
-        ...(assignToUserId && assignToUserId !== order.assignedToUserId ? {
-          assignedToUserId: assignToUserId,
-          assignedByUserId: userId,
-          assignedAt: new Date(),
-        } : {})
+        // Assignment handling:
+        // - undefined: keep existing order assignment as-is
+        // - null: explicitly clear assignment
+        // - string: set assignment (if changed)
+        ...(assignToUserId === null
+          ? {
+              assignedToUserId: null,
+              assignedByUserId: userId,
+              assignedAt: new Date(),
+            }
+          : assignToUserId && assignToUserId !== order.assignedToUserId
+          ? {
+              assignedToUserId: assignToUserId,
+              assignedByUserId: userId,
+              assignedAt: new Date(),
+            }
+          : {})
       }
     });
 

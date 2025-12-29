@@ -7,6 +7,7 @@ import { formatDate, formatDateTime } from '@/lib/utils/formatters';
 import { blockProductionOrder, completeProductionOrder, createBatch } from '@/lib/services/productionService';
 import BlockedOrderActions from './BlockedOrderActions';
 import { ProductionOrderActions } from './ProductionOrderActions';
+import { ProductionOrderAssignment } from '@/components/production/ProductionOrderAssignment';
 
 const STATUS_COLORS: Record<string, string> = {
   PLANNED: 'bg-gray-100 text-gray-800',
@@ -88,7 +89,8 @@ export default async function ProductionOrderDetailPage({
       workCenter: true,
       template: true,
       createdBy: { select: { id: true, name: true } },
-      assignedTo: { select: { id: true, name: true } },
+      assignedTo: { select: { id: true, name: true, role: true } },
+      assignedBy: { select: { id: true, name: true } },
       batches: {
         include: {
           makers: {
@@ -176,6 +178,43 @@ export default async function ProductionOrderDetailPage({
             style={{ width: `${progress}%` }}
           />
         </div>
+      </div>
+
+      {/* Assignment */}
+      <ProductionOrderAssignment
+        orderId={id}
+        orderNumber={order.orderNumber}
+        productName={order.product.name}
+        status={order.status}
+        assignment={{
+          assignedTo: order.assignedTo,
+          assignedBy: order.assignedBy,
+          assignedAt: order.assignedAt ? order.assignedAt.toISOString() : null,
+          assignmentReason: order.assignmentReason,
+        }}
+        userRole={session.user.role}
+      />
+
+      {/* Production Run Link (latest) */}
+      <div className="bg-white shadow rounded-lg p-4">
+        <h2 className="text-sm font-semibold text-gray-900 mb-2">Production Run</h2>
+        {order.productionRuns?.[0] ? (
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm text-gray-600">
+              Latest run status: <span className="font-medium text-gray-900">{order.productionRuns[0].status}</span>
+            </div>
+            <Link
+              href={`/ops/production-runs/${order.productionRuns[0].id}`}
+              className="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
+            >
+              View Run Steps
+            </Link>
+          </div>
+        ) : (
+          <div className="text-sm text-gray-500">
+            No production run yet. Start the order to generate a run and step checklist.
+          </div>
+        )}
       </div>
 
       {/* Overview */}

@@ -52,7 +52,7 @@ export function ProductionOrderActions({
     setToast({ type, message });
   };
 
-  const handleStart = async (assignToUserId?: string) => {
+  const handleStart = async (assignToUserId?: string | null) => {
     const res = await fetch(`/api/production-orders/${orderId}/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
