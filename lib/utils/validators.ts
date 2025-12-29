@@ -333,3 +333,68 @@ export const qrPayloadSchema = z.object({
   url: z.string().url()
 });
 
+// ========================================
+// AI ORDER PARSING SCHEMAS
+// ========================================
+// These schemas are specifically for AI-parsed orders.
+// They use "Ref" fields (names/SKUs) that get resolved to IDs server-side.
+// DO NOT reuse UI-facing schemas here - keep AI surface intentionally narrow.
+
+/**
+ * Source metadata for parsed orders
+ * Enables auditability and future ingestion pipelines
+ */
+export const aiSourceMetaSchema = z.object({
+  sourceType: z.enum(['EMAIL', 'PASTE', 'PDF', 'API']),
+  sourceId: z.string().optional(), // emailId, uploadId, etc.
+  receivedAt: z.string().datetime().optional(),
+});
+
+/**
+ * AI-parsed Sales Order (PsillyCo selling to retailer)
+ * - Pricing comes from database (wholesalePrice), not parsed input
+ * - Entity refs are resolved server-side with fuzzy matching
+ */
+export const aiSalesOrderSchema = z.object({
+  orderType: z.literal('SALES'),
+  retailerRef: z.string().min(1, 'Retailer reference is required'), // Name or ID
+  requestedShipDate: z.string().datetime().optional(),
+  notes: z.string().optional(),
+  lineItems: z.array(z.object({
+    productRef: z.string().min(1, 'Product reference is required'), // SKU, name, or ID
+    quantity: positiveNumber,
+  })).min(1, 'At least one line item is required'),
+  sourceMeta: aiSourceMetaSchema.optional(),
+});
+
+/**
+ * AI-parsed Purchase Order (PsillyCo buying from vendor)
+ * - unitCost is optional; falls back to MaterialVendor pricing
+ * - Entity refs are resolved server-side with fuzzy matching
+ */
+export const aiPurchaseOrderSchema = z.object({
+  orderType: z.literal('PURCHASE'),
+  vendorRef: z.string().min(1, 'Vendor reference is required'), // Name or ID
+  expectedDeliveryDate: z.string().datetime().optional(),
+  notes: z.string().optional(),
+  lineItems: z.array(z.object({
+    materialRef: z.string().min(1, 'Material reference is required'), // SKU, name, or ID
+    quantity: positiveNumber,
+    unitCost: z.number().positive().optional(), // Optional - can be filled from vendor pricing
+  })).min(1, 'At least one line item is required'),
+  sourceMeta: aiSourceMetaSchema.optional(),
+});
+
+/**
+ * Combined AI order schema (discriminated union)
+ */
+export const aiOrderSchema = z.discriminatedUnion('orderType', [
+  aiSalesOrderSchema,
+  aiPurchaseOrderSchema,
+]);
+
+export type AISalesOrder = z.infer<typeof aiSalesOrderSchema>;
+export type AIPurchaseOrder = z.infer<typeof aiPurchaseOrderSchema>;
+export type AIOrder = z.infer<typeof aiOrderSchema>;
+export type AISourceMeta = z.infer<typeof aiSourceMetaSchema>;
+

@@ -159,11 +159,95 @@ export async function GET(req: NextRequest) {
           },
         },
       },
+      '/api/ai/validate-order': {
+        post: {
+          operationId: 'validateOrder',
+          summary: 'Validate and resolve AI-parsed order',
+          description: 'Validates AI-parsed order payloads, resolves entity references (product names, retailer names) to IDs, and returns confidence score. CRITICAL: If canCreateProposal is false (due to ambiguous matches), you must ask the user to clarify before calling /api/ai/propose.',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  oneOf: [
+                    { $ref: '#/components/schemas/AISalesOrder' },
+                    { $ref: '#/components/schemas/AIPurchaseOrder' },
+                  ],
+                },
+                examples: {
+                  salesOrder: {
+                    summary: 'Sales Order',
+                    value: {
+                      orderType: 'SALES',
+                      retailerRef: 'Green Leaf Dispensary',
+                      requestedShipDate: '2024-02-15T00:00:00.000Z',
+                      lineItems: [
+                        { productRef: 'Mighty Caps PE', quantity: 100 },
+                        { productRef: 'Lions Mane Tincture', quantity: 50 },
+                      ],
+                      sourceMeta: {
+                        sourceType: 'EMAIL',
+                        receivedAt: '2024-02-10T14:30:00.000Z',
+                      },
+                    },
+                  },
+                  purchaseOrder: {
+                    summary: 'Purchase Order',
+                    value: {
+                      orderType: 'PURCHASE',
+                      vendorRef: 'Mushroom Farms Inc',
+                      lineItems: [
+                        { materialRef: 'Penis Envy Powder', quantity: 5000, unitCost: 0.15 },
+                        { materialRef: 'Size 00 Capsules', quantity: 10000 },
+                      ],
+                      sourceMeta: {
+                        sourceType: 'PASTE',
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'Validation result with resolved entities',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      valid: { type: 'boolean', description: 'True if all required fields resolved' },
+                      canCreateProposal: { type: 'boolean', description: 'False if any ambiguous matches - must clarify first' },
+                      resolvedPayload: { type: 'object', description: 'Payload with IDs filled in' },
+                      unresolvedFields: { type: 'array', items: { type: 'string' } },
+                      warnings: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          properties: {
+                            type: { type: 'string', enum: ['FUZZY_MATCH', 'AMBIGUOUS_MATCH', 'MISSING_PRICING', 'UNRESOLVED_FIELD'] },
+                            field: { type: 'string' },
+                            message: { type: 'string' },
+                            severity: { type: 'string', enum: ['info', 'warning', 'error'] },
+                            alternatives: { type: 'array', items: { type: 'object' } },
+                          },
+                        },
+                      },
+                      confidence: { type: 'number', description: 'Score from 0.0 to 1.0' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
       '/api/ai/propose': {
         post: {
           operationId: 'createProposal',
           summary: 'Create a proposal for an action',
-          description: 'Creates a proposal that previews an action without executing it. Phase 1 allows execution of: INVENTORY_ADJUSTMENT, PURCHASE_ORDER_SUBMIT, VENDOR_EMAIL. Other actions are preview-only.',
+          description: 'Creates a proposal that previews an action without executing it. Phase 1 allows execution of: INVENTORY_ADJUSTMENT, PURCHASE_ORDER_SUBMIT, VENDOR_EMAIL, ORDER_CREATION, PURCHASE_ORDER_CREATION. Other actions are preview-only.',
           requestBody: {
             required: true,
             content: {
@@ -178,16 +262,17 @@ export async function GET(req: NextRequest) {
                         'INVENTORY_ADJUSTMENT',
                         'PURCHASE_ORDER_SUBMIT',
                         'VENDOR_EMAIL',
+                        'ORDER_CREATION',
+                        'PURCHASE_ORDER_CREATION',
                         'PRODUCTION_ORDER',
                         'RECEIVE_MATERIAL',
                         'BATCH_COMPLETION',
-                        'ORDER_CREATION',
                       ],
                       description: 'The action to propose',
                     },
                     params: {
                       type: 'object',
-                      description: 'Action-specific parameters',
+                      description: 'Action-specific parameters. For ORDER_CREATION and PURCHASE_ORDER_CREATION, use IDs from validate-order response.',
                     },
                   },
                 },
@@ -203,12 +288,31 @@ export async function GET(req: NextRequest) {
                       },
                     },
                   },
-                  purchaseOrderSubmit: {
-                    summary: 'Submit Purchase Order',
+                  salesOrder: {
+                    summary: 'Sales Order Creation',
                     value: {
-                      action: 'PURCHASE_ORDER_SUBMIT',
+                      action: 'ORDER_CREATION',
                       params: {
-                        purchaseOrderId: 'clx456...',
+                        retailerId: 'clx789...',
+                        items: [
+                          { productId: 'clxabc...', quantity: 100 },
+                          { productId: 'clxdef...', quantity: 50 },
+                        ],
+                        requestedShipDate: '2024-02-15T00:00:00.000Z',
+                        sourceMeta: { sourceType: 'EMAIL' },
+                      },
+                    },
+                  },
+                  purchaseOrder: {
+                    summary: 'Purchase Order Creation',
+                    value: {
+                      action: 'PURCHASE_ORDER_CREATION',
+                      params: {
+                        vendorId: 'clx456...',
+                        items: [
+                          { materialId: 'clxghi...', quantity: 5000, unitCost: 0.15 },
+                        ],
+                        sourceMeta: { sourceType: 'PASTE' },
                       },
                     },
                   },
@@ -258,7 +362,7 @@ export async function GET(req: NextRequest) {
         post: {
           operationId: 'executeProposal',
           summary: 'Execute a confirmed proposal',
-          description: 'Executes a previously created proposal. Phase 1 restrictions apply - only INVENTORY_ADJUSTMENT, PURCHASE_ORDER_SUBMIT, and VENDOR_EMAIL can be executed.',
+          description: 'Executes a previously created proposal. Phase 1 allows: INVENTORY_ADJUSTMENT, PURCHASE_ORDER_SUBMIT, VENDOR_EMAIL, ORDER_CREATION, PURCHASE_ORDER_CREATION. Other actions are preview-only.',
           requestBody: {
             required: true,
             content: {
@@ -382,7 +486,110 @@ export async function GET(req: NextRequest) {
       },
     },
     components: {
-      schemas: {},
+      schemas: {
+        AISourceMeta: {
+          type: 'object',
+          description: 'Metadata about the source of the parsed order',
+          properties: {
+            sourceType: {
+              type: 'string',
+              enum: ['EMAIL', 'PASTE', 'PDF', 'API'],
+              description: 'Where the order text came from',
+            },
+            sourceId: {
+              type: 'string',
+              description: 'Optional ID of source (emailId, uploadId, etc.)',
+            },
+            receivedAt: {
+              type: 'string',
+              format: 'date-time',
+              description: 'When the source was received',
+            },
+          },
+        },
+        AISalesOrder: {
+          type: 'object',
+          description: 'AI-parsed sales order (PsillyCo selling to retailer). Pricing comes from database.',
+          required: ['orderType', 'retailerRef', 'lineItems'],
+          properties: {
+            orderType: {
+              type: 'string',
+              enum: ['SALES'],
+            },
+            retailerRef: {
+              type: 'string',
+              description: 'Retailer name or ID - will be resolved server-side',
+            },
+            requestedShipDate: {
+              type: 'string',
+              format: 'date-time',
+            },
+            notes: { type: 'string' },
+            lineItems: {
+              type: 'array',
+              minItems: 1,
+              items: {
+                type: 'object',
+                required: ['productRef', 'quantity'],
+                properties: {
+                  productRef: {
+                    type: 'string',
+                    description: 'Product SKU, name, or ID - will be resolved server-side',
+                  },
+                  quantity: {
+                    type: 'number',
+                    minimum: 1,
+                  },
+                },
+              },
+            },
+            sourceMeta: { $ref: '#/components/schemas/AISourceMeta' },
+          },
+        },
+        AIPurchaseOrder: {
+          type: 'object',
+          description: 'AI-parsed purchase order (PsillyCo buying from vendor)',
+          required: ['orderType', 'vendorRef', 'lineItems'],
+          properties: {
+            orderType: {
+              type: 'string',
+              enum: ['PURCHASE'],
+            },
+            vendorRef: {
+              type: 'string',
+              description: 'Vendor name or ID - will be resolved server-side',
+            },
+            expectedDeliveryDate: {
+              type: 'string',
+              format: 'date-time',
+            },
+            notes: { type: 'string' },
+            lineItems: {
+              type: 'array',
+              minItems: 1,
+              items: {
+                type: 'object',
+                required: ['materialRef', 'quantity'],
+                properties: {
+                  materialRef: {
+                    type: 'string',
+                    description: 'Material SKU, name, or ID - will be resolved server-side',
+                  },
+                  quantity: {
+                    type: 'number',
+                    minimum: 1,
+                  },
+                  unitCost: {
+                    type: 'number',
+                    description: 'Optional - falls back to vendor pricing if not provided',
+                  },
+                },
+              },
+            },
+            sourceMeta: { $ref: '#/components/schemas/AISourceMeta' },
+          },
+        },
+      },
       securitySchemes: {
         bearerAuth: {
           type: 'http',

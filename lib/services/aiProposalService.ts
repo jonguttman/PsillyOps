@@ -4,10 +4,12 @@
  * Manages the proposal-first workflow for AI-assisted operations.
  * 
  * GOVERNANCE RULES:
- * - Phase 1 allows ONLY: INVENTORY_ADJUSTMENT, PURCHASE_ORDER_SUBMIT, VENDOR_EMAIL
+ * - Phase 1 allows: INVENTORY_ADJUSTMENT, PURCHASE_ORDER_SUBMIT, VENDOR_EMAIL,
+ *                   ORDER_CREATION, PURCHASE_ORDER_CREATION
  * - All other actions are PREVIEW_ONLY (proposal can be created, but execution blocked)
  * - Proposals are single-use and time-limited
  * - All executions are logged to ActivityLog with ai_execution tag
+ * - AI-created orders are tagged with aiProposalId for audit trail
  */
 
 import { prisma } from '@/lib/db/prisma';
@@ -15,7 +17,8 @@ import { AIProposalStatus, ActivityEntity, PurchaseOrderStatus } from '@prisma/c
 import { AppError, ErrorCodes } from '@/lib/utils/errors';
 import { logAction } from './loggingService';
 import { adjustInventory } from './inventoryService';
-import { submitPurchaseOrder } from './purchaseOrderService';
+import { submitPurchaseOrder, createPurchaseOrder } from './purchaseOrderService';
+import { createOrder } from './orderService';
 
 // ========================================
 // Configuration (env-configurable)
@@ -32,6 +35,8 @@ export const PHASE_1_ALLOWED_ACTIONS = [
   'INVENTORY_ADJUSTMENT',
   'PURCHASE_ORDER_SUBMIT',
   'VENDOR_EMAIL',
+  'ORDER_CREATION',           // Sales order creation (AI-parsed)
+  'PURCHASE_ORDER_CREATION',  // Purchase order creation (AI-parsed)
 ] as const;
 
 export type Phase1Action = typeof PHASE_1_ALLOWED_ACTIONS[number];
@@ -40,10 +45,11 @@ export const ALL_PROPOSAL_ACTIONS = [
   'INVENTORY_ADJUSTMENT',
   'PURCHASE_ORDER_SUBMIT',
   'VENDOR_EMAIL',
+  'ORDER_CREATION',
+  'PURCHASE_ORDER_CREATION',
   'PRODUCTION_ORDER',
   'RECEIVE_MATERIAL',
   'BATCH_COMPLETION',
-  'ORDER_CREATION',
 ] as const;
 
 export type ProposalAction = typeof ALL_PROPOSAL_ACTIONS[number];
@@ -102,6 +108,29 @@ export type OrderCreationParams = {
   }>;
   requestedShipDate?: string;
   notes?: string;
+  // AI-origin tracking
+  sourceMeta?: {
+    sourceType: 'EMAIL' | 'PASTE' | 'PDF' | 'API';
+    sourceId?: string;
+    receivedAt?: string;
+  };
+};
+
+export type PurchaseOrderCreationParams = {
+  vendorId: string;
+  items: Array<{
+    materialId: string;
+    quantity: number;
+    unitCost?: number;
+  }>;
+  expectedDeliveryDate?: string;
+  notes?: string;
+  // AI-origin tracking
+  sourceMeta?: {
+    sourceType: 'EMAIL' | 'PASTE' | 'PDF' | 'API';
+    sourceId?: string;
+    receivedAt?: string;
+  };
 };
 
 export type ProposalParams =
@@ -111,7 +140,8 @@ export type ProposalParams =
   | ProductionOrderParams
   | ReceiveMaterialParams
   | BatchCompletionParams
-  | OrderCreationParams;
+  | OrderCreationParams
+  | PurchaseOrderCreationParams;
 
 export type CreateProposalInput = {
   action: ProposalAction;
@@ -526,40 +556,121 @@ async function generatePreviewAndWarnings(
         throw new AppError(ErrorCodes.NOT_FOUND, 'Retailer not found');
       }
 
-      // Fetch product names for preview
+      // Fetch product details for preview including pricing
       const productIds = p.items.map((item) => item.productId);
       const products = await prisma.product.findMany({
         where: { id: { in: productIds } },
-        select: { id: true, name: true, sku: true },
+        select: { id: true, name: true, sku: true, wholesalePrice: true },
       });
-      const productMap = new Map(products.map((p) => [p.id, p]));
+      const productMap = new Map(products.map((prod) => [prod.id, prod]));
 
+      let estimatedTotal = 0;
       const itemPreviews = p.items.map((item) => {
         const product = productMap.get(item.productId);
+        const lineTotal = (product?.wholesalePrice || 0) * item.quantity;
+        estimatedTotal += lineTotal;
         return {
           productId: item.productId,
           productName: product?.name || 'Unknown',
           productSku: product?.sku,
           quantity: item.quantity,
+          wholesalePrice: product?.wholesalePrice,
+          lineTotal,
         };
       });
 
-      warnings.push({
-        type: 'PHASE_2_ONLY',
-        message: 'Order creation is preview-only in Phase 1',
-        severity: 'info',
-      });
+      // AI-origin info for audit
+      if (p.sourceMeta) {
+        warnings.push({
+          type: 'AI_PARSED',
+          message: `Order parsed from ${p.sourceMeta.sourceType}`,
+          severity: 'info',
+        });
+      }
 
       return {
         preview: {
           action,
-          description: `Create order for ${retailer.name} with ${p.items.length} item(s)`,
+          description: `Create sales order for ${retailer.name} with ${p.items.length} item(s)`,
           details: {
             retailerId: p.retailerId,
             retailerName: retailer.name,
+            estimatedTotal,
             items: itemPreviews,
             requestedShipDate: p.requestedShipDate,
             notes: p.notes,
+            sourceMeta: p.sourceMeta,
+          },
+        },
+        warnings,
+      };
+    }
+
+    case 'PURCHASE_ORDER_CREATION': {
+      const p = params as PurchaseOrderCreationParams;
+      const vendor = await prisma.vendor.findUnique({
+        where: { id: p.vendorId },
+        select: { name: true },
+      });
+
+      if (!vendor) {
+        throw new AppError(ErrorCodes.NOT_FOUND, 'Vendor not found');
+      }
+
+      // Fetch material details for preview
+      const materialIds = p.items.map((item) => item.materialId);
+      const materials = await prisma.rawMaterial.findMany({
+        where: { id: { in: materialIds } },
+        select: { id: true, name: true, sku: true, unitOfMeasure: true },
+      });
+      const materialMap = new Map(materials.map((mat) => [mat.id, mat]));
+
+      let estimatedTotal = 0;
+      const itemPreviews = p.items.map((item) => {
+        const material = materialMap.get(item.materialId);
+        const lineTotal = (item.unitCost || 0) * item.quantity;
+        estimatedTotal += lineTotal;
+        return {
+          materialId: item.materialId,
+          materialName: material?.name || 'Unknown',
+          materialSku: material?.sku,
+          quantity: item.quantity,
+          unitCost: item.unitCost,
+          lineTotal,
+        };
+      });
+
+      // AI-origin info for audit
+      if (p.sourceMeta) {
+        warnings.push({
+          type: 'AI_PARSED',
+          message: `Order parsed from ${p.sourceMeta.sourceType}`,
+          severity: 'info',
+        });
+      }
+
+      // Warn if any items missing pricing
+      const missingPricing = p.items.filter(item => !item.unitCost);
+      if (missingPricing.length > 0) {
+        warnings.push({
+          type: 'MISSING_PRICING',
+          message: `${missingPricing.length} item(s) have no unit cost specified`,
+          severity: 'warning',
+        });
+      }
+
+      return {
+        preview: {
+          action,
+          description: `Create purchase order for ${vendor.name} with ${p.items.length} item(s)`,
+          details: {
+            vendorId: p.vendorId,
+            vendorName: vendor.name,
+            estimatedTotal,
+            items: itemPreviews,
+            expectedDeliveryDate: p.expectedDeliveryDate,
+            notes: p.notes,
+            sourceMeta: p.sourceMeta,
           },
         },
         warnings,
@@ -820,6 +931,71 @@ async function executeAction(
         entityId: p.purchaseOrderId,
         entityType: 'PURCHASE_ORDER',
         message: `Email for PO ${po.poNumber} to ${po.vendor.name} - emailSent: false, reason: EMAIL_NOT_CONFIGURED`,
+      };
+    }
+
+    case 'ORDER_CREATION': {
+      const p = params as OrderCreationParams;
+      
+      // Create the sales order using existing service
+      const orderId = await createOrder({
+        retailerId: p.retailerId,
+        createdByUserId: userId,
+        requestedShipDate: p.requestedShipDate ? new Date(p.requestedShipDate) : undefined,
+        lineItems: p.items.map(item => ({
+          productId: item.productId,
+          quantityOrdered: item.quantity,
+        })),
+      });
+
+      // Fetch the created order for response details
+      const order = await prisma.retailerOrder.findUnique({
+        where: { id: orderId },
+        include: {
+          retailer: { select: { name: true } },
+          lineItems: { select: { quantityOrdered: true } },
+        },
+      });
+
+      const totalQuantity = order?.lineItems.reduce((sum, li) => sum + li.quantityOrdered, 0) || 0;
+
+      return {
+        entityId: orderId,
+        entityType: 'ORDER',
+        message: `Created sales order ${order?.orderNumber || orderId} for ${order?.retailer.name} (${totalQuantity} units, ${order?.lineItems.length} items)`,
+      };
+    }
+
+    case 'PURCHASE_ORDER_CREATION': {
+      const p = params as PurchaseOrderCreationParams;
+      
+      // Create the purchase order using existing service
+      const poId = await createPurchaseOrder({
+        vendorId: p.vendorId,
+        expectedDeliveryDate: p.expectedDeliveryDate ? new Date(p.expectedDeliveryDate) : undefined,
+        notes: p.notes,
+        lineItems: p.items.map(item => ({
+          materialId: item.materialId,
+          quantityOrdered: item.quantity,
+          unitCost: item.unitCost,
+        })),
+      }, userId);
+
+      // Fetch the created PO for response details
+      const po = await prisma.purchaseOrder.findUnique({
+        where: { id: poId },
+        include: {
+          vendor: { select: { name: true } },
+          lineItems: { select: { quantityOrdered: true } },
+        },
+      });
+
+      const totalQuantity = po?.lineItems.reduce((sum, li) => sum + li.quantityOrdered, 0) || 0;
+
+      return {
+        entityId: poId,
+        entityType: 'PURCHASE_ORDER',
+        message: `Created purchase order ${po?.poNumber || poId} for ${po?.vendor.name} (${totalQuantity} units, ${po?.lineItems.length} items)`,
       };
     }
 
