@@ -1,47 +1,55 @@
+export const runtime = "nodejs";
+
 import { auth } from '@/lib/auth/auth';
 import { redirect } from 'next/navigation';
-import { getFilteredManual, getAvailableSectionFilters } from '@/lib/services/helpService';
-import HelpClient from './HelpClient';
+import { promises as fs } from 'fs';
+import path from 'path';
+import { getFilteredManual } from '@/lib/services/helpService';
+import HelpShell from './_components/HelpShell';
 
-export const metadata = {
-  title: 'Help & Documentation | PsillyOps',
-  description: 'User manual and documentation for PsillyOps'
-};
-
-interface PageProps {
-  searchParams: Promise<{ section?: string }>;
-}
-
-export default async function HelpPage({ searchParams }: PageProps) {
+export default async function HelpPage() {
   const session = await auth();
-  
-  if (!session) {
-    redirect('/login');
-  }
-  
-  const params = await searchParams;
+  if (!session) redirect('/login');
+
   const role = session.user.role;
-  
-  // Get filtered manual content based on user role
-  const { toc, sections, content } = await getFilteredManual(role);
-  
-  // Get available section filters
-  const sectionFilters = getAvailableSectionFilters(toc);
-  
-  // Initial section from URL query
-  const initialSection = params.section || null;
-  
+  const { toc, sections } = await getFilteredManual(role);
+
+  const topLevel = toc.filter((t) => t.level === 2);
+
+  const pages = [
+    { id: 'home', title: 'Overview', href: '/ops/help' },
+    ...topLevel.map((t) => ({ id: t.id, title: t.title, href: `/ops/help/${t.id}` })),
+  ];
+
+  const manualPath = path.join(process.cwd(), 'docs', 'USER_MANUAL.md');
+  const stat = await fs.stat(manualPath);
+
+  // Landing content: show the manual title + role note + quick index
+  const landing = [
+    '## PsillyOps Help Center',
+    '',
+    'Use the sidebar to browse sections, or search to jump directly to a procedure.',
+    '',
+    '### Quick Index',
+    '',
+    ...topLevel.map((t) => `- [${t.title}](/ops/help/${t.id})`),
+    '',
+    '---',
+    '',
+    '### Image Gallery (placeholders)',
+    '',
+    '> Screenshots are coming soon. This area is reserved for UI walkthrough images (warehouse, production, AI flows, etc.).',
+    '',
+  ].join('\n');
+
   return (
-    <div className="h-[calc(100vh-160px)]">
-      <HelpClient
-        toc={toc}
-        sections={sections}
-        content={content}
-        sectionFilters={sectionFilters}
-        initialSection={initialSection}
-        userRole={role}
-      />
-    </div>
+    <HelpShell
+      title="Help Center"
+      subtitle={`Showing documentation for ${role} role`}
+      pages={pages}
+      content={landing}
+      lastUpdatedLabel={`Last updated: ${stat.mtime.toLocaleDateString()}`}
+    />
   );
 }
 

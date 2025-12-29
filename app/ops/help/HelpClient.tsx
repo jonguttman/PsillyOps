@@ -67,7 +67,7 @@ export default function HelpClient({
     } else {
       params.delete('section');
     }
-    router.push(`/help?${params.toString()}`, { scroll: false });
+    router.push(`/ops/help?${params.toString()}`, { scroll: false });
     
     // Scroll to top of content area
     const contentArea = document.getElementById('help-content-area');
