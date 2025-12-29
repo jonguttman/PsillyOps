@@ -19,8 +19,11 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // 2. Check RBAC permission to view users
-    if (!hasPermission(session.user.role as UserRole, 'users', 'view')) {
+    // 2. Check RBAC permission - users.view OR production.assign (for assignment modal)
+    const canViewUsers = hasPermission(session.user.role as UserRole, 'users', 'view');
+    const canAssignProduction = hasPermission(session.user.role as UserRole, 'production', 'assign');
+    
+    if (!canViewUsers && !canAssignProduction) {
       return Response.json(
         { code: 'FORBIDDEN', message: 'You do not have permission to view users' },
         { status: 403 }

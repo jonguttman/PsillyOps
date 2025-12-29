@@ -6,6 +6,8 @@ import { getBaseUrl } from '@/lib/services/qrTokenService';
 import ProductionRunClient from '@/components/production/ProductionRunClient';
 import type { ProductionRunApiDetail } from '@/components/production/ProductionRunClient';
 import { MobileProductionRun, type ProductionRunData } from '@/components/mobile';
+import { ProductionRunAssignment } from '@/components/production/ProductionRunAssignment';
+import { UserRole } from '@prisma/client';
 
 export default async function ProductionRunDetailPage({
   params,
@@ -92,6 +94,21 @@ export default async function ProductionRunDetailPage({
     completedAt: run.completedAt ? run.completedAt.toISOString() : undefined,
   };
 
+  // Prepare assignment data
+  const assignmentData = {
+    assignedTo: run.assignedTo ? {
+      id: run.assignedTo.id,
+      name: run.assignedTo.name,
+      role: run.assignedTo.role as UserRole,
+    } : null,
+    assignedBy: run.assignedBy ? {
+      id: run.assignedBy.id,
+      name: run.assignedBy.name,
+    } : null,
+    assignedAt: run.assignedAt ? run.assignedAt.toISOString() : null,
+    assignmentReason: run.assignmentReason,
+  };
+
   return (
     <>
       {/* Desktop view */}
@@ -101,6 +118,15 @@ export default async function ProductionRunDetailPage({
             ← Back
           </Link>
         </div>
+
+        {/* Assignment Card - positioned before main content */}
+        <ProductionRunAssignment
+          runId={run.id}
+          productName={run.product.name}
+          status={run.status}
+          assignment={assignmentData}
+          userRole={session.user.role}
+        />
 
         <ProductionRunClient
           runId={run.id}
@@ -112,6 +138,16 @@ export default async function ProductionRunDetailPage({
 
       {/* Mobile view */}
       <div className="block md:hidden">
+        {/* Mobile Assignment Card */}
+        <div className="mb-4">
+          <ProductionRunAssignment
+            runId={run.id}
+            productName={run.product.name}
+            status={run.status}
+            assignment={assignmentData}
+            userRole={session.user.role}
+          />
+        </div>
         <MobileProductionRun 
           run={mobileRunData}
         />

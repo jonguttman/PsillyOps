@@ -748,6 +748,8 @@ export async function getProductionRun(runId: string) {
       product: { select: { id: true, name: true, sku: true } },
       qrToken: { select: { id: true, token: true, status: true } },
       steps: { orderBy: { order: 'asc' } },
+      assignedTo: { select: { id: true, name: true, role: true } },
+      assignedBy: { select: { id: true, name: true } },
     },
   });
 
