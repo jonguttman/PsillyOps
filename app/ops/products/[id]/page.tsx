@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { ArchiveButton } from "./ArchiveButton";
 import ProductLabelSection from "@/components/labels/ProductLabelSection";
 import { logAction } from "@/lib/services/loggingService";
-import { ActivityEntity } from "@prisma/client";
+import { ActivityEntity, Prisma } from "@prisma/client";
 import { QRBehaviorPanelServer } from "@/components/qr/QRBehaviorPanelServer";
 import { QRTokenInspector } from "@/components/qr/QRTokenInspector";
 import { PredictionEditor } from "@/components/products/PredictionEditor";
@@ -145,8 +145,8 @@ async function saveManufacturingSetup(
   await prisma.product.update({
     where: { id: productId },
     data: {
-      manufacturingSteps: steps,
-      requiredEquipment: equipment,
+      manufacturingSteps: steps as unknown as Prisma.InputJsonValue,
+      requiredEquipment: equipment as unknown as Prisma.InputJsonValue,
     },
   });
 
