@@ -42,6 +42,7 @@ export default async function AdminDashboardPage() {
   let openPurchaseOrders;
   let lastReceivedPO;
   let unassignedProductionRuns;
+  let unassignedProductionOrders;
 
   try {
     [
