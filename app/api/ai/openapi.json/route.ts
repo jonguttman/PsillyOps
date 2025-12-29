@@ -163,16 +163,87 @@ export async function GET(req: NextRequest) {
         post: {
           operationId: 'validateOrder',
           summary: 'Validate and resolve AI-parsed order',
-          description: 'Validates AI-parsed order payloads, resolves entity references (product names, retailer names) to IDs, and returns confidence score. CRITICAL: If canCreateProposal is false (due to ambiguous matches), you must ask the user to clarify before calling /api/ai/propose.',
+          description: 'Validates AI-parsed order payloads, resolves entity references (product names, retailer names) to IDs, and returns confidence score. CRITICAL: If canCreateProposal is false (due to ambiguous matches), you must ask the user to clarify before calling /api/ai/propose. Send the order payload directly in the request body (not wrapped in a "payload" property).',
           requestBody: {
             required: true,
             content: {
               'application/json': {
                 schema: {
-                  oneOf: [
-                    { $ref: '#/components/schemas/AISalesOrder' },
-                    { $ref: '#/components/schemas/AIPurchaseOrder' },
-                  ],
+                  type: 'object',
+                  description: 'AI-parsed order payload. Use orderType to discriminate between SALES and PURCHASE orders.',
+                  required: ['orderType'],
+                  properties: {
+                    orderType: {
+                      type: 'string',
+                      enum: ['SALES', 'PURCHASE'],
+                      description: 'Discriminator: SALES for retailer orders, PURCHASE for vendor orders',
+                    },
+                    retailerRef: {
+                      type: 'string',
+                      description: 'For SALES orders: Retailer name or ID to resolve',
+                    },
+                    vendorRef: {
+                      type: 'string',
+                      description: 'For PURCHASE orders: Vendor name or ID to resolve',
+                    },
+                    requestedShipDate: {
+                      type: 'string',
+                      format: 'date-time',
+                      description: 'For SALES orders: Requested ship date',
+                    },
+                    expectedDeliveryDate: {
+                      type: 'string',
+                      format: 'date-time',
+                      description: 'For PURCHASE orders: Expected delivery date',
+                    },
+                    notes: {
+                      type: 'string',
+                    },
+                    lineItems: {
+                      type: 'array',
+                      minItems: 1,
+                      description: 'Order line items. Use productRef for SALES, materialRef for PURCHASE.',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          productRef: {
+                            type: 'string',
+                            description: 'For SALES: Product SKU, name, or ID',
+                          },
+                          materialRef: {
+                            type: 'string',
+                            description: 'For PURCHASE: Material SKU, name, or ID',
+                          },
+                          quantity: {
+                            type: 'number',
+                            minimum: 1,
+                          },
+                          unitCost: {
+                            type: 'number',
+                            description: 'For PURCHASE: Optional unit cost',
+                          },
+                        },
+                        required: ['quantity'],
+                      },
+                    },
+                    sourceMeta: {
+                      type: 'object',
+                      description: 'Optional metadata about the source of the parsed order',
+                      properties: {
+                        sourceType: {
+                          type: 'string',
+                          enum: ['EMAIL', 'PASTE', 'PDF', 'API'],
+                        },
+                        sourceId: {
+                          type: 'string',
+                        },
+                        receivedAt: {
+                          type: 'string',
+                          format: 'date-time',
+                        },
+                      },
+                    },
+                  },
                 },
                 examples: {
                   salesOrder: {
