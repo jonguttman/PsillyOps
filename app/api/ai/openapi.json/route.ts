@@ -163,7 +163,7 @@ export async function GET(req: NextRequest) {
         post: {
           operationId: 'validateOrder',
           summary: 'Validate and resolve AI-parsed order',
-          description: 'Validates AI-parsed order payloads, resolves entity references (product names, retailer names) to IDs, and returns confidence score. CRITICAL: If canCreateProposal is false (due to ambiguous matches), you must ask the user to clarify before calling /api/ai/propose. Send the order payload directly in the request body (not wrapped in a "payload" property).',
+          description: 'Validates order payloads, resolves entity refs to IDs. If canCreateProposal is false, ask user to clarify ambiguous matches before calling /api/ai/propose.',
           requestBody: {
             required: true,
             content: {
