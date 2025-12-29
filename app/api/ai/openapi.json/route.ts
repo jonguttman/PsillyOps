@@ -162,8 +162,8 @@ export async function GET(req: NextRequest) {
       '/api/ai/validate-order': {
         post: {
           operationId: 'validateOrder',
-          summary: 'Validate and resolve AI-parsed order',
-          description: 'Validates order payloads, resolves entity refs to IDs. If canCreateProposal is false, ask user to clarify ambiguous matches before calling /api/ai/propose.',
+          summary: 'STEP 1: Validate and resolve AI-parsed order',
+          description: 'Validates order payloads and resolves entity refs to IDs. Returns proposalParams ready to pass to /api/ai/propose. If canCreateProposal is false, ask user to clarify. The backend does NOT re-resolve references during proposal creation.',
           requestBody: {
             required: true,
             content: {
@@ -181,6 +181,10 @@ export async function GET(req: NextRequest) {
                     retailerRef: {
                       type: 'string',
                       description: 'For SALES orders: Retailer name or ID to resolve',
+                    },
+                    retailerOrderNumber: {
+                      type: 'string',
+                      description: 'For SALES orders: Customer PO/order number (e.g., TOP-704). Stored in notes, not as system ID.',
                     },
                     vendorRef: {
                       type: 'string',
@@ -306,6 +310,14 @@ export async function GET(req: NextRequest) {
                         },
                       },
                       confidence: { type: 'number', description: 'Score from 0.0 to 1.0' },
+                      proposalParams: {
+                        type: 'object',
+                        description: 'Ready-to-use params for /api/ai/propose. Only present when canCreateProposal is true. Pass this verbatim to /api/ai/propose - do NOT manually reconstruct.',
+                        properties: {
+                          action: { type: 'string', enum: ['ORDER_CREATION', 'PURCHASE_ORDER_CREATION'] },
+                          params: { type: 'object', description: 'Resolved params with IDs' },
+                        },
+                      },
                     },
                   },
                 },
@@ -317,15 +329,15 @@ export async function GET(req: NextRequest) {
       '/api/ai/propose': {
         post: {
           operationId: 'createProposal',
-          summary: 'Create a proposal for an action',
-          description: 'Creates a proposal that previews an action without executing it. Phase 1 allows execution of: INVENTORY_ADJUSTMENT, PURCHASE_ORDER_SUBMIT, VENDOR_EMAIL, ORDER_CREATION, PURCHASE_ORDER_CREATION. Other actions are preview-only.',
+          summary: 'STEP 2: Create a proposal for an action',
+          description: 'Creates a proposal that previews an action without executing it. For ORDER_CREATION/PURCHASE_ORDER_CREATION, first call /api/ai/validate-order then pass proposalParams here. The backend does NOT re-resolve references. Phase 1 allows: INVENTORY_ADJUSTMENT, PURCHASE_ORDER_SUBMIT, VENDOR_EMAIL, ORDER_CREATION, PURCHASE_ORDER_CREATION.',
           requestBody: {
             required: true,
             content: {
               'application/json': {
                 schema: {
                   type: 'object',
-                  required: ['action', 'params'],
+                  required: ['action'],
                   properties: {
                     action: {
                       type: 'string',
@@ -343,7 +355,11 @@ export async function GET(req: NextRequest) {
                     },
                     params: {
                       type: 'object',
-                      description: 'Action-specific parameters. For ORDER_CREATION and PURCHASE_ORDER_CREATION, use IDs from validate-order response.',
+                      description: 'Direct params with resolved IDs. Use this OR validatedOrder, not both.',
+                    },
+                    validatedOrder: {
+                      type: 'object',
+                      description: 'For ORDER_CREATION/PURCHASE_ORDER_CREATION: pass proposalParams.params from validate-order response. Preferred over manual params construction.',
                     },
                   },
                 },
@@ -590,6 +606,10 @@ export async function GET(req: NextRequest) {
             retailerRef: {
               type: 'string',
               description: 'Retailer name or ID - will be resolved server-side',
+            },
+            retailerOrderNumber: {
+              type: 'string',
+              description: 'Customer PO/order number (e.g., TOP-704). Stored in notes, not as system ID.',
             },
             requestedShipDate: {
               type: 'string',

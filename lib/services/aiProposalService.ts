@@ -133,6 +133,90 @@ export type PurchaseOrderCreationParams = {
   };
 };
 
+// ========================================
+// Validated Order Types (from /api/ai/validate-order)
+// ========================================
+
+/**
+ * Validated sales order from the validation endpoint.
+ * Contains resolved IDs ready for proposal creation.
+ */
+export type ValidatedSalesOrder = {
+  retailerId: string;
+  retailerOrderNumber?: string; // Customer's PO number (stored in notes)
+  lineItems: Array<{ productId: string; quantity: number }>;
+  requestedShipDate?: string;
+  notes?: string;
+  sourceMeta?: {
+    sourceType: 'EMAIL' | 'PASTE' | 'PDF' | 'API';
+    sourceId?: string;
+    receivedAt?: string;
+  };
+};
+
+/**
+ * Validated purchase order from the validation endpoint.
+ * Contains resolved IDs ready for proposal creation.
+ */
+export type ValidatedPurchaseOrder = {
+  vendorId: string;
+  lineItems: Array<{ materialId: string; quantity: number; unitCost?: number }>;
+  expectedDeliveryDate?: string;
+  notes?: string;
+  sourceMeta?: {
+    sourceType: 'EMAIL' | 'PASTE' | 'PDF' | 'API';
+    sourceId?: string;
+    receivedAt?: string;
+  };
+};
+
+/**
+ * Normalize notes with retailer order number prefix.
+ * Idempotent - won't double-prepend if already present.
+ */
+function normalizeNotesWithRetailerOrder(notes?: string, retailerOrderNumber?: string): string | undefined {
+  if (!retailerOrderNumber) return notes;
+  
+  const prefix = `Retailer Order #: ${retailerOrderNumber}`;
+  if (notes?.startsWith(prefix)) return notes;
+  
+  return `${prefix}\n${notes ?? ''}`.trim();
+}
+
+/**
+ * Convert ValidatedSalesOrder to OrderCreationParams.
+ * Normalizes retailer order number into notes.
+ */
+export function normalizeValidatedSalesOrder(validated: ValidatedSalesOrder): OrderCreationParams {
+  return {
+    retailerId: validated.retailerId,
+    items: validated.lineItems.map(li => ({
+      productId: li.productId,
+      quantity: li.quantity,
+    })),
+    requestedShipDate: validated.requestedShipDate,
+    notes: normalizeNotesWithRetailerOrder(validated.notes, validated.retailerOrderNumber),
+    sourceMeta: validated.sourceMeta,
+  };
+}
+
+/**
+ * Convert ValidatedPurchaseOrder to PurchaseOrderCreationParams.
+ */
+export function normalizeValidatedPurchaseOrder(validated: ValidatedPurchaseOrder): PurchaseOrderCreationParams {
+  return {
+    vendorId: validated.vendorId,
+    items: validated.lineItems.map(li => ({
+      materialId: li.materialId,
+      quantity: li.quantity,
+      unitCost: li.unitCost,
+    })),
+    expectedDeliveryDate: validated.expectedDeliveryDate,
+    notes: validated.notes,
+    sourceMeta: validated.sourceMeta,
+  };
+}
+
 export type ProposalParams =
   | InventoryAdjustmentParams
   | PurchaseOrderSubmitParams

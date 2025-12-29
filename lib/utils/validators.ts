@@ -354,10 +354,12 @@ export const aiSourceMetaSchema = z.object({
  * AI-parsed Sales Order (PsillyCo selling to retailer)
  * - Pricing comes from database (wholesalePrice), not parsed input
  * - Entity refs are resolved server-side with fuzzy matching
+ * - retailerOrderNumber is the customer's PO/order reference (stored in notes, not as system ID)
  */
 export const aiSalesOrderSchema = z.object({
   orderType: z.literal('SALES'),
   retailerRef: z.string().min(1, 'Retailer reference is required'), // Name or ID
+  retailerOrderNumber: z.string().optional(), // Customer's order number (e.g., "TOP-704") - stored in notes
   requestedShipDate: z.string().datetime().optional(),
   notes: z.string().optional(),
   lineItems: z.array(z.object({

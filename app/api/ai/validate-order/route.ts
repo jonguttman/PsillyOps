@@ -1,11 +1,20 @@
 /**
  * API Route: POST /api/ai/validate-order
  * 
+ * STEP 1 of the AI order creation flow.
+ * 
  * Validates and resolves AI-parsed order payloads.
- * Returns resolved IDs, warnings, and confidence score.
+ * Returns resolved IDs, warnings, confidence score, and proposalParams.
  * 
  * CRITICAL: Ambiguous matches BLOCK proposal creation.
  * GPT must ask user to clarify before calling /api/ai/propose.
+ * 
+ * USAGE:
+ * 1. Call this endpoint with unresolved order data (retailerRef, productRef, etc.)
+ * 2. If canCreateProposal === true, pass proposalParams verbatim to /api/ai/propose
+ * 3. Do NOT manually reconstruct params - use proposalParams as the canonical output
+ * 
+ * The backend does NOT re-resolve references during proposal creation.
  * 
  * This endpoint is reusable for:
  * - ChatGPT order parsing
@@ -93,6 +102,42 @@ interface ResolvedPurchaseOrder {
   lineItems: ResolvedPurchaseOrderLineItem[];
 }
 
+/**
+ * Proposal params ready to pass to /api/ai/propose
+ * Consumers SHOULD pass this verbatim - manual reconstruction is discouraged.
+ */
+interface SalesOrderProposalParams {
+  action: 'ORDER_CREATION';
+  params: {
+    retailerId: string;
+    items: Array<{ productId: string; quantity: number }>;
+    requestedShipDate?: string;
+    notes?: string;
+    sourceMeta?: {
+      sourceType: 'EMAIL' | 'PASTE' | 'PDF' | 'API';
+      sourceId?: string;
+      receivedAt?: string;
+    };
+  };
+}
+
+interface PurchaseOrderProposalParams {
+  action: 'PURCHASE_ORDER_CREATION';
+  params: {
+    vendorId: string;
+    items: Array<{ materialId: string; quantity: number; unitCost?: number }>;
+    expectedDeliveryDate?: string;
+    notes?: string;
+    sourceMeta?: {
+      sourceType: 'EMAIL' | 'PASTE' | 'PDF' | 'API';
+      sourceId?: string;
+      receivedAt?: string;
+    };
+  };
+}
+
+type ProposalParams = SalesOrderProposalParams | PurchaseOrderProposalParams;
+
 interface ValidationResult {
   valid: boolean;
   canCreateProposal: boolean; // false if any ambiguous matches
@@ -105,6 +150,12 @@ interface ValidationResult {
     sourceId?: string;
     receivedAt?: string;
   };
+  /**
+   * Ready-to-use params for /api/ai/propose.
+   * Only present when canCreateProposal === true.
+   * Consumers SHOULD pass this verbatim to /api/ai/propose.
+   */
+  proposalParams?: ProposalParams;
 }
 
 // ========================================
@@ -280,16 +331,57 @@ async function validateSalesOrder(order: AISalesOrder): Promise<ValidationResult
   const confidence = calculateConfidenceScore(confidencePenalties);
   const hasAmbiguous = hasAmbiguousMatches(matchTypes);
   const hasUnresolved = hasUnresolvedFields(matchTypes);
+  const canCreateProposal = !hasAmbiguous && !hasUnresolved;
+
+  // Build proposalParams only if we can create a proposal
+  let proposalParams: SalesOrderProposalParams | undefined;
+  if (canCreateProposal && resolvedPayload.retailerId) {
+    // Normalize notes with retailer order number prefix if provided
+    const normalizedNotes = normalizeNotesWithRetailerOrder(
+      order.notes,
+      order.retailerOrderNumber
+    );
+
+    proposalParams = {
+      action: 'ORDER_CREATION',
+      params: {
+        retailerId: resolvedPayload.retailerId,
+        items: resolvedLineItems
+          .filter(li => li.productId !== null)
+          .map(li => ({
+            productId: li.productId!,
+            quantity: li.quantity
+          })),
+        requestedShipDate: order.requestedShipDate,
+        notes: normalizedNotes,
+        sourceMeta: order.sourceMeta as SalesOrderProposalParams['params']['sourceMeta']
+      }
+    };
+  }
 
   return {
     valid: !hasUnresolved,
-    canCreateProposal: !hasAmbiguous && !hasUnresolved,
+    canCreateProposal,
     resolvedPayload,
     unresolvedFields,
     warnings,
     confidence,
-    sourceMeta: order.sourceMeta
+    sourceMeta: order.sourceMeta,
+    proposalParams
   };
+}
+
+/**
+ * Normalize notes with retailer order number prefix.
+ * Idempotent - won't double-prepend if already present.
+ */
+function normalizeNotesWithRetailerOrder(notes?: string, retailerOrderNumber?: string): string | undefined {
+  if (!retailerOrderNumber) return notes;
+  
+  const prefix = `Retailer Order #: ${retailerOrderNumber}`;
+  if (notes?.startsWith(prefix)) return notes;
+  
+  return `${prefix}\n${notes ?? ''}`.trim();
 }
 
 // ========================================
@@ -415,15 +507,38 @@ async function validatePurchaseOrder(order: AIPurchaseOrder): Promise<Validation
   const confidence = calculateConfidenceScore(confidencePenalties);
   const hasAmbiguous = hasAmbiguousMatches(matchTypes);
   const hasUnresolved = hasUnresolvedFields(matchTypes);
+  const canCreateProposal = !hasAmbiguous && !hasUnresolved;
+
+  // Build proposalParams only if we can create a proposal
+  let proposalParams: PurchaseOrderProposalParams | undefined;
+  if (canCreateProposal && resolvedPayload.vendorId) {
+    proposalParams = {
+      action: 'PURCHASE_ORDER_CREATION',
+      params: {
+        vendorId: resolvedPayload.vendorId,
+        items: resolvedLineItems
+          .filter(li => li.materialId !== null)
+          .map(li => ({
+            materialId: li.materialId!,
+            quantity: li.quantity,
+            unitCost: li.unitCost ?? undefined
+          })),
+        expectedDeliveryDate: order.expectedDeliveryDate,
+        notes: order.notes,
+        sourceMeta: order.sourceMeta as PurchaseOrderProposalParams['params']['sourceMeta']
+      }
+    };
+  }
 
   return {
     valid: !hasUnresolved,
-    canCreateProposal: !hasAmbiguous && !hasUnresolved,
+    canCreateProposal,
     resolvedPayload,
     unresolvedFields,
     warnings,
     confidence,
-    sourceMeta: order.sourceMeta
+    sourceMeta: order.sourceMeta,
+    proposalParams
   };
 }
 
