@@ -14,6 +14,17 @@ import { getActivePrediction, createPredictionProfile, getActivePredictionsByMod
 import { ExperienceMode } from "@prisma/client";
 import { calculateProductCost } from "@/lib/services/costingService";
 import CalculatedCostDisplay from "./CalculatedCostDisplay";
+import { ManufacturingSetup } from "@/components/products/ManufacturingSetup";
+
+// Types for manufacturing configuration
+interface ManufacturingStep {
+  key: string;
+  label: string;
+  order: number;
+  required: boolean;
+  dependsOnKeys: string[];
+  estimatedMinutes?: number;
+}
 
 const UNIT_OPTIONS = [
   "jar",
@@ -108,6 +119,52 @@ async function archiveProduct(formData: FormData) {
 
   revalidatePath("/ops/products");
   redirect("/ops/products");
+}
+
+async function saveManufacturingSetup(
+  productId: string,
+  steps: ManufacturingStep[],
+  equipment: string[]
+) {
+  "use server";
+
+  const session = await auth();
+  if (!session?.user?.id) {
+    throw new Error("Not authenticated");
+  }
+
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+    select: { name: true, manufacturingSteps: true, requiredEquipment: true }
+  });
+
+  if (!product) {
+    throw new Error("Product not found");
+  }
+
+  await prisma.product.update({
+    where: { id: productId },
+    data: {
+      manufacturingSteps: steps,
+      requiredEquipment: equipment,
+    },
+  });
+
+  await logAction({
+    entityType: ActivityEntity.PRODUCT,
+    entityId: productId,
+    action: 'manufacturing_setup_updated',
+    userId: session.user.id,
+    summary: `Updated manufacturing setup for "${product.name}"`,
+    before: { 
+      manufacturingSteps: product.manufacturingSteps, 
+      requiredEquipment: product.requiredEquipment 
+    },
+    after: { manufacturingSteps: steps, requiredEquipment: equipment },
+    tags: ['product', 'manufacturing', 'updated']
+  });
+
+  revalidatePath(`/ops/products/${productId}`);
 }
 
 export default async function ProductDetailPage({
@@ -538,6 +595,17 @@ export default async function ProductDetailPage({
           <p className="text-sm text-gray-500">No BOM items configured</p>
         )}
       </div>
+
+      {/* Manufacturing Setup */}
+      <ManufacturingSetup
+        productId={id}
+        initialSteps={(product.manufacturingSteps as ManufacturingStep[]) || []}
+        initialEquipment={(product.requiredEquipment as string[]) || []}
+        onSave={async (steps, equipment) => {
+          'use server';
+          await saveManufacturingSetup(id, steps, equipment);
+        }}
+      />
 
       {/* QR Behavior Panel */}
       <QRBehaviorPanelServer

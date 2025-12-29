@@ -12,6 +12,7 @@ import { getLowStockMaterials } from "@/lib/services/inventoryService";
 import { getRecentAdjustments } from "@/lib/services/inventoryAdjustmentService";
 import { MobileDashboard } from "@/components/mobile";
 import { UnassignedProductionRunsQueue } from "@/components/production/UnassignedProductionRunsQueue";
+import { UnassignedProductionOrdersQueue } from "@/components/production/UnassignedProductionOrdersQueue";
 
 export default async function AdminDashboardPage() {
   const session = await auth();
@@ -58,6 +59,7 @@ export default async function AdminDashboardPage() {
       openPurchaseOrders,
       lastReceivedPO,
       unassignedProductionRuns,
+      unassignedProductionOrders,
     ] = await Promise.all([
       // Supply watch: low stock materials
       getLowStockMaterials(),
@@ -140,6 +142,23 @@ export default async function AdminDashboardPage() {
         orderBy: { createdAt: "asc" },
         take: 20, // Limit to prevent overwhelming the queue
       }),
+      // Unassigned production orders (PLANNED, no assignee)
+      prisma.productionOrder.findMany({
+        where: {
+          status: "PLANNED",
+          assignedToUserId: null,
+        },
+        select: {
+          id: true,
+          orderNumber: true,
+          quantityToMake: true,
+          scheduledDate: true,
+          createdAt: true,
+          product: { select: { id: true, name: true, sku: true } },
+        },
+        orderBy: [{ scheduledDate: "asc" }, { createdAt: "asc" }],
+        take: 20,
+      }),
     ]);
   } catch (e: unknown) {
     throw e;
@@ -194,6 +213,19 @@ export default async function AdminDashboardPage() {
           openRetailerOrders={openRetailerOrders}
           pendingPurchaseOrders={pendingPurchaseOrders}
           awaitingInvoiceCount={awaitingInvoiceCount}
+        />
+
+        {/* Unassigned Production Orders Queue */}
+        <UnassignedProductionOrdersQueue
+          orders={unassignedProductionOrders.map((order) => ({
+            id: order.id,
+            orderNumber: order.orderNumber,
+            quantityToMake: order.quantityToMake,
+            scheduledDate: order.scheduledDate?.toISOString() || null,
+            createdAt: order.createdAt.toISOString(),
+            product: order.product,
+          }))}
+          userRole={session.user.role}
         />
 
         {/* Unassigned Production Runs Queue */}

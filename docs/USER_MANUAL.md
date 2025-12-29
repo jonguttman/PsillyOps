@@ -710,7 +710,39 @@ The Production page displays orders in a Kanban-style board with columns:
 - Progress bar (produced vs. target)
 - Scheduled date
 - Work center (if assigned)
+- Assignee (if assigned)
 - Status tags (Shortage, QC Pending, batch count)
+
+**Unassigned Orders Queue:**
+The dashboard displays a prominent queue of unassigned production orders for supervisors to review and assign.
+
+### Setting Up Product Manufacturing
+
+Before starting production, configure manufacturing details for each product:
+
+1. Navigate to **Products** → Select a product
+2. Scroll to **Manufacturing Setup** section
+3. Click **Edit**
+
+**Required Equipment:**
+- Add equipment needed for production (e.g., "Scale", "Mixer", "Capsule Machine")
+- These become equipment check steps when starting production
+
+**Manufacturing Steps:**
+- Add ordered steps for production (e.g., "Weigh ingredients", "Mix powder", "Fill capsules")
+- For each step, configure:
+  - **Label**: Step name
+  - **Estimated Minutes**: Time estimate (optional)
+  - **Required**: Whether step must be completed
+  - **Depends On**: Previous step that must complete first (for sequential steps)
+- Steps can be reordered using the up/down arrows
+- Click **Save** when done
+
+**Step Dependencies:**
+- Steps with no dependencies can run in parallel
+- Steps with dependencies must wait for the dependent step to complete
+- Equipment checks and material issuance steps run in parallel
+- Manufacturing instruction steps run sequentially by default
 
 ### Creating a Production Order
 
@@ -728,6 +760,28 @@ The Production page displays orders in a Kanban-style board with columns:
 - Shows Available vs. Required for each material
 - Highlights shortages in red
 - Creates `ProductionOrderMaterial` records for tracking
+
+### Assigning Production Orders
+
+Production orders can be assigned to team members for accountability:
+
+**Assign During Start:**
+1. Open a PLANNED production order
+2. Click **"Start Production"**
+3. A modal appears showing eligible assignees
+4. Select a team member or leave unassigned
+5. Click **"Start Production"**
+
+**Assign Later:**
+1. Navigate to the production order detail page
+2. Click **"Assign"** button
+3. Select a team member from the list
+4. Provide a reason if reassigning
+
+**Viewing Assignments:**
+- Assigned orders appear in the assignee's **My Work** page
+- Supervisors see unassigned orders in the dashboard queue
+- Admins can view **All Work** to see all team assignments
 
 ### Work Centers
 
@@ -761,37 +815,82 @@ Templates save time for recurring production runs:
 - Template's default batch size auto-fills
 - Instructions provide guidance for operators
 
-### Production Runs (QR-driven Step Checklist)
+### Production Runs (Step-by-Step Execution)
 
-Production Runs provide a **step-by-step checklist** for making a product batch, where a **single QR token follows the run** from start to finish.
+Production Runs provide a **step-by-step checklist** for executing production work. When you start a Production Order, a Production Run is automatically created with all necessary steps.
 
-**Key concepts**
-- **Product step templates**: Each product has an ordered, gap-free list of default step templates (label + required flag).
-  - Editable at: `Products → (open product) → /products/[id]/steps`
-  - Changes affect **future runs only**
-- **Run step snapshot**: When a run is created, it receives an **immutable snapshot** of steps copied from the product templates.
-- **Run-only overrides (Admin/Supervisor)**: A run’s steps can be adjusted **before any step starts**:
-  - Add/remove/reorder steps
-  - Mark a step required/optional (run-only)
-  - These overrides **do not modify** product templates
+**How Production Runs Are Created:**
+1. Starting a Production Order automatically creates a Production Run
+2. The run is linked to the order and inherits its assignment
+3. Batches are created based on quantity ÷ batch size
+4. Steps are generated from the product's manufacturing setup
+
+**Step Types:**
+| Type | Icon | Description |
+|------|------|-------------|
+| EQUIPMENT_CHECK | 🔧 | Gather required equipment |
+| MATERIAL_ISSUE | 📦 | Issue materials from inventory |
+| INSTRUCTION | 📝 | Manufacturing step to perform |
+
+**Step Dependencies:**
+- Equipment checks run in parallel (gather all equipment at once)
+- Material issuance runs in parallel (issue all materials at once)
+- First manufacturing step depends on all materials being issued
+- Subsequent steps follow the dependency chain configured in the product
+
+**Step Execution Rules:**
+- A step can only start if all its dependencies are COMPLETED or SKIPPED
+- Only one INSTRUCTION step can be IN_PROGRESS at a time
+- EQUIPMENT_CHECK and MATERIAL_ISSUE steps can run in parallel
+- Steps show which prior steps must complete before they can start
+
+**Assignment Rules:**
+- Production Runs inherit assignment from the Production Order
+- Runs can be reassigned at any time (with reason for audit)
+- Assigned worker sees the run in their **My Work** page
+- Only the assigned worker (or ADMIN) can complete steps
 
 **Scanning / QR behavior**
-- Production Run QR codes always encode the canonical path: `/qr/{token}`
-- Scanning redirects to the run detail page and logs the scan event for audit.
-
-**Step assignment rules**
-- Any worker may **claim** an unassigned step.
-- Only the **assigned worker** may Start/Stop/Complete/Skip that step.
-- **ADMIN override** is allowed.
+- Production Run QR codes encode the canonical path: `/qr/{token}`
+- Scanning redirects to the run detail page and logs the scan event
 
 **Skip justification**
-- Skipping requires a reason (minimum length enforced in the UI/API).
-- Skipping a **required** step will raise a **run health warning** on the run page and in the run list.
-  - Required steps are visually marked in the checklist, and skipped steps show their justification inline.
+- Skipping requires a reason (minimum length enforced)
+- Skipping a **required** step raises a **run health warning**
+- Required steps are visually marked; skipped steps show their justification
 
 **AI boundaries (safe-by-default)**
-- AI may **propose** production run creation and run edits.
-- AI will **never** silently mutate production data — a human must click **Confirm**.
+- AI may **propose** production run creation and run edits
+- AI will **never** silently mutate production data — a human must click **Confirm**
+
+### My Work Page
+
+The **My Work** page shows all production work assigned to the current user.
+
+**Accessing My Work:**
+1. Navigate to **Production Runs** → **My Work**
+2. Or click your name in the header → **My Work**
+
+**What You See:**
+- **Assigned Production Orders**: Orders assigned to you
+  - Click to expand and see batches and next steps
+  - Shows order number, product, quantity, and status
+- **Assigned Production Runs**: Standalone runs assigned to you
+  - Shows product, quantity, and pending steps
+- **Assigned Steps**: Individual steps assigned to you (legacy)
+
+**Hierarchical View:**
+1. Click on a Production Order to expand it
+2. See the batches created for that order
+3. See the next pending steps
+4. Click **"Continue Production"** to go to the run detail
+
+**Admin: All Work View:**
+Admins can toggle between **My Work** and **All Work** to see:
+- All active production orders across the team
+- Who is assigned to each order
+- Unassigned orders that need assignment
+- Admins can complete steps on behalf of other users
 
 ### Production Order Lifecycle
 
@@ -807,8 +906,26 @@ PLANNED → IN_PROGRESS → COMPLETED
 **Start Production:**
 1. Open production order detail
 2. Click **"Start Production"**
-3. Status changes to IN_PROGRESS
-4. `startedAt` timestamp recorded
+3. **Assignment Modal** appears:
+   - Select a team member to assign the work
+   - Or leave unassigned to assign later
+4. Click **"Start Production"** to confirm
+5. System automatically creates:
+   - **Production Run** linked to the order
+   - **Batches** based on quantity ÷ batch size
+   - **Steps** from product manufacturing setup:
+     - Equipment check steps (from product's required equipment)
+     - Material issuance steps (from product's BOM)
+     - Manufacturing instruction steps (from product's manufacturing steps)
+6. Status changes to IN_PROGRESS
+7. `startedAt` timestamp recorded
+8. Toast notification confirms creation
+
+**What Gets Created:**
+- If quantity = 500 and batch size = 100, system creates 5 batches
+- Each batch gets a unique batch code (SKU-DATE-XX)
+- All batches are linked to the Production Run
+- Steps are created with dependency tracking
 
 **Issue Materials:**
 1. Click **"Issue Materials"** on order detail

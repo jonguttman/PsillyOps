@@ -4,8 +4,9 @@ import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
 import { formatDate, formatDateTime } from '@/lib/utils/formatters';
-import { startProductionOrder, blockProductionOrder, completeProductionOrder, createBatch } from '@/lib/services/productionService';
+import { blockProductionOrder, completeProductionOrder, createBatch } from '@/lib/services/productionService';
 import BlockedOrderActions from './BlockedOrderActions';
+import { ProductionOrderActions } from './ProductionOrderActions';
 
 const STATUS_COLORS: Record<string, string> = {
   PLANNED: 'bg-gray-100 text-gray-800',
@@ -23,16 +24,6 @@ const BATCH_STATUS_COLORS: Record<string, string> = {
   EXHAUSTED: 'bg-purple-100 text-purple-800',
   CANCELLED: 'bg-gray-200 text-gray-600'
 };
-
-async function handleStart(formData: FormData) {
-  'use server';
-  const session = await auth();
-  if (!session) throw new Error('Not authenticated');
-  const orderId = formData.get('orderId') as string;
-  const assignToUserId = formData.get('assignToUserId') as string | null;
-  await startProductionOrder(orderId, session.user.id, assignToUserId || undefined);
-  revalidatePath(`/ops/production/${orderId}`);
-}
 
 async function handleBlock(formData: FormData) {
   'use server';
@@ -97,6 +88,7 @@ export default async function ProductionOrderDetailPage({
       workCenter: true,
       template: true,
       createdBy: { select: { id: true, name: true } },
+      assignedTo: { select: { id: true, name: true } },
       batches: {
         include: {
           makers: {
@@ -108,6 +100,11 @@ export default async function ProductionOrderDetailPage({
       materials: {
         include: { material: true },
         orderBy: { material: { name: 'asc' } }
+      },
+      productionRuns: {
+        take: 1,
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, status: true }
       }
     }
   });
@@ -146,29 +143,18 @@ export default async function ProductionOrderDetailPage({
             {order.product.name} • {order.quantityToMake} units
           </p>
         </div>
-        <div className="flex gap-2">
-          {canStart && (
-            <form action={handleStart}>
-              <input type="hidden" name="orderId" value={id} />
-              <button
-                type="submit"
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
-              >
-                Start Production
-              </button>
-            </form>
-          )}
-          {canComplete && (
-            <form action={handleComplete}>
-              <input type="hidden" name="orderId" value={id} />
-              <button
-                type="submit"
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700"
-              >
-                Complete Order
-              </button>
-            </form>
-          )}
+        <div className="flex flex-col items-end gap-2">
+          <ProductionOrderActions
+            orderId={id}
+            orderNumber={order.orderNumber}
+            productName={order.product.name}
+            quantityToMake={order.quantityToMake}
+            status={order.status}
+            currentAssignee={order.assignedTo}
+            canStart={canStart}
+            canComplete={canComplete}
+            canBlock={canBlock}
+          />
           <Link
             href="/ops/production"
             className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900"
