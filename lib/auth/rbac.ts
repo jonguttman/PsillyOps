@@ -50,6 +50,8 @@ export const PERMISSIONS = {
     complete: [UserRole.ADMIN, UserRole.PRODUCTION],
     block: [UserRole.ADMIN, UserRole.PRODUCTION],
     cancel: [UserRole.ADMIN],
+    execute: [UserRole.ADMIN, UserRole.PRODUCTION, UserRole.WAREHOUSE],
+    assign: [UserRole.ADMIN, UserRole.PRODUCTION],
     issueMaterials: [UserRole.ADMIN, UserRole.PRODUCTION, UserRole.WAREHOUSE],
     view: [UserRole.ADMIN, UserRole.PRODUCTION, UserRole.WAREHOUSE]
   },
@@ -222,5 +224,19 @@ export function canBindSeals(userRole: UserRole): boolean {
  */
 export function canAssignSealSheets(userRole: UserRole): boolean {
   return hasPermission(userRole, 'sealSheets', 'assign');
+}
+
+/**
+ * Check if user can execute production work
+ */
+export function canExecuteProduction(userRole: UserRole): boolean {
+  return hasPermission(userRole, 'production', 'execute');
+}
+
+/**
+ * Check if user can assign production runs
+ */
+export function canAssignProduction(userRole: UserRole): boolean {
+  return hasPermission(userRole, 'production', 'assign');
 }
 

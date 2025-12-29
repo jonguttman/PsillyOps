@@ -27,6 +27,8 @@ model User {
   printJobs                  PrintJob[]
   createdProductionOrders    ProductionOrder[]     @relation("ProductionOrderCreator")
   createdProductionRuns      ProductionRun[]       @relation("ProductionRunCreator")
+  assignedProductionRuns     ProductionRun[]       @relation("ProductionRunAssignee")
+  assignerProductionRuns     ProductionRun[]       @relation("ProductionRunAssigner")
   assignedProductionRunSteps ProductionRunStep[]   @relation("ProductionRunStepAssignee")
   productionRunSteps         ProductionRunStep[]   @relation("ProductionRunStepPerformer")
   createdPurchaseOrders      PurchaseOrder[]       @relation("PurchaseOrderCreator")
@@ -123,21 +125,29 @@ model ProductionStepTemplate {
 }
 
 model ProductionRun {
-  id          String              @id @default(cuid())
-  productId   String
-  quantity    Int
-  status      ProductionRunStatus @default(PLANNED)
-  qrTokenId   String?             @unique
-  startedAt   DateTime?
-  completedAt DateTime?
-  createdById String?
-  createdAt   DateTime            @default(now())
-  createdBy   User?               @relation("ProductionRunCreator", fields: [createdById], references: [id])
-  product     Product             @relation(fields: [productId], references: [id])
-  qrToken     QRToken?            @relation("ProductionRunQrToken", fields: [qrTokenId], references: [id])
-  steps       ProductionRunStep[]
+  id                 String              @id @default(cuid())
+  productId          String
+  quantity           Int
+  status             ProductionRunStatus @default(PLANNED)
+  qrTokenId          String?             @unique
+  startedAt          DateTime?
+  completedAt        DateTime?
+  createdById        String?
+  assignedToUserId   String?
+  assignedByUserId   String?
+  assignedAt         DateTime?
+  assignmentReason   String?
+  createdAt          DateTime            @default(now())
+  createdBy          User?               @relation("ProductionRunCreator", fields: [createdById], references: [id])
+  assignedTo         User?               @relation("ProductionRunAssignee", fields: [assignedToUserId], references: [id])
+  assignedBy         User?               @relation("ProductionRunAssigner", fields: [assignedByUserId], references: [id])
+  product            Product             @relation(fields: [productId], references: [id])
+  qrToken            QRToken?            @relation("ProductionRunQrToken", fields: [qrTokenId], references: [id])
+  steps              ProductionRunStep[]
 
   @@index([productId])
+  @@index([assignedToUserId])
+  @@index([status])
 }
 
 model ProductionRunStep {
