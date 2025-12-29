@@ -77,6 +77,77 @@ export const CONFIDENCE_PENALTIES = {
 } as const;
 
 // ========================================
+// Word-Overlap Fuzzy Matching
+// ========================================
+
+/**
+ * Tokenize a string into normalized words for comparison
+ * - Lowercases everything
+ * - Splits on non-alphanumeric characters
+ * - Preserves numbers with units (e.g., "10g" stays together)
+ */
+function tokenize(text: string): string[] {
+  return text
+    .toLowerCase()
+    .split(/[\s\-_,]+/)
+    .map(word => word.replace(/[^a-z0-9]/g, ''))
+    .filter(word => word.length > 0);
+}
+
+/**
+ * Calculate word overlap score between search query and target
+ * Returns a score between 0 and 1 based on how many query words are found in target
+ */
+function calculateWordOverlap(searchRef: string, targetName: string): number {
+  const searchTokens = tokenize(searchRef);
+  const targetTokens = tokenize(targetName);
+  
+  if (searchTokens.length === 0) return 0;
+  
+  // Count how many search tokens are found in target tokens
+  let matchedTokens = 0;
+  for (const searchToken of searchTokens) {
+    // Check for exact token match or if target contains the search token
+    const found = targetTokens.some(targetToken => 
+      targetToken === searchToken || 
+      targetToken.includes(searchToken) ||
+      searchToken.includes(targetToken)
+    );
+    if (found) matchedTokens++;
+  }
+  
+  // Score based on percentage of search tokens matched
+  return matchedTokens / searchTokens.length;
+}
+
+/**
+ * Find entities by word overlap matching
+ * Returns entities where at least minOverlap (0-1) of search tokens match
+ */
+interface WordOverlapMatch<T> {
+  entity: T;
+  score: number;
+}
+
+function findByWordOverlap<T extends { name: string }>(
+  searchRef: string,
+  entities: T[],
+  minOverlap: number = 0.6
+): WordOverlapMatch<T>[] {
+  const matches: WordOverlapMatch<T>[] = [];
+  
+  for (const entity of entities) {
+    const score = calculateWordOverlap(searchRef, entity.name);
+    if (score >= minOverlap) {
+      matches.push({ entity, score });
+    }
+  }
+  
+  // Sort by score descending
+  return matches.sort((a, b) => b.score - a.score);
+}
+
+// ========================================
 // Product Resolution
 // ========================================
 
@@ -133,7 +204,7 @@ export async function resolveProductWithConfidence(ref: string): Promise<EntityM
     };
   }
 
-  // 4. Try partial name match (fuzzy)
+  // 4. Try partial name/SKU containment match (fuzzy)
   const partialMatches = await prisma.product.findMany({
     where: {
       active: true,
@@ -164,7 +235,48 @@ export async function resolveProductWithConfidence(ref: string): Promise<EntityM
     };
   }
 
-  // 5. No match found
+  // 5. Try word-overlap matching (for cases like "Aphrodite Desire Capsules 10g" -> "Aphrodite 10g")
+  const allActiveProducts = await prisma.product.findMany({
+    where: { active: true },
+    select: { id: true, name: true, sku: true, wholesalePrice: true }
+  });
+  
+  const wordOverlapMatches = findByWordOverlap(normalizedRef, allActiveProducts, 0.5);
+  
+  if (wordOverlapMatches.length === 1) {
+    return {
+      matchType: 'fuzzy',
+      entity: wordOverlapMatches[0].entity,
+      alternatives: [],
+      confidencePenalty: CONFIDENCE_PENALTIES.FUZZY_MATCH
+    };
+  }
+  
+  // If we have multiple matches with similar high scores, it's ambiguous
+  if (wordOverlapMatches.length > 1) {
+    // Check if the top match is significantly better than others
+    const topScore = wordOverlapMatches[0].score;
+    const closeMatches = wordOverlapMatches.filter(m => m.score >= topScore * 0.9);
+    
+    if (closeMatches.length === 1) {
+      // Clear winner
+      return {
+        matchType: 'fuzzy',
+        entity: closeMatches[0].entity,
+        alternatives: wordOverlapMatches.slice(1).map(m => m.entity),
+        confidencePenalty: CONFIDENCE_PENALTIES.FUZZY_MATCH
+      };
+    }
+    
+    return {
+      matchType: 'ambiguous',
+      entity: null,
+      alternatives: wordOverlapMatches.map(m => m.entity),
+      confidencePenalty: CONFIDENCE_PENALTIES.AMBIGUOUS_MATCH
+    };
+  }
+
+  // 6. No match found
   return {
     matchType: 'none',
     entity: null,
@@ -230,7 +342,7 @@ export async function resolveMaterialWithConfidence(ref: string): Promise<Entity
     };
   }
 
-  // 4. Try partial name match
+  // 4. Try partial name/SKU containment match
   const partialMatches = await prisma.rawMaterial.findMany({
     where: {
       active: true,
@@ -261,6 +373,45 @@ export async function resolveMaterialWithConfidence(ref: string): Promise<Entity
     };
   }
 
+  // 5. Try word-overlap matching
+  const allActiveMaterials = await prisma.rawMaterial.findMany({
+    where: { active: true },
+    select: { id: true, name: true, sku: true, unitOfMeasure: true }
+  });
+  
+  const wordOverlapMatches = findByWordOverlap(normalizedRef, allActiveMaterials, 0.5);
+  
+  if (wordOverlapMatches.length === 1) {
+    return {
+      matchType: 'fuzzy',
+      entity: wordOverlapMatches[0].entity,
+      alternatives: [],
+      confidencePenalty: CONFIDENCE_PENALTIES.FUZZY_MATCH
+    };
+  }
+  
+  if (wordOverlapMatches.length > 1) {
+    const topScore = wordOverlapMatches[0].score;
+    const closeMatches = wordOverlapMatches.filter(m => m.score >= topScore * 0.9);
+    
+    if (closeMatches.length === 1) {
+      return {
+        matchType: 'fuzzy',
+        entity: closeMatches[0].entity,
+        alternatives: wordOverlapMatches.slice(1).map(m => m.entity),
+        confidencePenalty: CONFIDENCE_PENALTIES.FUZZY_MATCH
+      };
+    }
+    
+    return {
+      matchType: 'ambiguous',
+      entity: null,
+      alternatives: wordOverlapMatches.map(m => m.entity),
+      confidencePenalty: CONFIDENCE_PENALTIES.AMBIGUOUS_MATCH
+    };
+  }
+
+  // 6. No match found
   return {
     matchType: 'none',
     entity: null,
@@ -312,7 +463,7 @@ export async function resolveRetailerWithConfidence(ref: string): Promise<Entity
     };
   }
 
-  // 3. Try partial name match
+  // 3. Try partial name containment match
   const partialMatches = await prisma.retailer.findMany({
     where: {
       active: true,
@@ -340,6 +491,45 @@ export async function resolveRetailerWithConfidence(ref: string): Promise<Entity
     };
   }
 
+  // 4. Try word-overlap matching (for cases like "The Other Path CBD Store" -> "Other Path")
+  const allActiveRetailers = await prisma.retailer.findMany({
+    where: { active: true },
+    select: { id: true, name: true, shippingAddress: true }
+  });
+  
+  const wordOverlapMatches = findByWordOverlap(normalizedRef, allActiveRetailers, 0.5);
+  
+  if (wordOverlapMatches.length === 1) {
+    return {
+      matchType: 'fuzzy',
+      entity: wordOverlapMatches[0].entity,
+      alternatives: [],
+      confidencePenalty: CONFIDENCE_PENALTIES.FUZZY_MATCH
+    };
+  }
+  
+  if (wordOverlapMatches.length > 1) {
+    const topScore = wordOverlapMatches[0].score;
+    const closeMatches = wordOverlapMatches.filter(m => m.score >= topScore * 0.9);
+    
+    if (closeMatches.length === 1) {
+      return {
+        matchType: 'fuzzy',
+        entity: closeMatches[0].entity,
+        alternatives: wordOverlapMatches.slice(1).map(m => m.entity),
+        confidencePenalty: CONFIDENCE_PENALTIES.FUZZY_MATCH
+      };
+    }
+    
+    return {
+      matchType: 'ambiguous',
+      entity: null,
+      alternatives: wordOverlapMatches.map(m => m.entity),
+      confidencePenalty: CONFIDENCE_PENALTIES.AMBIGUOUS_MATCH
+    };
+  }
+
+  // 5. No match found
   return {
     matchType: 'none',
     entity: null,
@@ -391,7 +581,7 @@ export async function resolveVendorWithConfidence(ref: string): Promise<EntityMa
     };
   }
 
-  // 3. Try partial name match
+  // 3. Try partial name containment match
   const partialMatches = await prisma.vendor.findMany({
     where: {
       active: true,
@@ -419,6 +609,45 @@ export async function resolveVendorWithConfidence(ref: string): Promise<EntityMa
     };
   }
 
+  // 4. Try word-overlap matching
+  const allActiveVendors = await prisma.vendor.findMany({
+    where: { active: true },
+    select: { id: true, name: true, contactEmail: true }
+  });
+  
+  const wordOverlapMatches = findByWordOverlap(normalizedRef, allActiveVendors, 0.5);
+  
+  if (wordOverlapMatches.length === 1) {
+    return {
+      matchType: 'fuzzy',
+      entity: wordOverlapMatches[0].entity,
+      alternatives: [],
+      confidencePenalty: CONFIDENCE_PENALTIES.FUZZY_MATCH
+    };
+  }
+  
+  if (wordOverlapMatches.length > 1) {
+    const topScore = wordOverlapMatches[0].score;
+    const closeMatches = wordOverlapMatches.filter(m => m.score >= topScore * 0.9);
+    
+    if (closeMatches.length === 1) {
+      return {
+        matchType: 'fuzzy',
+        entity: closeMatches[0].entity,
+        alternatives: wordOverlapMatches.slice(1).map(m => m.entity),
+        confidencePenalty: CONFIDENCE_PENALTIES.FUZZY_MATCH
+      };
+    }
+    
+    return {
+      matchType: 'ambiguous',
+      entity: null,
+      alternatives: wordOverlapMatches.map(m => m.entity),
+      confidencePenalty: CONFIDENCE_PENALTIES.AMBIGUOUS_MATCH
+    };
+  }
+
+  // 5. No match found
   return {
     matchType: 'none',
     entity: null,

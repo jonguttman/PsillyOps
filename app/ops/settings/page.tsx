@@ -16,7 +16,8 @@ import {
   ChevronRight,
   Check,
   X,
-  MapPin
+  MapPin,
+  Store
 } from 'lucide-react';
 
 export default async function SettingsPage() {
@@ -32,13 +33,14 @@ export default async function SettingsPage() {
   }
 
   // Fetch status indicators for settings
-  const [fallbackRedirect, transparencyRecordCount, locationCount] = await Promise.all([
+  const [fallbackRedirect, transparencyRecordCount, locationCount, retailerCount] = await Promise.all([
     prisma.qRRedirectRule.findFirst({
       where: { isFallback: true },
       select: { active: true, redirectUrl: true }
     }),
     prisma.transparencyRecord.count(),
-    prisma.location.count({ where: { active: true } })
+    prisma.location.count({ where: { active: true } }),
+    prisma.retailer.count({ where: { active: true } })
   ]);
 
   return (
@@ -92,6 +94,18 @@ export default async function SettingsPage() {
           description="Storage locations for inventory (shelves, racks, bins)"
           status={locationCount > 0 ? 'configured' : 'not-configured'}
           statusText={locationCount > 0 ? `${locationCount} locations` : 'Not configured'}
+        />
+
+        {/* Retailers - Active */}
+        <SettingsCard
+          href="/ops/settings/retailers"
+          icon={Store}
+          iconBg="bg-indigo-100"
+          iconColor="text-indigo-600"
+          title="Retailers"
+          description="Manage wholesale customers and retailers"
+          status={retailerCount > 0 ? 'configured' : 'not-configured'}
+          statusText={retailerCount > 0 ? `${retailerCount} retailers` : 'Not configured'}
         />
 
         {/* Security - Active */}
