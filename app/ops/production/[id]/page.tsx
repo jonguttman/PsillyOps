@@ -29,7 +29,8 @@ async function handleStart(formData: FormData) {
   const session = await auth();
   if (!session) throw new Error('Not authenticated');
   const orderId = formData.get('orderId') as string;
-  await startProductionOrder(orderId, session.user.id);
+  const assignToUserId = formData.get('assignToUserId') as string | null;
+  await startProductionOrder(orderId, session.user.id, assignToUserId || undefined);
   revalidatePath(`/ops/production/${orderId}`);
 }
 

@@ -29,12 +29,26 @@ export async function POST(
     }
 
     const { id } = await params;
+    
+    // Parse optional assignToUserId from body
+    let assignToUserId: string | undefined;
+    try {
+      const body = await req.json();
+      assignToUserId = body.assignToUserId;
+    } catch {
+      // No body or invalid JSON - that's fine, use defaults
+    }
 
-    // 2. Call Service
-    await startProductionOrder(id, session.user.id);
+    // 2. Call Service - now returns productionRunId and batchIds
+    const result = await startProductionOrder(id, session.user.id, assignToUserId);
 
-    // 3. Return JSON
-    return Response.json({ success: true });
+    // 3. Return JSON with created resources
+    return Response.json({ 
+      success: true,
+      productionRunId: result.productionRunId,
+      batchIds: result.batchIds,
+      batchCount: result.batchIds.length
+    });
   } catch (error) {
     return handleApiError(error);
   }

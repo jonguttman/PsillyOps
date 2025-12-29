@@ -317,15 +317,37 @@ export async function createProductionOrder(params: {
 }
 
 /**
- * Start a production order
+ * Manufacturing step type for Product.manufacturingSteps JSON
+ */
+interface ManufacturingStep {
+  key: string;
+  label: string;
+  order: number;
+  required: boolean;
+  dependsOnKeys?: string[];
+  estimatedMinutes?: number;
+}
+
+/**
+ * Start a production order - creates ProductionRun and Batches
  */
 export async function startProductionOrder(
   orderId: string,
-  userId: string
-): Promise<void> {
+  userId: string,
+  assignToUserId?: string // Optional: assign to specific user (defaults to order's assignee)
+): Promise<{ productionRunId: string; batchIds: string[] }> {
   const order = await prisma.productionOrder.findUnique({
     where: { id: orderId },
-    include: { product: true }
+    include: { 
+      product: {
+        include: {
+          bom: {
+            where: { active: true },
+            include: { material: true }
+          }
+        }
+      }
+    }
   });
 
   if (!order) {
@@ -339,18 +361,150 @@ export async function startProductionOrder(
     );
   }
 
-  const before = { status: order.status, startedAt: order.startedAt };
+  const product = order.product;
+  const batchSize = order.batchSize || product.defaultBatchSize || order.quantityToMake;
+  const numBatches = Math.ceil(order.quantityToMake / batchSize);
+  
+  // Determine assignee: explicit param > order's assignee > creator
+  const effectiveAssigneeId = assignToUserId || order.assignedToUserId || order.createdByUserId;
 
-  await prisma.productionOrder.update({
-    where: { id: orderId },
-    data: {
-      status: ProductionStatus.IN_PROGRESS,
-      startedAt: new Date()
+  const before = { status: order.status, startedAt: order.startedAt };
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  const assignee = effectiveAssigneeId ? await prisma.user.findUnique({ where: { id: effectiveAssigneeId } }) : null;
+
+  // Parse manufacturing steps from product (or use defaults)
+  const manufacturingSteps: ManufacturingStep[] = (product.manufacturingSteps as ManufacturingStep[]) || [
+    { key: 'prep', label: 'Preparation', order: 1, required: true },
+    { key: 'production', label: 'Production', order: 2, required: true },
+    { key: 'qc', label: 'Quality Check', order: 3, required: true },
+    { key: 'packaging', label: 'Packaging', order: 4, required: true }
+  ];
+
+  // Parse required equipment from product
+  const requiredEquipment: string[] = (product.requiredEquipment as string[]) || [];
+
+  // Create everything in a transaction
+  const result = await prisma.$transaction(async (tx) => {
+    // 1. Create ProductionRun
+    const productionRun = await tx.productionRun.create({
+      data: {
+        productId: product.id,
+        productionOrderId: orderId,
+        quantity: order.quantityToMake,
+        status: 'IN_PROGRESS',
+        startedAt: new Date(),
+        createdById: userId,
+        assignedToUserId: effectiveAssigneeId,
+        assignedByUserId: userId,
+        assignedAt: new Date(),
+      }
+    });
+
+    // 2. Create ProductionRunSteps
+    let stepOrder = 0;
+
+    // 2a. Equipment check steps (if any)
+    for (const equipment of requiredEquipment) {
+      stepOrder++;
+      await tx.productionRunStep.create({
+        data: {
+          productionRunId: productionRun.id,
+          templateKey: `equipment_${equipment.toLowerCase().replace(/\s+/g, '_')}`,
+          label: `Gather: ${equipment}`,
+          order: stepOrder,
+          required: true,
+          stepType: 'EQUIPMENT_CHECK',
+          dependsOnKeys: [],
+        }
+      });
     }
+
+    // 2b. Material issuance steps (from BOM)
+    const materialStepKeys: string[] = [];
+    for (const bomItem of product.bom) {
+      stepOrder++;
+      const stepKey = `material_${bomItem.materialId}`;
+      materialStepKeys.push(stepKey);
+      const totalQty = bomItem.quantityPerUnit * order.quantityToMake;
+      
+      await tx.productionRunStep.create({
+        data: {
+          productionRunId: productionRun.id,
+          templateKey: stepKey,
+          label: `Issue: ${bomItem.material.name} (${totalQty} ${bomItem.material.unitOfMeasure})`,
+          order: stepOrder,
+          required: true,
+          stepType: 'MATERIAL_ISSUE',
+          materialId: bomItem.materialId,
+          materialQty: totalQty,
+          dependsOnKeys: [], // Materials can be issued in parallel
+        }
+      });
+    }
+
+    // 2c. Manufacturing instruction steps
+    for (const step of manufacturingSteps) {
+      stepOrder++;
+      // First manufacturing step depends on all materials being issued
+      const dependsOn = step.order === 1 ? materialStepKeys : (step.dependsOnKeys || []);
+      
+      await tx.productionRunStep.create({
+        data: {
+          productionRunId: productionRun.id,
+          templateKey: step.key,
+          label: step.label,
+          order: stepOrder,
+          required: step.required,
+          stepType: 'INSTRUCTION',
+          dependsOnKeys: dependsOn,
+          estimatedMinutes: step.estimatedMinutes,
+        }
+      });
+    }
+
+    // 3. Create Batches
+    const batchIds: string[] = [];
+    let remainingQty = order.quantityToMake;
+    
+    for (let i = 0; i < numBatches; i++) {
+      const batchQty = Math.min(batchSize, remainingQty);
+      remainingQty -= batchQty;
+      
+      const batchCode = generateBatchCode(product.sku);
+      
+      const batch = await tx.batch.create({
+        data: {
+          productId: product.id,
+          productionOrderId: orderId,
+          productionRunId: productionRun.id,
+          batchCode,
+          plannedQuantity: batchQty,
+          status: 'PLANNED',
+        }
+      });
+      
+      batchIds.push(batch.id);
+    }
+
+    // 4. Update ProductionOrder status
+    await tx.productionOrder.update({
+      where: { id: orderId },
+      data: {
+        status: ProductionStatus.IN_PROGRESS,
+        startedAt: new Date(),
+        // Update assignment if changed
+        ...(assignToUserId && assignToUserId !== order.assignedToUserId ? {
+          assignedToUserId: assignToUserId,
+          assignedByUserId: userId,
+          assignedAt: new Date(),
+        } : {})
+      }
+    });
+
+    return { productionRunId: productionRun.id, batchIds };
   });
 
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-
+  // Log the action
   await logAction({
     entityType: ActivityEntity.PRODUCTION_ORDER,
     entityId: orderId,
@@ -359,19 +513,31 @@ export async function startProductionOrder(
     summary: generateSummary({
       userName: user?.name || 'User',
       action: 'started',
-      entityName: `production order ${order.orderNumber}`
+      entityName: `production order ${order.orderNumber}`,
+      metadata: {
+        assignedTo: assignee?.name,
+        batches: result.batchIds.length
+      }
     }),
     before,
     after: {
       status: ProductionStatus.IN_PROGRESS,
-      startedAt: new Date()
+      startedAt: new Date(),
+      productionRunId: result.productionRunId,
+      batchCount: result.batchIds.length
     },
     metadata: {
       orderNumber: order.orderNumber,
-      productName: order.product.name
+      productName: product.name,
+      productionRunId: result.productionRunId,
+      batchIds: result.batchIds,
+      assignedToUserId: effectiveAssigneeId,
+      assignedToName: assignee?.name
     },
-    tags: ['status_change']
+    tags: ['status_change', 'production_run_created']
   });
+
+  return result;
 }
 
 /**

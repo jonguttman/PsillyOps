@@ -26,6 +26,8 @@ model User {
   laborEntries               LaborEntry[]
   printJobs                  PrintJob[]
   createdProductionOrders    ProductionOrder[]     @relation("ProductionOrderCreator")
+  assignedProductionOrders   ProductionOrder[]     @relation("ProductionOrderAssignee")
+  assignerProductionOrders   ProductionOrder[]     @relation("ProductionOrderAssigner")
   createdProductionRuns      ProductionRun[]       @relation("ProductionRunCreator")
   assignedProductionRuns     ProductionRun[]       @relation("ProductionRunAssignee")
   assignerProductionRuns     ProductionRun[]       @relation("ProductionRunAssigner")
@@ -88,6 +90,9 @@ model Product {
   labelWidthIn            Float?
   sheetMarginTopBottomIn  Float?
   upc                     String?
+  // Manufacturing configuration
+  manufacturingSteps      Json?                    // Array of {key, label, order, required, dependsOnKeys[], estimatedMinutes}
+  requiredEquipment       Json?                    // Array of strings: ["Scale", "Mixer", "Capsule Machine"]
   bom                     BOMItem[]
   batches                 Batch[]
   inventory               InventoryItem[]
@@ -127,6 +132,7 @@ model ProductionStepTemplate {
 model ProductionRun {
   id                 String              @id @default(cuid())
   productId          String
+  productionOrderId  String?
   quantity           Int
   status             ProductionRunStatus @default(PLANNED)
   qrTokenId          String?             @unique
@@ -142,10 +148,13 @@ model ProductionRun {
   assignedTo         User?               @relation("ProductionRunAssignee", fields: [assignedToUserId], references: [id])
   assignedBy         User?               @relation("ProductionRunAssigner", fields: [assignedByUserId], references: [id])
   product            Product             @relation(fields: [productId], references: [id])
+  productionOrder    ProductionOrder?    @relation(fields: [productionOrderId], references: [id])
   qrToken            QRToken?            @relation("ProductionRunQrToken", fields: [qrTokenId], references: [id])
   steps              ProductionRunStep[]
+  batches            Batch[]             @relation("ProductionRunBatches")
 
   @@index([productId])
+  @@index([productionOrderId])
   @@index([assignedToUserId])
   @@index([status])
 }
@@ -157,6 +166,11 @@ model ProductionRunStep {
   label            String
   order            Int
   required         Boolean
+  stepType         String               @default("INSTRUCTION") // INSTRUCTION, MATERIAL_ISSUE, EQUIPMENT_CHECK
+  dependsOnKeys    Json?                // Array of templateKey strings this step depends on
+  estimatedMinutes Int?
+  materialId       String?              // For MATERIAL_ISSUE steps
+  materialQty      Float?               // For MATERIAL_ISSUE steps
   status           ProductionStepStatus @default(PENDING)
   startedAt        DateTime?
   completedAt      DateTime?
@@ -168,8 +182,10 @@ model ProductionRunStep {
   assignedToUser   User?                @relation("ProductionRunStepAssignee", fields: [assignedToUserId], references: [id])
   performedBy      User?                @relation("ProductionRunStepPerformer", fields: [performedById], references: [id])
   productionRun    ProductionRun        @relation(fields: [productionRunId], references: [id])
+  material         RawMaterial?         @relation(fields: [materialId], references: [id])
 
   @@index([productionRunId, order])
+  @@index([materialId])
 }
 
 model RawMaterial {
@@ -200,6 +216,7 @@ model RawMaterial {
   costHistory              MaterialCostHistory[]
   vendors                  MaterialVendor[]
   productionOrderMaterials ProductionOrderMaterial[]
+  productionRunSteps       ProductionRunStep[]
   poLineItems              PurchaseOrderLineItem[]
   preferredVendor          Vendor?                   @relation("PreferredVendor", fields: [preferredVendorId], references: [id])
   strain                   Strain?                   @relation(fields: [strainId], references: [id])
@@ -299,6 +316,7 @@ model Batch {
   actualQuantity    Int?
   status            BatchStatus        @default(PLANNED)
   productionOrderId String?
+  productionRunId   String?
   productionDate    DateTime?
   manufactureDate   DateTime?
   expirationDate    DateTime?
@@ -312,6 +330,7 @@ model Batch {
   updatedAt         DateTime           @updatedAt
   product           Product            @relation(fields: [productId], references: [id])
   productionOrder   ProductionOrder?   @relation(fields: [productionOrderId], references: [id])
+  productionRun     ProductionRun?     @relation("ProductionRunBatches", fields: [productionRunId], references: [id])
   makers            BatchMaker[]
   inventory         InventoryItem[]
   laborEntries      LaborEntry[]
@@ -321,6 +340,7 @@ model Batch {
   @@index([status])
   @@index([batchCode])
   @@index([productionOrderId])
+  @@index([productionRunId])
   @@index([qcStatus])
 }
 
@@ -457,12 +477,19 @@ model ProductionOrder {
   workCenterId           String?
   templateId             String?
   createdByUserId        String
+  assignedToUserId       String?
+  assignedByUserId       String?
+  assignedAt             DateTime?
+  assignmentReason       String?
   linkedRetailerOrderIds Json?
   materialRequirements   Json?
   createdAt              DateTime                  @default(now())
   updatedAt              DateTime                  @updatedAt
   batches                Batch[]
+  productionRuns         ProductionRun[]
   createdBy              User                      @relation("ProductionOrderCreator", fields: [createdByUserId], references: [id])
+  assignedTo             User?                     @relation("ProductionOrderAssignee", fields: [assignedToUserId], references: [id])
+  assignedBy             User?                     @relation("ProductionOrderAssigner", fields: [assignedByUserId], references: [id])
   product                Product                   @relation(fields: [productId], references: [id])
   template               ProductionTemplate?       @relation(fields: [templateId], references: [id])
   workCenter             WorkCenter?               @relation(fields: [workCenterId], references: [id])
@@ -472,6 +499,7 @@ model ProductionOrder {
   @@index([status])
   @@index([orderNumber])
   @@index([createdByUserId])
+  @@index([assignedToUserId])
   @@index([workCenterId])
   @@index([scheduledDate])
   @@index([archivedAt])
