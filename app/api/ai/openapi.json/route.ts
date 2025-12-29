@@ -364,6 +364,23 @@ export async function GET(req: NextRequest) {
                   },
                 },
                 examples: {
+                  salesOrderFromValidation: {
+                    summary: 'Sales Order (REQUIRED: use params from validate-order)',
+                    description: 'For ORDER_CREATION, you MUST first call /api/ai/validate-order, then pass proposalParams.params here',
+                    value: {
+                      action: 'ORDER_CREATION',
+                      params: {
+                        retailerId: 'clx789abc',
+                        items: [
+                          { productId: 'clxabc123', quantity: 100 },
+                          { productId: 'clxdef456', quantity: 50 },
+                        ],
+                        requestedShipDate: '2024-02-15T00:00:00.000Z',
+                        notes: 'Retailer Order #: TOP-704',
+                        sourceMeta: { sourceType: 'EMAIL' },
+                      },
+                    },
+                  },
                   inventoryAdjustment: {
                     summary: 'Inventory Adjustment',
                     value: {
@@ -372,34 +389,6 @@ export async function GET(req: NextRequest) {
                         inventoryId: 'clx123...',
                         delta: -50,
                         reason: 'Cycle count correction',
-                      },
-                    },
-                  },
-                  salesOrder: {
-                    summary: 'Sales Order Creation',
-                    value: {
-                      action: 'ORDER_CREATION',
-                      params: {
-                        retailerId: 'clx789...',
-                        items: [
-                          { productId: 'clxabc...', quantity: 100 },
-                          { productId: 'clxdef...', quantity: 50 },
-                        ],
-                        requestedShipDate: '2024-02-15T00:00:00.000Z',
-                        sourceMeta: { sourceType: 'EMAIL' },
-                      },
-                    },
-                  },
-                  purchaseOrder: {
-                    summary: 'Purchase Order Creation',
-                    value: {
-                      action: 'PURCHASE_ORDER_CREATION',
-                      params: {
-                        vendorId: 'clx456...',
-                        items: [
-                          { materialId: 'clxghi...', quantity: 5000, unitCost: 0.15 },
-                        ],
-                        sourceMeta: { sourceType: 'PASTE' },
                       },
                     },
                   },

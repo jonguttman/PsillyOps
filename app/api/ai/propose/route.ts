@@ -125,12 +125,13 @@ export async function POST(req: NextRequest) {
       // #region agent log
       console.log('[DEBUG_PROPOSE]', JSON.stringify({location:'neither-branch',fullBody:JSON.stringify(body).slice(0,1000)}));
       // #endregion
-      // Neither params nor validatedOrder provided
-      throw new AppError(
-        ErrorCodes.VALIDATION_ERROR,
-        'Proposal creation requires resolved order data. ' +
-        'Call /api/ai/validate-order first and pass proposalParams, or provide resolved params.'
-      );
+      // Neither params nor validatedOrder provided - give GPT-friendly guidance
+      const isOrderAction = action === 'ORDER_CREATION' || action === 'PURCHASE_ORDER_CREATION';
+      const errorMessage = isOrderAction
+        ? `Missing order data. You must: 1) Call POST /api/ai/validate-order with the order details first, 2) If canCreateProposal is true, take the proposalParams object from that response, 3) Call POST /api/ai/propose with { "action": "${action}", "params": proposalParams.params }. Do NOT call /api/ai/propose without the resolved params from validation.`
+        : 'Proposal creation requires resolved order data. Call /api/ai/validate-order first and pass proposalParams, or provide resolved params.';
+      
+      throw new AppError(ErrorCodes.VALIDATION_ERROR, errorMessage);
     }
 
     // Log normalization source for observability
