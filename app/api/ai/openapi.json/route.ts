@@ -349,8 +349,8 @@ export async function GET(req: NextRequest) {
       '/api/ai/propose': {
         post: {
           operationId: 'createProposal',
-          summary: 'STEP 2: Create a proposal for an action',
-          description: 'Creates a proposal that previews an action without executing it. For ORDER_CREATION/PURCHASE_ORDER_CREATION, first call /api/ai/validate-order then pass proposalParams here. The backend does NOT re-resolve references. Phase 1 allows: INVENTORY_ADJUSTMENT, PURCHASE_ORDER_SUBMIT, VENDOR_EMAIL, ORDER_CREATION, PURCHASE_ORDER_CREATION.',
+          summary: 'Create a proposal (use validate-order with autoPropose instead)',
+          description: 'Creates a proposal for an action. For orders, prefer /api/ai/validate-order with autoPropose:true instead. Requires resolved IDs in params.',
           requestBody: {
             required: true,
             content: {
