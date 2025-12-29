@@ -78,6 +78,10 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { action, params, validatedOrder } = body;
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'propose/route.ts:body-received',message:'Request body received',data:{action,hasParams:!!params,hasValidatedOrder:!!validatedOrder,bodyKeys:Object.keys(body),paramsKeys:params?Object.keys(params):null,validatedOrderKeys:validatedOrder?Object.keys(validatedOrder):null},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,B,E'})}).catch(()=>{});
+    // #endregion
+
     if (!action) {
       throw new AppError(
         ErrorCodes.VALIDATION_ERROR, 
@@ -94,10 +98,16 @@ export async function POST(req: NextRequest) {
     let inputSource: 'params' | 'validatedOrder';
 
     if (params) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'propose/route.ts:params-branch',message:'Using params branch',data:{paramsContent:JSON.stringify(params).slice(0,500)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
       // Direct params format (backward compatible)
       normalizedParams = params;
       inputSource = 'params';
     } else if (validatedOrder) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'propose/route.ts:validatedOrder-branch',message:'Using validatedOrder branch',data:{validatedOrderContent:JSON.stringify(validatedOrder).slice(0,500)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B,D'})}).catch(()=>{});
+      // #endregion
       // Validated order format from /api/ai/validate-order
       if (action === 'ORDER_CREATION') {
         normalizedParams = normalizeValidatedSalesOrder(validatedOrder as ValidatedSalesOrder);
@@ -112,6 +122,9 @@ export async function POST(req: NextRequest) {
         );
       }
     } else {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/37303a4b-08de-4008-8b84-6062b400169a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'propose/route.ts:neither-branch',message:'REJECTED - neither params nor validatedOrder',data:{fullBody:JSON.stringify(body).slice(0,1000)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
       // Neither params nor validatedOrder provided
       throw new AppError(
         ErrorCodes.VALIDATION_ERROR,
