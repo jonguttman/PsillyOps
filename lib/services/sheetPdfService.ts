@@ -80,19 +80,49 @@ export interface SheetPdfResult {
 }
 
 /**
+ * Load bundled fonts for serverless environments (Vercel doesn't have system fonts)
+ */
+function getBundledFontFiles(): string[] {
+  const fontFiles: string[] = [];
+  
+  // Try to load Roboto fonts from public/fonts
+  // In Next.js, process.cwd() points to the project root
+  const fontsDir = path.join(process.cwd(), 'public', 'fonts');
+  
+  try {
+    const robotoRegular = path.join(fontsDir, 'Roboto-Regular.ttf');
+    const robotoBold = path.join(fontsDir, 'Roboto-Bold.ttf');
+    
+    if (fs.existsSync(robotoRegular)) {
+      fontFiles.push(robotoRegular);
+    }
+    if (fs.existsSync(robotoBold)) {
+      fontFiles.push(robotoBold);
+    }
+  } catch {
+    // Font loading failed, will fall back to resvg defaults
+    console.warn('[sheetPdfService] Could not load bundled fonts');
+  }
+  
+  return fontFiles;
+}
+
+/**
  * Renders a sheet SVG to PNG at 300 DPI
  */
 export function renderSvgToPng(svgString: string): Buffer {
+  const fontFiles = getBundledFontFiles();
+  
   const resvg = new Resvg(svgString, {
     fitTo: {
       mode: 'width',
       value: PAGE_WIDTH_PX,
     },
     font: {
-      // Use system fonts with fallbacks
-      fontFiles: [],
+      // Load bundled fonts for serverless environments
+      fontFiles,
       loadSystemFonts: true,
-      defaultFontFamily: 'Arial, Helvetica, sans-serif',
+      defaultFontFamily: 'Roboto, Arial, Helvetica, sans-serif',
     },
     // Ensure high quality rendering
     shapeRendering: 2, // geometricPrecision
