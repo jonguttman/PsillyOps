@@ -1261,16 +1261,19 @@ function injectElements(
         const qrH = h * qrSizeRatioH;
         
         // Frame SVG content (without outer svg tag, without qr-placeholder rect)
+        // NOTE: Using 'Arial, Helvetica, sans-serif' with font-weight: 900 for PDF compatibility
+        // The original used 'Arial-Black' which may not be available in server-side rendering (resvg)
+        // Text is centered using text-anchor="middle" at x = 592.645/2 = 296.32
         const frameContent = `
     <g id="hagfmR">
-      <path d="M11.36,701.777V46.687c0-18.588,20.232-34.898,37.852-34.9l492.255-.053c19.055-.002,38.64,16.114,38.648,36.627l.276,653.806c-2.867,17.085-16.028,36.258-35.14,36.261l-497.813.082c-20.051.003-33.212-19.241-36.077-36.733ZM461.017,637.95c63.321-3.958,112.275-57.07,111.247-120.074l-.039-356.297-441.845-.055c-62.825,4.165-111.055,56.218-111.011,119.099l.247,357.319,441.401.009Z"/>
+      <path fill="#000000" d="M11.36,701.777V46.687c0-18.588,20.232-34.898,37.852-34.9l492.255-.053c19.055-.002,38.64,16.114,38.648,36.627l.276,653.806c-2.867,17.085-16.028,36.258-35.14,36.261l-497.813.082c-20.051.003-33.212-19.241-36.077-36.733ZM461.017,637.95c63.321-3.958,112.275-57.07,111.247-120.074l-.039-356.297-441.845-.055c-62.825,4.165-111.055,56.218-111.011,119.099l.247,357.319,441.401.009Z"/>
     </g>
-    <text transform="translate(29.24 79.986)" style="fill: #fff; font-family: Arial-Black, 'Arial Black'; font-size: 60.329px; font-weight: 800;"><tspan x="0" y="0" style="letter-spacing: .007em;">A</tspan><tspan x="47.337" y="0" style="letter-spacing: .041em;">UTHENTICITY</tspan></text>
-    <text transform="translate(174.425 138.639)" style="fill: #fff; font-family: Arial-Black, 'Arial Black'; font-size: 60.329px; font-weight: 800; letter-spacing: .041em;"><tspan x="0" y="0">CHECK</tspan></text>
+    <text x="296.32" y="79.986" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="60.329" font-weight="900" text-anchor="middle" letter-spacing="0.02em">AUTHENTICITY</text>
+    <text x="296.32" y="138.639" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="60.329" font-weight="900" text-anchor="middle" letter-spacing="0.041em">CHECK</text>
     <g id="qr-placeholder">
-      <rect x="87.047" y="192.309" width="420" height="420" style="fill: #fff;"/>
+      <rect x="87.047" y="192.309" width="420" height="420" fill="#FFFFFF"/>
     </g>
-    <text transform="translate(40.064 710)" style="fill: #fff; font-family: Helvetica-Bold, Helvetica; font-size: 56px; font-weight: 700; letter-spacing: .107em;"><tspan x="0" y="0">SCAN FOR INFO</tspan></text>`;
+    <text x="296.32" y="710" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="56" font-weight="700" text-anchor="middle" letter-spacing="0.107em">SCAN FOR INFO</text>`;
         
         // Render frame first, then QR on top (QR last for sharpness)
         injectedContent += `
