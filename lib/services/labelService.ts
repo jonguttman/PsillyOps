@@ -1238,12 +1238,59 @@ function injectElements(
               fill="#CC0000" text-anchor="middle" dominant-baseline="middle">SAMPLE</text>
       ` : '';
 
-      injectedContent += `
+      if (el.useFrame) {
+        // Render QR with "Authenticity Check" frame
+        // Frame viewBox: 0 0 592.645 750
+        // QR placeholder in frame: x=87.047, y=192.309, width=420, height=420
+        const frameVbWidth = 592.645;
+        const frameVbHeight = 750;
+        const qrPlaceholderX = 87.047;
+        const qrPlaceholderY = 192.309;
+        const qrPlaceholderSize = 420;
+        
+        // Calculate QR position within the element's bounding box
+        // The frame scales to fit the element size, QR goes in the placeholder area
+        const qrXRatio = qrPlaceholderX / frameVbWidth;
+        const qrYRatio = qrPlaceholderY / frameVbHeight;
+        const qrSizeRatioW = qrPlaceholderSize / frameVbWidth;
+        const qrSizeRatioH = qrPlaceholderSize / frameVbHeight;
+        
+        const qrX = x + w * qrXRatio;
+        const qrY = y + h * qrYRatio;
+        const qrW = w * qrSizeRatioW;
+        const qrH = h * qrSizeRatioH;
+        
+        // Frame SVG content (without outer svg tag, without qr-placeholder rect)
+        const frameContent = `
+    <g id="hagfmR">
+      <path d="M11.36,701.777V46.687c0-18.588,20.232-34.898,37.852-34.9l492.255-.053c19.055-.002,38.64,16.114,38.648,36.627l.276,653.806c-2.867,17.085-16.028,36.258-35.14,36.261l-497.813.082c-20.051.003-33.212-19.241-36.077-36.733ZM461.017,637.95c63.321-3.958,112.275-57.07,111.247-120.074l-.039-356.297-441.845-.055c-62.825,4.165-111.055,56.218-111.011,119.099l.247,357.319,441.401.009Z"/>
+    </g>
+    <text transform="translate(29.24 79.986)" style="fill: #fff; font-family: Arial-Black, 'Arial Black'; font-size: 60.329px; font-weight: 800;"><tspan x="0" y="0" style="letter-spacing: .007em;">A</tspan><tspan x="47.337" y="0" style="letter-spacing: .041em;">UTHENTICITY</tspan></text>
+    <text transform="translate(174.425 138.639)" style="fill: #fff; font-family: Arial-Black, 'Arial Black'; font-size: 60.329px; font-weight: 800; letter-spacing: .041em;"><tspan x="0" y="0">CHECK</tspan></text>
+    <g id="qr-placeholder">
+      <rect x="87.047" y="192.309" width="420" height="420" style="fill: #fff;"/>
+    </g>
+    <text transform="translate(40.064 710)" style="fill: #fff; font-family: Helvetica-Bold, Helvetica; font-size: 56px; font-weight: 700; letter-spacing: .107em;"><tspan x="0" y="0">SCAN FOR INFO</tspan></text>`;
+        
+        // Render frame first, then QR on top (QR last for sharpness)
+        injectedContent += `
+  <g ${rotateAttr}>
+    <svg x="${x.toFixed(3)}" y="${y.toFixed(3)}" width="${w.toFixed(3)}" height="${h.toFixed(3)}" viewBox="0 0 ${frameVbWidth} ${frameVbHeight}" preserveAspectRatio="xMidYMid meet">
+      ${frameContent}
+    </svg>
+    <svg x="${qrX.toFixed(3)}" y="${qrY.toFixed(3)}" width="${qrW.toFixed(3)}" height="${qrH.toFixed(3)}"${qrVbSize ? ` viewBox="0 0 ${qrVbSize} ${qrVbSize}"` : ''} shape-rendering="crispEdges">
+      ${qrInner}${watermark}
+    </svg>
+  </g>`;
+      } else {
+        // Standard QR without frame
+        injectedContent += `
   <g ${rotateAttr}>
     <svg x="${x.toFixed(3)}" y="${y.toFixed(3)}" width="${w.toFixed(3)}" height="${h.toFixed(3)}"${qrVbSize ? ` viewBox="0 0 ${qrVbSize} ${qrVbSize}"` : ''} shape-rendering="crispEdges">
       ${qrInner}${watermark}
     </svg>
   </g>`;
+      }
     } else if (el.type === 'BARCODE' && el.barcode) {
       // BARCODE injection logic:
       // - Editor preview: always use sample barcode (EDITOR_PREVIEW_BARCODE)

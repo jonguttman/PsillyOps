@@ -506,6 +506,15 @@ export default function LabelPreviewButton({
     }));
   }, [selectedElementId]);
 
+  // Handle useFrame toggle for QR elements
+  const handleUseFrameChange = useCallback((useFrame: boolean) => {
+    if (!selectedElementId) return;
+    setElements(prev => prev.map(el => {
+      if (el.id !== selectedElementId || el.type !== 'QR') return el;
+      return { ...el, useFrame };
+    }));
+  }, [selectedElementId]);
+
   // Handle rotation change from sidebar buttons
   const handleRotate = useCallback((rotation: Rotation) => {
     if (!selectedElementId) return;
@@ -983,6 +992,38 @@ export default function LabelPreviewButton({
                               Transparent
                             </button>
                           </div>
+                        </div>
+                      )}
+
+                      {/* Use Frame Toggle - QR only */}
+                      {selectedElement?.type === 'QR' && (
+                        <div className="bg-gray-750 rounded-lg p-3">
+                          <label className="text-xs font-medium text-gray-300 block mb-2">Authenticity Frame</label>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => handleUseFrameChange(false)}
+                              className={`flex-1 px-2 py-1.5 text-xs font-medium rounded transition-colors ${
+                                !selectedElement.useFrame
+                                  ? 'bg-blue-600 text-white'
+                                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                              }`}
+                            >
+                              Off
+                            </button>
+                            <button
+                              onClick={() => handleUseFrameChange(true)}
+                              className={`flex-1 px-2 py-1.5 text-xs font-medium rounded transition-colors ${
+                                selectedElement.useFrame
+                                  ? 'bg-blue-600 text-white'
+                                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                              }`}
+                            >
+                              On
+                            </button>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-2">
+                            Wraps QR in &quot;Authenticity Check&quot; frame
+                          </p>
                         </div>
                       )}
 

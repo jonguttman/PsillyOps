@@ -76,6 +76,7 @@ export type BackgroundStyle = 'white' | 'transparent';
  * QR elements:
  * - Must be square (widthIn === heightIn)
  * - barcode field is ignored
+ * - useFrame: if true, wraps QR in "Authenticity Check" frame
  * 
  * BARCODE elements:
  * - heightIn is the bounding box (includes bars + gap + text)
@@ -88,6 +89,7 @@ export interface PlaceableElement {
   placement: Placement;
   background?: BackgroundStyle; // Default: 'white'
   barcode?: BarcodeOptions;
+  useFrame?: boolean; // QR only: wrap in "Authenticity Check" frame
 }
 
 /**
