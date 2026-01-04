@@ -3,7 +3,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import Moveable from 'react-moveable';
 import type { PlaceableElement, Placement } from '@/lib/types/placement';
-import { snapToAllowedRotation } from '@/lib/types/placement';
+import { normalizeRotation } from '@/lib/types/placement';
 
 /**
  * SVG INTERACTION LAYER
@@ -107,8 +107,8 @@ export default function SvgInteractionLayer({
     }
     
     if (tempRotation !== null) {
-      // Snap to nearest allowed rotation using shared utility
-      updates.rotation = snapToAllowedRotation(tempRotation);
+      // Round to nearest whole degree
+      updates.rotation = normalizeRotation(tempRotation);
     }
     
     // Reset temp state
@@ -249,19 +249,15 @@ export default function SvgInteractionLayer({
             commitToState();
           }}
           
-          // Rotatable - FREE rotation with soft snapping
+          // Rotatable - FREE rotation (no snapping)
           rotatable={true}
           rotationPosition="top"
-          // Soft snap at 0°, 90°, 180°, -90° with 5° threshold
-          // This provides magnetic snapping without forcing rotation steps
-          snapRotationDegrees={[0, 90, 180, -90]}
-          snapRotationThreshold={5}
           onRotate={({ beforeRotate }) => {
             // Free rotation during drag - store exact angle
             setTempRotation(beforeRotate + vbPos.rotation);
           }}
           onRotateEnd={() => {
-            // On release, commit snaps to nearest allowed value
+            // On release, commit rounds to whole degree
             commitToState();
           }}
           
