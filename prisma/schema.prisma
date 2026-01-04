@@ -106,6 +106,7 @@ model Product {
   predictionProfiles      PredictionProfile[]
   experienceReviews       ExperienceReview[]
   labels                  ProductLabel[]
+  tripdarTokens           TripdarToken[]
 
   @@index([sku])
   @@index([upc])
@@ -335,6 +336,7 @@ model Batch {
   inventory         InventoryItem[]
   laborEntries      LaborEntry[]
   experienceReviews ExperienceReview[]
+  tripdarTokens     TripdarToken[]
 
   @@index([productId])
   @@index([status])
@@ -1277,6 +1279,7 @@ model Partner {
   bindings        ExperienceBinding[]
   vibesProfiles   VibesProfile[]
   bindingSessions BindingSession[]
+  tripdarTokens   TripdarToken[]
 
   @@index([status])
 }
@@ -1293,10 +1296,11 @@ model SealSheet {
   assignedById String?
   partnerId    String?
 
-  createdBy  User      @relation("SealSheetCreator", fields: [createdById], references: [id])
-  assignedBy User?     @relation("SealSheetAssigner", fields: [assignedById], references: [id])
-  partner    Partner?  @relation(fields: [partnerId], references: [id])
-  tokens     QRToken[]
+  createdBy     User           @relation("SealSheetCreator", fields: [createdById], references: [id])
+  assignedBy    User?          @relation("SealSheetAssigner", fields: [assignedById], references: [id])
+  partner       Partner?       @relation(fields: [partnerId], references: [id])
+  tokens        QRToken[]
+  tripdarTokens TripdarToken[] @relation("TripdarTokenSealSheet")
 
   @@index([partnerId])
   @@index([status])
@@ -1422,4 +1426,86 @@ model SealPreset {
   @@index([basePreset])
   @@index([isLive])
   @@index([parentId])
+}
+
+// ========================================
+// TripDAR Public Token System
+// ========================================
+// Greenfield public QR system for tripd.ar
+// Completely separate from legacy QRToken system
+
+enum TripdarTokenStatus {
+  UNBOUND   // Generated, not yet assigned to product
+  ACTIVE    // In circulation, scannable
+  REVOKED   // Administratively revoked
+  EXPIRED   // Past expiration date
+}
+
+model TripdarToken {
+  id            String             @id @default(cuid())
+
+  // The short public token embedded in the QR (Base62, 5-6 chars)
+  // This is the ONLY identifier exposed to users via tripd.ar/{publicToken}
+  publicToken   String             @unique
+
+  status        TripdarTokenStatus @default(UNBOUND)
+
+  // Optional bindings (only Ops knows these internal IDs)
+  partnerId     String?
+  productId     String?
+  batchId       String?
+  sealSheetId   String?
+
+  // Lifecycle timestamps
+  createdAt     DateTime           @default(now())
+  activatedAt   DateTime?          // When first scanned or bound
+  revokedAt     DateTime?
+  revokedReason String?
+  expiresAt     DateTime?
+
+  // Analytics (Ops is canonical source)
+  lastScannedAt DateTime?
+  scanCount     Int                @default(0)
+
+  // Relations
+  partner       Partner?           @relation(fields: [partnerId], references: [id])
+  product       Product?           @relation(fields: [productId], references: [id])
+  batch         Batch?             @relation(fields: [batchId], references: [id])
+  sealSheet     SealSheet?         @relation("TripdarTokenSealSheet", fields: [sealSheetId], references: [id])
+
+  surveyResponses TripdarSurveyResponse[]
+
+  @@index([publicToken])
+  @@index([status])
+  @@index([createdAt])
+  @@index([sealSheetId])
+  @@index([productId])
+  @@index([partnerId])
+  @@index([batchId])
+}
+
+model TripdarSurveyResponse {
+  id            String       @id @default(cuid())
+
+  tokenId       String
+  token         TripdarToken @relation(fields: [tokenId], references: [id])
+
+  // Denormalized for query convenience (avoids join for rate limiting)
+  publicToken   String
+
+  // Survey context
+  experienceMode String?
+
+  // Payload from Tripd.ar (validated & bounded JSON)
+  responses     Json
+
+  // Abuse detection signals (optional, privacy-conscious)
+  ipHash        String?      // Hashed IP, not raw
+  fingerprint   String?      // Device fingerprint from client
+
+  createdAt     DateTime     @default(now())
+
+  @@index([publicToken])
+  @@index([tokenId])
+  @@index([createdAt])
 }

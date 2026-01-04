@@ -290,16 +290,25 @@ export default function PrintLabelButton({
     }
     
     // Apply width: per-template > product fallback > template version > default
-    if (perTemplate?.labelWidthIn !== null && perTemplate?.labelWidthIn !== undefined) {
-      setLabelWidthIn(perTemplate.labelWidthIn);
+    // NOTE: If perTemplate has default values (2x1), treat as "not set" and use fallback
+    // This handles the case where perTemplate was saved with defaults before user set custom size
+    const perTemplateHasCustomWidth = perTemplate?.labelWidthIn !== null && 
+                                       perTemplate?.labelWidthIn !== undefined &&
+                                       !(perTemplate.labelWidthIn === DEFAULT_LABEL_WIDTH && perTemplate.labelHeightIn === DEFAULT_LABEL_HEIGHT);
+    const perTemplateHasCustomHeight = perTemplate?.labelHeightIn !== null && 
+                                        perTemplate?.labelHeightIn !== undefined &&
+                                        !(perTemplate.labelWidthIn === DEFAULT_LABEL_WIDTH && perTemplate.labelHeightIn === DEFAULT_LABEL_HEIGHT);
+    
+    if (perTemplateHasCustomWidth) {
+      setLabelWidthIn(perTemplate!.labelWidthIn!);
     } else if (productFallbackSettings?.labelWidthIn !== null && productFallbackSettings?.labelWidthIn !== undefined) {
       setLabelWidthIn(productFallbackSettings.labelWidthIn);
     }
     // Note: if neither per-template nor fallback, the version effect below will handle it
     
     // Apply height: per-template > product fallback > template version > default
-    if (perTemplate?.labelHeightIn !== null && perTemplate?.labelHeightIn !== undefined) {
-      setLabelHeightIn(perTemplate.labelHeightIn);
+    if (perTemplateHasCustomHeight) {
+      setLabelHeightIn(perTemplate!.labelHeightIn!);
     } else if (productFallbackSettings?.labelHeightIn !== null && productFallbackSettings?.labelHeightIn !== undefined) {
       setLabelHeightIn(productFallbackSettings.labelHeightIn);
     }
@@ -311,10 +320,12 @@ export default function PrintLabelButton({
     if (selectedVersionId && templates.length > 0 && settingsLoaded && entityType === 'PRODUCT' && selectedTemplateId) {
       const perTemplate = templateSettings.find(s => s.templateId === selectedTemplateId);
       // Only apply version dimensions if no per-template or fallback settings exist
-      const hasWidthSetting = (perTemplate?.labelWidthIn !== null && perTemplate?.labelWidthIn !== undefined) ||
-                              (productFallbackSettings?.labelWidthIn !== null && productFallbackSettings?.labelWidthIn !== undefined);
-      const hasHeightSetting = (perTemplate?.labelHeightIn !== null && perTemplate?.labelHeightIn !== undefined) ||
-                               (productFallbackSettings?.labelHeightIn !== null && productFallbackSettings?.labelHeightIn !== undefined);
+      // NOTE: If perTemplate has default values (2x1), treat as "not set"
+      const perTemplateIsDefault = perTemplate?.labelWidthIn === DEFAULT_LABEL_WIDTH && perTemplate?.labelHeightIn === DEFAULT_LABEL_HEIGHT;
+      const hasWidthSetting = ((perTemplate?.labelWidthIn !== null && perTemplate?.labelWidthIn !== undefined && !perTemplateIsDefault) ||
+                              (productFallbackSettings?.labelWidthIn !== null && productFallbackSettings?.labelWidthIn !== undefined));
+      const hasHeightSetting = ((perTemplate?.labelHeightIn !== null && perTemplate?.labelHeightIn !== undefined && !perTemplateIsDefault) ||
+                               (productFallbackSettings?.labelHeightIn !== null && productFallbackSettings?.labelHeightIn !== undefined));
       
       if (!hasWidthSetting || !hasHeightSetting) {
         const allVersions = templates.flatMap(t => t.versions);
