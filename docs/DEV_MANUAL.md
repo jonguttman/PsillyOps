@@ -14,6 +14,7 @@
 5. [Service Layer](#service-layer)
    - [Label Sheet Composition & QR Strategy](#label-sheet-composition--qr-strategy)
 6. [API Routes](#api-routes)
+   - [Internal API Routes](#internal-api-routes)
 7. [Authentication & Authorization](#authentication--authorization)
 8. [Intelligent Logging System](#intelligent-logging-system)
 9. [Development Workflow](#development-workflow)
@@ -761,6 +762,70 @@ return handleApiError(error);  // Returns proper JSON + status
   - Returns: CSV file or JSON array
   - Requires: ADMIN role
 
+### Internal API Routes
+
+#### QR Token → Product Lookup (Internal Only)
+
+**Endpoint:** `GET /api/internal/products/by-qr/[token]`
+
+**Purpose:** Allows first-party apps (e.g., Psilly Journal) to resolve QR tokens to product info with silent analytics logging.
+
+**Authentication:**
+- Valid session cookie, OR
+- Bearer token: `Authorization: Bearer ${INTERNAL_SERVICE_TOKEN}`
+
+**Response (200):**
+```json
+{
+  "product_id": "clxyz...",
+  "name": "Hercules Capsules",
+  "description": "High-potency psilocybin capsules",
+  "batch_id": "clxyz...",
+  "token": "qr_abc123...",
+  "entity_type": "BATCH"
+}
+```
+
+**Error Responses:**
+
+| Status | Code | Description |
+|--------|------|-------------|
+| 401 | UNAUTHORIZED | No valid authentication provided |
+| 404 | QR_TOKEN_NOT_FOUND | Token doesn't exist or has invalid format |
+| 410 | QR_TOKEN_INACTIVE | Token has been revoked or expired |
+| 500 | INTERNAL_ERROR | Unexpected server error |
+
+**Resolution Logic:**
+- `PRODUCT` tokens → direct product lookup
+- `BATCH` tokens → resolve to batch's product
+- `INVENTORY` tokens → resolve to inventory item's product
+
+**Silent Analytics:**
+- Logs `qr_token_scanned_internal` event to ActivityLog
+- Includes `source: 'psilly-journal'` in metadata
+- Does NOT trigger notifications or UI updates
+- Does NOT attach to user accounts (system-originated)
+
+**Environment Variable:**
+```bash
+INTERNAL_SERVICE_TOKEN="your_secure_random_token"
+```
+
+Generate a secure token:
+```bash
+openssl rand -base64 32
+```
+
+**Usage Example:**
+```bash
+# Using service token
+curl -H "Authorization: Bearer ${INTERNAL_SERVICE_TOKEN}" \
+  https://your-domain.com/api/internal/products/by-qr/qr_abc123xyz
+
+# Using session (from browser/authenticated context)
+fetch('/api/internal/products/by-qr/qr_abc123xyz')
+```
+
 ---
 
 ## Authentication & Authorization
@@ -1178,6 +1243,7 @@ NEXTAUTH_URL="http://localhost:3000"  # Production: https://your-domain.com
 
 # Optional
 CRON_SECRET="secret_for_cron_jobs"
+INTERNAL_SERVICE_TOKEN="secret_for_internal_api_access"
 SYSTEM_USER_ID="admin_user_id_for_system_actions"
 NODE_ENV="development"
 ```
@@ -1189,6 +1255,9 @@ NODE_ENV="development"
 openssl rand -base64 32
 
 # Generate CRON_SECRET
+openssl rand -base64 32
+
+# Generate INTERNAL_SERVICE_TOKEN
 openssl rand -base64 32
 ```
 
