@@ -15,7 +15,7 @@ import { ActivityEntity, LabelEntityType } from '@prisma/client';
 interface InternalProductLookupResponse {
   product_id: string;
   name: string;
-  description: string | null;
+  sku: string;
   batch_id?: string;
   token: string;
   entity_type: 'PRODUCT' | 'BATCH' | 'INVENTORY';
@@ -117,7 +117,7 @@ export async function GET(
     const response: InternalProductLookupResponse = {
       product_id: resolved.product.id,
       name: resolved.product.name,
-      description: resolved.product.description,
+      sku: resolved.product.sku,
       token: tokenValue,
       entity_type: token.entityType as 'PRODUCT' | 'BATCH' | 'INVENTORY',
       ...(resolved.batchId && { batch_id: resolved.batchId })
@@ -135,12 +135,12 @@ export async function GET(
 async function resolveToProduct(
   entityType: LabelEntityType,
   entityId: string
-): Promise<{ product: { id: string; name: string; description: string | null }; batchId?: string } | null> {
+): Promise<{ product: { id: string; name: string; sku: string }; batchId?: string } | null> {
   switch (entityType) {
     case 'PRODUCT': {
       const product = await prisma.product.findUnique({
         where: { id: entityId },
-        select: { id: true, name: true, description: true }
+        select: { id: true, name: true, sku: true }
       });
       return product ? { product } : null;
     }
@@ -150,7 +150,7 @@ async function resolveToProduct(
         where: { id: entityId },
         include: {
           product: {
-            select: { id: true, name: true, description: true }
+            select: { id: true, name: true, sku: true }
           }
         }
       });
@@ -162,7 +162,7 @@ async function resolveToProduct(
         where: { id: entityId },
         include: {
           product: {
-            select: { id: true, name: true, description: true }
+            select: { id: true, name: true, sku: true }
           },
           batch: {
             select: { id: true }

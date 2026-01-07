@@ -779,7 +779,7 @@ return handleApiError(error);  // Returns proper JSON + status
 {
   "product_id": "clxyz...",
   "name": "Hercules Capsules",
-  "description": "High-potency psilocybin capsules",
+  "sku": "HERC-001",
   "batch_id": "clxyz...",
   "token": "qr_abc123...",
   "entity_type": "BATCH"
