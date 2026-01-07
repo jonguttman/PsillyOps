@@ -98,7 +98,7 @@ export async function GET(
       entityType: ActivityEntity.SYSTEM,
       entityId: token.id,
       action: 'qr_token_scanned_internal',
-      userId: null, // System-originated, no user
+      userId: undefined, // System-originated, no user
       summary: `Internal QR scan from psilly-journal for ${token.entityType} ${token.entityId}`,
       metadata: {
         tokenId: token.id,
