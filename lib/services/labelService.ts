@@ -634,7 +634,7 @@ export async function renderLabelSvg(params: RenderLabelParams): Promise<string>
     : undefined;
   
   // Inject elements at absolute positions (print flow, not editor preview)
-  svgContent = injectElements(svgContent, elements, qrSvg, barcodeValue, false);
+  svgContent = await injectElements(svgContent, elements, qrSvg, barcodeValue, false);
   
   return svgContent;
 }
@@ -741,7 +741,7 @@ export async function renderLabelWithToken(params: RenderLabelWithTokenParams): 
   const qrSvg = await generateQrSvgFromUrl(tokenUrl);
   
   // Inject elements (print flow - uses sample barcode since no entity context)
-  svgContent = injectElements(svgContent, elements, qrSvg, undefined, true);
+  svgContent = await injectElements(svgContent, elements, qrSvg, undefined, true);
   
   return svgContent;
 }
@@ -784,7 +784,7 @@ export async function renderLabelsWithTokens(params: {
   for (const token of tokens) {
     const tokenUrl = `${baseUrl}/qr/${token}`;
     const qrSvg = await generateQrSvgFromUrl(tokenUrl);
-    const svgContent = injectElements(svgTemplate, elements, qrSvg, undefined, true);
+    const svgContent = await injectElements(svgTemplate, elements, qrSvg, undefined, true);
     svgs.push(svgContent);
   }
   
@@ -906,7 +906,7 @@ export async function renderLabelsShared(params: RenderLabelsParams): Promise<Re
     const qrSvg = await generateQrSvgFromUrl(previewPayload);
     
     // Use editor preview mode for barcode (sample value)
-    const svg = injectElements(svgTemplate, elements, qrSvg, barcodeValue, true);
+    const svg = await injectElements(svgTemplate, elements, qrSvg, barcodeValue, true);
     
     // All labels are identical in preview mode
     const svgs = Array(quantity).fill(svg);
@@ -925,7 +925,7 @@ export async function renderLabelsShared(params: RenderLabelsParams): Promise<Re
 
     const qrSvg = await generateQrSvgFromUrl(qrPayload.url);
     // Print flow - not editor preview
-    const svg = injectElements(svgTemplate, elements, qrSvg, barcodeValue, false);
+    const svg = await injectElements(svgTemplate, elements, qrSvg, barcodeValue, false);
 
     // For embedded mode, duplicate SVG for quantity (all identical)
     const svgs = Array(quantity).fill(svg);
@@ -958,7 +958,7 @@ export async function renderLabelsShared(params: RenderLabelsParams): Promise<Re
       const tokenUrl = `${baseUrl}/qr/${token.token}`;
       const qrSvg = await generateQrSvgFromUrl(tokenUrl);
       // Print flow - not editor preview
-      const svgContent = injectElements(svgTemplate, elements, qrSvg, barcodeValue, false);
+      const svgContent = await injectElements(svgTemplate, elements, qrSvg, barcodeValue, false);
       svgs.push(svgContent);
     }
 
@@ -1163,13 +1163,13 @@ const EDITOR_PREVIEW_BARCODE = 'SKU-EXAMPLE';
  * @param barcodeValue - Product barcode value for print flows, undefined for editor preview
  * @param isEditorPreview - If true, use sample barcode; if false, require real barcode for BARCODE elements
  */
-function injectElements(
+async function injectElements(
   svg: string,
   elements: PlaceableElement[],
   qrSvgContent: string,
   barcodeValue?: string,
   isEditorPreview: boolean = false
-): string {
+): Promise<string> {
   if (elements.length === 0) {
     return svg;
   }
@@ -1283,84 +1283,114 @@ function injectElements(
   </g>`;
       }
     } else if (el.type === 'BARCODE' && el.barcode) {
-      // BARCODE injection logic:
-      // - Editor preview: always use sample barcode (EDITOR_PREVIEW_BARCODE)
-      // - Print flows: use product.barcodeValue ?? product.sku (required)
-      const barHeightVb = el.barcode.barHeightIn * pxPerInchX;
-      const textSizeVb = el.barcode.textSizeIn * pxPerInchX;
-      const textGapVb = el.barcode.textGapIn * pxPerInchX;
-      const textY = barHeightVb + textGapVb + textSizeVb * 0.85;
+      // BARCODE injection using bwip-js for proper scannable EAN-13 barcodes
+      // Render bars and text as SEPARATE elements:
+      // - Bars: stretched to fill full width (preserveAspectRatio="none" for X only)
+      // - Text: properly proportioned and centered below bars
+      const actualCode = isEditorPreview ? EDITOR_PREVIEW_BARCODE : (barcodeValue || '');
+      const cleanCode = actualCode.replace(/\D/g, '').slice(0, 13).padStart(13, '0');
       
       // Handle transparent background
       const showBackground = el.background !== 'transparent';
       
-      // Determine barcode value based on context
-      const actualCode = isEditorPreview ? EDITOR_PREVIEW_BARCODE : (barcodeValue || '');
+      // Calculate layout: bars take most of height, text below
+      const textSizeVb = el.barcode.textSizeIn * pxPerInchX;
+      const textGapVb = el.barcode.textGapIn * pxPerInchX;
+      const barHeightVb = el.barcode.barHeightIn * pxPerInchX;
+      const textY = barHeightVb + textGapVb + textSizeVb * 0.85;
       
-      // EAN-13 structure: 95 modules total
-      const totalModules = 95;
-      const moduleWidth = w * 0.85 / totalModules;
-      const barsStartX = w * 0.1; // 10% left margin for first digit
-      
-      // Simplified EAN-13 pattern for visual representation
-      const pattern = '101' + // Start guard
-        '0001101001100101001101110100011011000' + // Left 6 digits (simplified)
-        '1' + // Part of left
-        '01010' + // Center guard
-        '1110010110011011011001000010101110010011' + // Right 6 digits (simplified)
-        '10' + // Part of right
-        '101'; // End guard
-      
-      let barsContent = '';
-      let barX = barsStartX;
-      for (let i = 0; i < Math.min(pattern.length, totalModules); i++) {
-        if (pattern[i] === '1') {
-          // Guard bars extend below text line
-          const isGuard = i < 3 || i >= 92 || (i >= 45 && i < 50);
-          const barHeight = isGuard ? barHeightVb + textGapVb : barHeightVb;
-          barsContent += `<rect x="${barX.toFixed(3)}" y="0" width="${moduleWidth.toFixed(3)}" height="${barHeight.toFixed(3)}" fill="#000"/>`;
+      // Generate barcode SVG using bwip-js (bars only, no text)
+      try {
+        const bwipjs = require('bwip-js');
+        
+        // Generate barcode WITHOUT text - we'll add text separately
+        const barcodeSvg = await bwipjs.toSVG({
+          bcid: 'ean13',
+          text: cleanCode,
+          scale: 2,
+          height: 10, // Bar height in mm
+          includetext: false, // NO text - we render it separately
+        });
+        
+        // Extract viewBox dimensions from generated SVG
+        const vbMatch = barcodeSvg.match(/viewBox="([^"]+)"/);
+        const vbParts = vbMatch ? vbMatch[1].split(/\s+/).map(parseFloat) : [0, 0, 100, 50];
+        const genWidth = vbParts[2] || 100;
+        const genHeight = vbParts[3] || 50;
+        
+        // Extract inner content from bwip-js SVG (strip outer <svg> tag)
+        const innerMatch = barcodeSvg.match(/<svg[^>]*>([\s\S]*)<\/svg>/i);
+        const barsSvgContent = innerMatch ? innerMatch[1] : '';
+        
+        // Background rect
+        const bgRect = showBackground 
+          ? `<rect x="0" y="0" width="${w.toFixed(3)}" height="${h.toFixed(3)}" fill="${el.barcode.backgroundColor}"/>`
+          : '';
+        
+        // Calculate bar area dimensions (stretch width, scale height proportionally)
+        const barsAreaHeight = barHeightVb;
+        const barsScaleY = barsAreaHeight / genHeight;
+        
+        // EAN-13 text positioning
+        // Reserve space for first digit on left, then bars, then small margin on right
+        const firstDigitWidth = textSizeVb * 0.8;
+        const totalModules = 95;
+        const barsWidth = w - firstDigitWidth; // Bars take remaining width after first digit
+        const moduleWidth = barsWidth / totalModules;
+        const barsStartX = firstDigitWidth; // Bars start after first digit area
+        
+        // Text positions: first digit at left edge, 6 digits under left bars, 6 digits under right bars
+        // Add small padding so first digit is visible within the viewBox
+        const leftPadding = textSizeVb * 0.4;
+        const firstDigitX = leftPadding;
+        const leftGroupCenterModule = (3 + 45) / 2; // 24
+        const rightGroupCenterModule = (50 + 92) / 2; // 71
+        const leftGroupX = barsStartX + leftGroupCenterModule * moduleWidth;
+        const rightGroupX = barsStartX + rightGroupCenterModule * moduleWidth;
+        
+        // Format EAN-13 text
+        const isEan13 = cleanCode.length === 13 && /^\d+$/.test(cleanCode);
+        // Use simple font name without quotes for better SVG compatibility
+        const barcodeFont = 'monospace';
+        
+        let textContent = '';
+        if (isEan13) {
+          const firstDigit = cleanCode[0];
+          const leftGroup = cleanCode.slice(1, 7);
+          const rightGroup = cleanCode.slice(7, 13);
+          textContent = `
+        <text x="${firstDigitX.toFixed(3)}" y="${textY.toFixed(3)}" text-anchor="middle" font-family="${barcodeFont}" font-size="${textSizeVb.toFixed(3)}" fill="#000">${firstDigit}</text>
+        <text x="${leftGroupX.toFixed(3)}" y="${textY.toFixed(3)}" text-anchor="middle" font-family="${barcodeFont}" font-size="${textSizeVb.toFixed(3)}" fill="#000">${leftGroup}</text>
+        <text x="${rightGroupX.toFixed(3)}" y="${textY.toFixed(3)}" text-anchor="middle" font-family="${barcodeFont}" font-size="${textSizeVb.toFixed(3)}" fill="#000">${rightGroup}</text>`;
+        } else {
+          textContent = `<text x="${(w/2).toFixed(3)}" y="${textY.toFixed(3)}" text-anchor="middle" font-family="${barcodeFont}" font-size="${textSizeVb.toFixed(3)}" fill="#000">${cleanCode}</text>`;
         }
-        barX += moduleWidth;
-      }
-      
-      // Display the barcode value
-      // For EAN-13 format: X XXXXXX XXXXXX (first digit outside, then 6+6)
-      // For other formats: display as-is, centered
-      const isEan13 = actualCode.length === 13 && /^\d+$/.test(actualCode);
-      
-      const firstDigitX = barsStartX - textSizeVb * 0.6;
-      const leftGroupX = barsStartX + (3 + 21) * moduleWidth;
-      const rightGroupX = barsStartX + (3 + 42 + 5 + 21) * moduleWidth;
-      const letterSpacing = moduleWidth * 1.2;
-      
-      // Background rect only if not transparent
-      const bgRect = showBackground 
-        ? `<rect x="0" y="0" width="${w.toFixed(3)}" height="${h.toFixed(3)}" fill="${el.barcode.backgroundColor}"/>`
-        : '';
-      
-      let textContent: string;
-      if (isEan13) {
-        // EAN-13 format display
-        const firstDigit = actualCode[0];
-        const leftGroup = actualCode.slice(1, 7);
-        const rightGroup = actualCode.slice(7, 13);
-        textContent = `
-      <text x="${firstDigitX.toFixed(3)}" y="${textY.toFixed(3)}" text-anchor="middle" font-family="'OCR-B', 'Courier New', monospace" font-size="${textSizeVb.toFixed(3)}" fill="#000">${firstDigit}</text>
-      <text x="${leftGroupX.toFixed(3)}" y="${textY.toFixed(3)}" text-anchor="middle" font-family="'OCR-B', 'Courier New', monospace" font-size="${textSizeVb.toFixed(3)}" letter-spacing="${letterSpacing.toFixed(3)}" fill="#000">${leftGroup}</text>
-      <text x="${rightGroupX.toFixed(3)}" y="${textY.toFixed(3)}" text-anchor="middle" font-family="'OCR-B', 'Courier New', monospace" font-size="${textSizeVb.toFixed(3)}" letter-spacing="${letterSpacing.toFixed(3)}" fill="#000">${rightGroup}</text>`;
-      } else {
-        // Non-EAN format - display centered
-        textContent = `<text x="${(w / 2).toFixed(3)}" y="${textY.toFixed(3)}" text-anchor="middle" font-family="'OCR-B', 'Courier New', monospace" font-size="${textSizeVb.toFixed(3)}" fill="#000">${actualCode}</text>`;
-      }
-      
-      injectedContent += `
+        
+        // Render: background + bars (stretched to fill bar area) + text (properly positioned)
+        injectedContent += `
   <g ${rotateAttr}>
     <svg x="${x.toFixed(3)}" y="${y.toFixed(3)}" width="${w.toFixed(3)}" height="${h.toFixed(3)}" viewBox="0 0 ${w.toFixed(3)} ${h.toFixed(3)}">
       ${bgRect}
-      ${barsContent}
+      <svg x="${barsStartX.toFixed(3)}" y="0" width="${barsWidth.toFixed(3)}" height="${barsAreaHeight.toFixed(3)}" viewBox="${vbParts[0]} ${vbParts[1]} ${genWidth} ${genHeight}" preserveAspectRatio="none">
+        ${barsSvgContent}
+      </svg>
       ${textContent}
     </svg>
   </g>`;
+      } catch (bwipError) {
+        // Fallback: show error placeholder
+        console.error('[BARCODE] bwip-js error:', bwipError);
+        const bgRect = showBackground 
+          ? `<rect x="0" y="0" width="${w.toFixed(3)}" height="${h.toFixed(3)}" fill="${el.barcode.backgroundColor}"/>`
+          : '';
+        injectedContent += `
+  <g ${rotateAttr}>
+    <svg x="${x.toFixed(3)}" y="${y.toFixed(3)}" width="${w.toFixed(3)}" height="${h.toFixed(3)}" viewBox="0 0 ${w.toFixed(3)} ${h.toFixed(3)}">
+      ${bgRect}
+      <text x="${(w/2).toFixed(3)}" y="${(h/2).toFixed(3)}" text-anchor="middle" font-size="12" fill="red">Barcode Error</text>
+    </svg>
+  </g>`;
+      }
     }
   }
 
@@ -2222,7 +2252,7 @@ export async function renderLabelPreviewWithMeta(
     : undefined;
   
   // Inject elements - editor preview uses sample barcode, print preview uses real barcode
-  const svg = injectElements(svgContent, elements, placeholderQrSvg, barcodeValue, isEditorPreview);
+  const svg = await injectElements(svgContent, elements, placeholderQrSvg, barcodeValue, isEditorPreview);
 
   return {
     svg,
