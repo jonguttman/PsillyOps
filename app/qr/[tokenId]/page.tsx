@@ -8,8 +8,10 @@
 import { resolveToken, isValidTokenFormat, getTokenByValue } from '@/lib/services/qrTokenService';
 import { findActiveRedirectRule } from '@/lib/services/qrRedirectService';
 import { logAction } from '@/lib/services/loggingService';
+import { extractClientIP, getGeoFromRequest } from '@/lib/utils/geoip';
 import { ActivityEntity } from '@prisma/client';
 import { prisma } from '@/lib/db/prisma';
+import { headers } from 'next/headers';
 import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
 
@@ -24,6 +26,11 @@ export default async function QRTokenResolverPage({ params }: Props) {
   if (!isValidTokenFormat(token)) {
     notFound();
   }
+
+  // Capture request context for geo/IP logging (passive, no permission needed)
+  const headersList = await headers();
+  const clientIP = extractClientIP(headersList);
+  const geo = await getGeoFromRequest(headersList);
 
   // Resolve the token
   const result = await resolveToken(token);
@@ -58,8 +65,8 @@ export default async function QRTokenResolverPage({ params }: Props) {
         resolutionType = 'GROUP';
         ruleId = rule.id;
       } else {
-        // 3. Fallback to default entity routing
-        destination = getRedirectPath(result.entityType, result.entityId);
+        // 3. Fallback to default entity routing (includes ?t= for scan context)
+        destination = getRedirectPath(result.entityType, result.entityId, token);
         resolutionType = 'DEFAULT';
       }
     }
@@ -88,6 +95,7 @@ export default async function QRTokenResolverPage({ params }: Props) {
         entityType: ActivityEntity.PRODUCTION_RUN,
         entityId: productionRun.id,
         action: 'qr_scanned_production_run',
+        ipAddress: clientIP,
         summary: `QR scanned: Production run for ${productionRun.product.name} × ${productionRun.quantity}`,
         metadata: {
           runStatus: productionRun.status,
@@ -102,6 +110,12 @@ export default async function QRTokenResolverPage({ params }: Props) {
           tokenId: tokenRecord?.id,
           token: tokenRecord?.token,
           scanCount: result.token?.scanCount,
+          geo: geo ? {
+            city: geo.city,
+            region: geo.region,
+            country: geo.country,
+            countryCode: geo.countryCode,
+          } : null,
         },
         tags: ['qr', 'scan', 'production'],
       });
@@ -112,6 +126,7 @@ export default async function QRTokenResolverPage({ params }: Props) {
         entityType: ActivityEntity.LABEL,
         entityId: result.entityId,
         action: 'qr_token_scanned',
+        ipAddress: clientIP,
         summary: `QR token scanned for ${result.entityType} ${result.entityId} → ${resolutionType} resolution`,
         metadata: {
           tokenId: result.token?.id,
@@ -120,7 +135,13 @@ export default async function QRTokenResolverPage({ params }: Props) {
           resolutionType,
           redirectUrl: destination,
           ruleId,
-          scanCount: result.token?.scanCount
+          scanCount: result.token?.scanCount,
+          geo: geo ? {
+            city: geo.city,
+            region: geo.region,
+            country: geo.country,
+            countryCode: geo.countryCode,
+          } : null,
         },
         tags: ['qr', 'label', 'scan', resolutionType.toLowerCase()]
       });
@@ -264,15 +285,17 @@ export default async function QRTokenResolverPage({ params }: Props) {
 
 /**
  * Get the redirect path for an entity type
+ * Includes ?t= token param to pass scan context to authenticity pages
  */
-function getRedirectPath(entityType: string, entityId: string): string {
+function getRedirectPath(entityType: string, entityId: string, tokenCode: string): string {
+  const tokenParam = `?t=${tokenCode}`;
   switch (entityType) {
     case 'PRODUCT':
-      return `/qr/product/${entityId}`;
+      return `/qr/product/${entityId}${tokenParam}`;
     case 'BATCH':
-      return `/qr/batch/${entityId}`;
+      return `/qr/batch/${entityId}${tokenParam}`;
     case 'INVENTORY':
-      return `/qr/inventory/${entityId}`;
+      return `/qr/inventory/${entityId}${tokenParam}`;
     default:
       return '/';
   }

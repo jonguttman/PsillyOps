@@ -221,9 +221,14 @@ model Product {
   wholesalePrice    Float?   // Default wholesale price per unit
   strainId          String?  // Optional reference to strain
   active            Boolean  @default(true)
+
+  // Public-facing fields (for QR authenticity pages)
+  publicDescription String?  // Marketing description for authenticity page
+  publicImageUrl    String?  // Product image URL for authenticity page
+
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
-  
+
   // Relations
   strain            Strain?  @relation(fields: [strainId], references: [id])
   bom               BOMItem[]
@@ -444,9 +449,14 @@ model Batch {
   lossReason        String?
   qcStatus          QCStatus    @default(NOT_REQUIRED)
   notes             String?
+
+  // Certificate of Analysis (for QR authenticity pages)
+  coaUrl            String?     // URL to COA PDF
+  coaUploadedAt     DateTime?   // When COA was uploaded
+
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
-  
+
   product           Product            @relation(fields: [productId], references: [id])
   productionOrder   ProductionOrder?   @relation(fields: [productionOrderId], references: [id])
   makers            BatchMaker[]
