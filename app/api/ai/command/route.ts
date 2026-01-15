@@ -210,7 +210,7 @@ export async function POST(req: NextRequest) {
       // If it already exists, switch to navigation instead of proposing a write.
       const existing = await findExistingEntity(entity, proposedName);
       if (existing) {
-        const destination = entity === 'strain' ? `/strains/${existing.id}` : `/materials/${existing.id}`;
+        const destination = entity === 'strain' ? `/ops/strains/${existing.id}` : `/ops/materials/${existing.id}`;
 
         await prisma.aICommandLog.update({
           where: { id: log.id },
@@ -403,7 +403,7 @@ export async function POST(req: NextRequest) {
     // Phase 1: navigation-only commands (strains/materials)
     if (resolvedCommand?.command === 'NAVIGATE_ADD_STRAIN' || resolvedCommand?.command === 'NAVIGATE_ADD_MATERIAL') {
       const isStrain = resolvedCommand.command === 'NAVIGATE_ADD_STRAIN';
-      const destination = isStrain ? '/strains/new' : '/materials/new';
+      const destination = isStrain ? '/ops/strains/new' : '/ops/materials/new';
       const prefill = isStrain
         ? { name: resolvedCommand.args?.name }
         : { name: resolvedCommand.args?.name, categoryHint: resolvedCommand.args?.categoryHint };
@@ -643,7 +643,7 @@ async function confirmProposedCreate(
   // If it already exists, switch to navigation instead of creating.
   const existing = await findExistingEntity(entity, name);
   if (existing) {
-    const destination = entity === 'strain' ? `/strains/${existing.id}` : `/materials/${existing.id}`;
+    const destination = entity === 'strain' ? `/ops/strains/${existing.id}` : `/ops/materials/${existing.id}`;
     await prisma.aICommandLog.update({
       where: { id: logId },
       data: {
@@ -691,7 +691,7 @@ async function confirmProposedCreate(
       select: { id: true, name: true, shortCode: true },
     });
     if (isRecord(dup) && typeof dup.id === 'string' && typeof dup.name === 'string') {
-      const destination = `/strains/${dup.id}`;
+      const destination = `/ops/strains/${dup.id}`;
       await logAction({
         entityType: ActivityEntity.SYSTEM,
         entityId: logId,

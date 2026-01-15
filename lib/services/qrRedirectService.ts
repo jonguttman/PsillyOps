@@ -4,8 +4,11 @@
 //
 // PRECEDENCE ORDER:
 // 1. Token-level redirectUrl (QRToken.redirectUrl) - highest priority
-// 2. Active QRRedirectRule (by entityType+entityId OR versionId)
-// 3. Default entity routing (fallback)
+// 2. Active QRRedirectRule for Batch (entityType=BATCH + entityId)
+// 3. Active QRRedirectRule for Product (entityType=PRODUCT + entityId)
+// 4. Active QRRedirectRule for Version (versionId)
+// 5. Default Redirect (isFallback=true) - system-level fallback
+// 6. Default entity routing (no redirect)
 
 import { prisma } from '@/lib/db/prisma';
 import { logAction } from './loggingService';
@@ -30,7 +33,7 @@ export interface RedirectRuleResult {
   id: string;
   redirectUrl: string;
   reason: string | null;
-  matchedBy: 'entityType+entityId' | 'versionId';
+  matchedBy: 'BATCH' | 'PRODUCT' | 'ENTITY' | 'VERSION' | 'FALLBACK';
 }
 
 // ========================================
@@ -40,12 +43,16 @@ export interface RedirectRuleResult {
 /**
  * Find an active redirect rule that applies to a given token context.
  * 
- * Checks for rules matching:
- * 1. entityType + entityId combination
- * 2. versionId (if provided)
+ * Resolution order (most specific to least specific):
+ * 1. Batch rule (entityType=BATCH + entityId)
+ * 2. Product rule (entityType=PRODUCT + entityId)
+ * 3. Other entity rules (INVENTORY, CUSTOM)
+ * 4. Version rule (versionId)
+ * 5. Default Redirect (isFallback=true) - system-level fallback
  * 
  * Only returns rules where:
  * - active = true
+ * - isFallback = false (for entity/version rules)
  * - startsAt is null OR <= now
  * - endsAt is null OR >= now
  * 
@@ -55,13 +62,15 @@ export async function findActiveRedirectRule(params: {
   entityType: LabelEntityType;
   entityId: string;
   versionId?: string | null;
+  batchId?: string | null; // Optional: for batch-specific lookups
 }): Promise<RedirectRuleResult | null> {
-  const { entityType, entityId, versionId } = params;
+  const { entityType, entityId, versionId, batchId } = params;
   const now = new Date();
 
   // Build base conditions for active rules within time window
   const baseWhere = {
     active: true,
+    isFallback: false, // Exclude fallback from normal rule matching
     OR: [
       { startsAt: null },
       { startsAt: { lte: now } }
@@ -76,33 +85,80 @@ export async function findActiveRedirectRule(params: {
     ]
   };
 
-  // First, check for entityType + entityId match (more specific)
-  const entityRule = await prisma.qRRedirectRule.findFirst({
-    where: {
-      ...baseWhere,
-      entityType,
-      entityId,
-      versionId: null // Ensure this is an entity-scoped rule, not version-scoped
-    },
-    orderBy: { createdAt: 'desc' } // Most recent rule wins
-  });
+  // 1. Check for Batch rule first (most specific)
+  if (batchId || entityType === 'BATCH') {
+    const batchIdToCheck = batchId || entityId;
+    const batchRule = await prisma.qRRedirectRule.findFirst({
+      where: {
+        ...baseWhere,
+        entityType: 'BATCH',
+        entityId: batchIdToCheck,
+        versionId: null
+      },
+      orderBy: { createdAt: 'desc' }
+    });
 
-  if (entityRule) {
-    return {
-      id: entityRule.id,
-      redirectUrl: entityRule.redirectUrl,
-      reason: entityRule.reason,
-      matchedBy: 'entityType+entityId'
-    };
+    if (batchRule) {
+      return {
+        id: batchRule.id,
+        redirectUrl: batchRule.redirectUrl,
+        reason: batchRule.reason,
+        matchedBy: 'BATCH'
+      };
+    }
   }
 
-  // Second, check for versionId match (if version provided)
+  // 2. Check for Product rule
+  if (entityType === 'PRODUCT') {
+    const productRule = await prisma.qRRedirectRule.findFirst({
+      where: {
+        ...baseWhere,
+        entityType: 'PRODUCT',
+        entityId,
+        versionId: null
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    if (productRule) {
+      return {
+        id: productRule.id,
+        redirectUrl: productRule.redirectUrl,
+        reason: productRule.reason,
+        matchedBy: 'PRODUCT'
+      };
+    }
+  }
+
+  // 3. Check for other entity rules (INVENTORY, CUSTOM)
+  if (entityType !== 'BATCH' && entityType !== 'PRODUCT') {
+    const entityRule = await prisma.qRRedirectRule.findFirst({
+      where: {
+        ...baseWhere,
+        entityType,
+        entityId,
+        versionId: null
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    if (entityRule) {
+      return {
+        id: entityRule.id,
+        redirectUrl: entityRule.redirectUrl,
+        reason: entityRule.reason,
+        matchedBy: 'ENTITY'
+      };
+    }
+  }
+
+  // 4. Check for Version rule
   if (versionId) {
     const versionRule = await prisma.qRRedirectRule.findFirst({
       where: {
         ...baseWhere,
         versionId,
-        entityType: null, // Ensure this is a version-scoped rule
+        entityType: null,
         entityId: null
       },
       orderBy: { createdAt: 'desc' }
@@ -113,12 +169,64 @@ export async function findActiveRedirectRule(params: {
         id: versionRule.id,
         redirectUrl: versionRule.redirectUrl,
         reason: versionRule.reason,
-        matchedBy: 'versionId'
+        matchedBy: 'VERSION'
       };
     }
   }
 
+  // 5. Check for Default Redirect (fallback)
+  const fallbackRule = await findActiveFallbackRedirect();
+  if (fallbackRule) {
+    return {
+      id: fallbackRule.id,
+      redirectUrl: fallbackRule.redirectUrl,
+      reason: fallbackRule.reason,
+      matchedBy: 'FALLBACK'
+    };
+  }
+
   return null;
+}
+
+/**
+ * Find the active default redirect (fallback) rule.
+ * Only one fallback can exist. Returns null if none configured or inactive.
+ */
+export async function findActiveFallbackRedirect(): Promise<{
+  id: string;
+  redirectUrl: string;
+  reason: string | null;
+} | null> {
+  const now = new Date();
+
+  const fallback = await prisma.qRRedirectRule.findFirst({
+    where: {
+      isFallback: true,
+      active: true,
+      OR: [
+        { startsAt: null },
+        { startsAt: { lte: now } }
+      ],
+      AND: [
+        {
+          OR: [
+            { endsAt: null },
+            { endsAt: { gte: now } }
+          ]
+        }
+      ]
+    }
+  });
+
+  if (!fallback) {
+    return null;
+  }
+
+  return {
+    id: fallback.id,
+    redirectUrl: fallback.redirectUrl,
+    reason: fallback.reason
+  };
 }
 
 // ========================================

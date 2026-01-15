@@ -46,5 +46,14 @@ node_modules/
 .cursor/
 storage/
 
+# credentials and secrets
+*CREDENTIALS*.md
+*SECRETS*.md
+*.credentials
+*.secrets
+
+
+
+
 
 

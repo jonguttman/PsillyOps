@@ -4,7 +4,10 @@ import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
 import { formatDate, formatDateTime } from '@/lib/utils/formatters';
-import { startProductionOrder, blockProductionOrder, completeProductionOrder, createBatch } from '@/lib/services/productionService';
+import { blockProductionOrder, completeProductionOrder, createBatch } from '@/lib/services/productionService';
+import BlockedOrderActions from './BlockedOrderActions';
+import { ProductionOrderActions } from './ProductionOrderActions';
+import { ProductionOrderAssignment } from '@/components/production/ProductionOrderAssignment';
 
 const STATUS_COLORS: Record<string, string> = {
   PLANNED: 'bg-gray-100 text-gray-800',
@@ -23,15 +26,6 @@ const BATCH_STATUS_COLORS: Record<string, string> = {
   CANCELLED: 'bg-gray-200 text-gray-600'
 };
 
-async function handleStart(formData: FormData) {
-  'use server';
-  const session = await auth();
-  if (!session) throw new Error('Not authenticated');
-  const orderId = formData.get('orderId') as string;
-  await startProductionOrder(orderId, session.user.id);
-  revalidatePath(`/production/${orderId}`);
-}
-
 async function handleBlock(formData: FormData) {
   'use server';
   const session = await auth();
@@ -39,7 +33,7 @@ async function handleBlock(formData: FormData) {
   const orderId = formData.get('orderId') as string;
   const reason = formData.get('reason') as string;
   await blockProductionOrder(orderId, reason, session.user.id);
-  revalidatePath(`/production/${orderId}`);
+  revalidatePath(`/ops/production/${orderId}`);
 }
 
 async function handleComplete(formData: FormData) {
@@ -48,8 +42,8 @@ async function handleComplete(formData: FormData) {
   if (!session) throw new Error('Not authenticated');
   const orderId = formData.get('orderId') as string;
   await completeProductionOrder(orderId, session.user.id);
-  revalidatePath(`/production/${orderId}`);
-  revalidatePath('/production');
+  revalidatePath(`/ops/production/${orderId}`);
+  revalidatePath('/ops/production');
 }
 
 async function handleCreateBatch(formData: FormData) {
@@ -67,7 +61,7 @@ async function handleCreateBatch(formData: FormData) {
     userId: session.user.id
   });
   
-  revalidatePath(`/production/${orderId}`);
+  revalidatePath(`/ops/production/${orderId}`);
 }
 
 export default async function ProductionOrderDetailPage({
@@ -95,6 +89,8 @@ export default async function ProductionOrderDetailPage({
       workCenter: true,
       template: true,
       createdBy: { select: { id: true, name: true } },
+      assignedTo: { select: { id: true, name: true, role: true } },
+      assignedBy: { select: { id: true, name: true } },
       batches: {
         include: {
           makers: {
@@ -106,6 +102,11 @@ export default async function ProductionOrderDetailPage({
       materials: {
         include: { material: true },
         orderBy: { material: { name: 'asc' } }
+      },
+      productionRuns: {
+        take: 1,
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, status: true }
       }
     }
   });
@@ -126,6 +127,8 @@ export default async function ProductionOrderDetailPage({
   const canBlock = order.status === 'PLANNED' || order.status === 'IN_PROGRESS';
   const canComplete = order.status === 'IN_PROGRESS' && allBatchesReleased;
   const canCreateBatch = order.status !== 'COMPLETED' && order.status !== 'CANCELLED';
+  const isBlocked = order.status === 'BLOCKED';
+  const isArchived = !!order.archivedAt;
 
   return (
     <div className="space-y-6">
@@ -142,29 +145,18 @@ export default async function ProductionOrderDetailPage({
             {order.product.name} • {order.quantityToMake} units
           </p>
         </div>
-        <div className="flex gap-2">
-          {canStart && (
-            <form action={handleStart}>
-              <input type="hidden" name="orderId" value={id} />
-              <button
-                type="submit"
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
-              >
-                Start Production
-              </button>
-            </form>
-          )}
-          {canComplete && (
-            <form action={handleComplete}>
-              <input type="hidden" name="orderId" value={id} />
-              <button
-                type="submit"
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700"
-              >
-                Complete Order
-              </button>
-            </form>
-          )}
+        <div className="flex flex-col items-end gap-2">
+          <ProductionOrderActions
+            orderId={id}
+            orderNumber={order.orderNumber}
+            productName={order.product.name}
+            quantityToMake={order.quantityToMake}
+            status={order.status}
+            currentAssignee={order.assignedTo}
+            canStart={canStart}
+            canComplete={canComplete}
+            canBlock={canBlock}
+          />
           <Link
             href="/ops/production"
             className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900"
@@ -188,6 +180,43 @@ export default async function ProductionOrderDetailPage({
         </div>
       </div>
 
+      {/* Assignment */}
+      <ProductionOrderAssignment
+        orderId={id}
+        orderNumber={order.orderNumber}
+        productName={order.product.name}
+        status={order.status}
+        assignment={{
+          assignedTo: order.assignedTo,
+          assignedBy: order.assignedBy,
+          assignedAt: order.assignedAt ? order.assignedAt.toISOString() : null,
+          assignmentReason: order.assignmentReason,
+        }}
+        userRole={session.user.role}
+      />
+
+      {/* Production Run Link (latest) */}
+      <div className="bg-white shadow rounded-lg p-4">
+        <h2 className="text-sm font-semibold text-gray-900 mb-2">Production Run</h2>
+        {order.productionRuns?.[0] ? (
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm text-gray-600">
+              Latest run status: <span className="font-medium text-gray-900">{order.productionRuns[0].status}</span>
+            </div>
+            <Link
+              href={`/ops/production-runs/${order.productionRuns[0].id}`}
+              className="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
+            >
+              View Run Steps
+            </Link>
+          </div>
+        ) : (
+          <div className="text-sm text-gray-500">
+            No production run yet. Start the order to generate a run and step checklist.
+          </div>
+        )}
+      </div>
+
       {/* Overview */}
       <div className="bg-white shadow rounded-lg p-6">
         <h2 className="text-lg font-medium text-gray-900 mb-4">Order Details</h2>
@@ -195,7 +224,7 @@ export default async function ProductionOrderDetailPage({
           <div>
             <dt className="text-sm font-medium text-gray-500">Product</dt>
             <dd className="mt-1 text-sm text-gray-900">
-              <Link href={`/products/${order.productId}`} className="text-blue-600 hover:text-blue-900">
+                      <Link href={`/ops/products/${order.productId}`} className="text-blue-600 hover:text-blue-900">
                 {order.product.name}
               </Link>
             </dd>
@@ -284,7 +313,7 @@ export default async function ProductionOrderDetailPage({
                 return (
                   <tr key={mat.id} className={mat.shortage > 0 ? 'bg-red-50' : ''}>
                     <td className="py-2 text-sm">
-                      <Link href={`/materials/${mat.materialId}`} className="text-blue-600 hover:text-blue-900">
+                      <Link href={`/ops/materials/${mat.materialId}`} className="text-blue-600 hover:text-blue-900">
                         {mat.material.name}
                       </Link>
                     </td>
@@ -352,7 +381,7 @@ export default async function ProductionOrderDetailPage({
               {order.batches.map(batch => (
                 <tr key={batch.id}>
                   <td className="py-2 text-sm">
-                    <Link href={`/batches/${batch.id}`} className="text-blue-600 hover:text-blue-900 font-medium">
+                    <Link href={`/ops/batches/${batch.id}`} className="text-blue-600 hover:text-blue-900 font-medium">
                       {batch.batchCode}
                     </Link>
                   </td>
@@ -370,7 +399,7 @@ export default async function ProductionOrderDetailPage({
                     }
                   </td>
                   <td className="py-2 text-right">
-                    <Link href={`/batches/${batch.id}`} className="text-sm text-blue-600 hover:text-blue-900">
+                    <Link href={`/ops/batches/${batch.id}`} className="text-sm text-blue-600 hover:text-blue-900">
                       View
                     </Link>
                   </td>
@@ -406,6 +435,31 @@ export default async function ProductionOrderDetailPage({
               Block Order
             </button>
           </form>
+        </div>
+      )}
+
+      {/* Blocked Order Actions (Archive / Unblock) */}
+      {isBlocked && !isArchived && (
+        <BlockedOrderActions
+          orderId={id}
+          orderNumber={order.orderNumber}
+          productName={order.product.name}
+          isArchived={isArchived}
+        />
+      )}
+
+      {/* Archived Notice */}
+      {isArchived && (
+        <div className="bg-gray-100 border border-gray-300 rounded-lg p-6">
+          <h3 className="text-lg font-medium text-gray-700 mb-2">Order Archived</h3>
+          <p className="text-sm text-gray-600">
+            This order was archived on {formatDateTime(order.archivedAt!)}.
+          </p>
+          {order.archiveReason && (
+            <p className="text-sm text-gray-600 mt-2">
+              <span className="font-medium">Reason:</span> {order.archiveReason}
+            </p>
+          )}
         </div>
       )}
     </div>

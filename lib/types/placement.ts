@@ -12,14 +12,14 @@
  */
 
 /**
- * Allowed rotation values for persistence.
+ * Rotation value in whole degrees.
  * 
- * Phase 3: Free rotation is allowed during editing, but on save
- * the value snaps to one of these allowed values.
+ * Free rotation is allowed - any whole degree angle is valid.
+ * Common values (0, 90, -90, 180) are available via quick buttons.
  * 
  * Rotation is VISUAL ONLY - it does not change placement coordinates.
  */
-export type Rotation = 0 | 90 | -90 | 180;
+export type Rotation = number;
 
 /**
  * Physical placement of an element on a label.
@@ -76,6 +76,7 @@ export type BackgroundStyle = 'white' | 'transparent';
  * QR elements:
  * - Must be square (widthIn === heightIn)
  * - barcode field is ignored
+ * - useFrame: if true, wraps QR in "Authenticity Check" frame
  * 
  * BARCODE elements:
  * - heightIn is the bounding box (includes bars + gap + text)
@@ -88,30 +89,23 @@ export interface PlaceableElement {
   placement: Placement;
   background?: BackgroundStyle; // Default: 'white'
   barcode?: BarcodeOptions;
+  useFrame?: boolean; // QR only: wrap in "Authenticity Check" frame
 }
 
 /**
  * Validate that a rotation value is allowed.
+ * Any whole degree is valid.
  */
 export function isValidRotation(value: number): value is Rotation {
-  return value === 0 || value === 90 || value === -90 || value === 180;
+  return Number.isInteger(value);
 }
 
 /**
- * Snap a free rotation angle to the nearest allowed rotation value.
- * Used when committing rotation from handle-based free rotation.
+ * Normalize a rotation angle to a whole degree.
+ * Rounds to nearest integer.
  */
-export function snapToAllowedRotation(angle: number): Rotation {
-  // Normalize to -180 to 180 range
-  let r = angle % 360;
-  if (r > 180) r -= 360;
-  if (r < -180) r += 360;
-  
-  // Find nearest snap point
-  if (r >= -45 && r < 45) return 0;
-  if (r >= 45 && r < 135) return 90;
-  if (r >= -135 && r < -45) return -90;
-  return 180;
+export function normalizeRotation(angle: number): Rotation {
+  return Math.round(angle);
 }
 
 /**
@@ -125,9 +119,9 @@ export function validateElement(
 ): string | null {
   const { placement, type, barcode } = element;
 
-  // Check rotation
+  // Check rotation (must be a whole number)
   if (!isValidRotation(placement.rotation)) {
-    return `Invalid rotation: ${placement.rotation}. Must be 0, 90, or -90.`;
+    return `Invalid rotation: ${placement.rotation}. Must be a whole number.`;
   }
 
   // Check size bounds (must have positive dimensions)

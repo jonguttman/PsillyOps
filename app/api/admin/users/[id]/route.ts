@@ -6,12 +6,12 @@ import { auth } from '@/lib/auth/auth';
 import { handleApiError } from '@/lib/utils/errors';
 import { prisma } from '@/lib/db/prisma';
 
-export async function PATCH(req: NextRequest) {
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    // Extract user ID from URL path (Next.js 15 compliant pattern)
-    const url = new URL(req.url);
-    const segments = url.pathname.split("/").filter(Boolean);
-    const userId = segments[segments.length - 1]; // Last segment is the ID
+    const { id: userId } = await params;
 
     if (!userId) {
       return Response.json(

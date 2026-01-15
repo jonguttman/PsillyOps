@@ -230,7 +230,18 @@ export async function startStep(stepId: string, userId?: string, userRole?: stri
   const result = await prisma.$transaction(async (tx) => {
     const step = await tx.productionRunStep.findUnique({
       where: { id: stepId },
-      select: { id: true, productionRunId: true, status: true, templateKey: true, label: true, required: true, order: true, assignedToUserId: true },
+      select: { 
+        id: true, 
+        productionRunId: true, 
+        status: true, 
+        templateKey: true, 
+        label: true, 
+        required: true, 
+        order: true, 
+        assignedToUserId: true,
+        dependsOnKeys: true,
+        stepType: true,
+      },
     });
 
     if (!step) throw new AppError(ErrorCodes.NOT_FOUND, 'Step not found');
@@ -238,7 +249,7 @@ export async function startStep(stepId: string, userId?: string, userRole?: stri
       throw new AppError(ErrorCodes.VALIDATION_ERROR, `Step is not PENDING (current: ${step.status})`);
     }
 
-    // Assignment enforcement (Phase 5.3)
+    // Assignment enforcement (Phase 5.3) - skip for ADMIN
     if (actorRole !== 'ADMIN') {
       if (!step.assignedToUserId) {
         throw new AppError(ErrorCodes.VALIDATION_ERROR, 'This step must be claimed before it can be started.');
@@ -257,15 +268,49 @@ export async function startStep(stepId: string, userId?: string, userRole?: stri
       throw new AppError(ErrorCodes.VALIDATION_ERROR, `Cannot start steps on a ${run.status} run`);
     }
 
-    const existingInProgress = await tx.productionRunStep.findFirst({
-      where: { productionRunId: step.productionRunId, status: ProductionStepStatus.IN_PROGRESS },
-      select: { id: true, label: true, order: true },
-    });
-    if (existingInProgress) {
-      throw new AppError(
-        ErrorCodes.VALIDATION_ERROR,
-        `Only one step can be IN_PROGRESS. Step ${existingInProgress.order} (${existingInProgress.label}) is already in progress.`
-      );
+    // Check step dependencies
+    const dependsOnKeys = (step.dependsOnKeys as string[]) || [];
+    if (dependsOnKeys.length > 0) {
+      // Get all steps in this run
+      const allSteps = await tx.productionRunStep.findMany({
+        where: { productionRunId: step.productionRunId },
+        select: { templateKey: true, status: true, label: true },
+      });
+
+      // Check if all dependencies are completed
+      const incompleteDepends: string[] = [];
+      for (const depKey of dependsOnKeys) {
+        const depStep = allSteps.find(s => s.templateKey === depKey);
+        if (depStep && depStep.status !== ProductionStepStatus.COMPLETED && depStep.status !== ProductionStepStatus.SKIPPED) {
+          incompleteDepends.push(depStep.label);
+        }
+      }
+
+      if (incompleteDepends.length > 0) {
+        throw new AppError(
+          ErrorCodes.VALIDATION_ERROR,
+          `Cannot start this step. Waiting on: ${incompleteDepends.join(', ')}`
+        );
+      }
+    }
+
+    // Check if there's already a step in progress (only one at a time for INSTRUCTION steps)
+    // EQUIPMENT_CHECK and MATERIAL_ISSUE steps can run in parallel
+    if (step.stepType === 'INSTRUCTION') {
+      const existingInProgress = await tx.productionRunStep.findFirst({
+        where: { 
+          productionRunId: step.productionRunId, 
+          status: ProductionStepStatus.IN_PROGRESS,
+          stepType: 'INSTRUCTION' // Only check for other instruction steps
+        },
+        select: { id: true, label: true, order: true },
+      });
+      if (existingInProgress) {
+        throw new AppError(
+          ErrorCodes.VALIDATION_ERROR,
+          `Only one instruction step can be IN_PROGRESS. Step ${existingInProgress.order} (${existingInProgress.label}) is already in progress.`
+        );
+      }
     }
 
     const now = new Date();
@@ -748,6 +793,8 @@ export async function getProductionRun(runId: string) {
       product: { select: { id: true, name: true, sku: true } },
       qrToken: { select: { id: true, token: true, status: true } },
       steps: { orderBy: { order: 'asc' } },
+      assignedTo: { select: { id: true, name: true, role: true } },
+      assignedBy: { select: { id: true, name: true } },
     },
   });
 

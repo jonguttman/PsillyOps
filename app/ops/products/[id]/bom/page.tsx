@@ -43,7 +43,7 @@ async function addBOMItem(formData: FormData) {
     });
   }
 
-  revalidatePath(`/products/${productId}/bom`);
+  revalidatePath(`/ops/products/${productId}/bom`);
 }
 
 async function updateBOMItem(formData: FormData) {
@@ -58,7 +58,7 @@ async function updateBOMItem(formData: FormData) {
     data: { quantityPerUnit },
   });
 
-  revalidatePath(`/products/${productId}/bom`);
+  revalidatePath(`/ops/products/${productId}/bom`);
 }
 
 async function removeBOMItem(formData: FormData) {
@@ -72,7 +72,7 @@ async function removeBOMItem(formData: FormData) {
     data: { active: false },
   });
 
-  revalidatePath(`/products/${productId}/bom`);
+  revalidatePath(`/ops/products/${productId}/bom`);
 }
 
 export default async function BOMEditorPage({

@@ -4,11 +4,27 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { ArchiveButton } from "./ArchiveButton";
-import PrintLabelButton from "@/components/labels/PrintLabelButton";
+import ProductLabelSection from "@/components/labels/ProductLabelSection";
 import { logAction } from "@/lib/services/loggingService";
-import { ActivityEntity } from "@prisma/client";
+import { ActivityEntity, Prisma } from "@prisma/client";
 import { QRBehaviorPanelServer } from "@/components/qr/QRBehaviorPanelServer";
 import { QRTokenInspector } from "@/components/qr/QRTokenInspector";
+import { PredictionEditor } from "@/components/products/PredictionEditor";
+import { getActivePrediction, createPredictionProfile, getActivePredictionsByMode } from "@/lib/services/predictionService";
+import { ExperienceMode } from "@prisma/client";
+import { calculateProductCost } from "@/lib/services/costingService";
+import CalculatedCostDisplay from "./CalculatedCostDisplay";
+import { ManufacturingSetup } from "@/components/products/ManufacturingSetup";
+
+// Types for manufacturing configuration
+interface ManufacturingStep {
+  key: string;
+  label: string;
+  order: number;
+  required: boolean;
+  dependsOnKeys: string[];
+  estimatedMinutes?: number;
+}
 
 const UNIT_OPTIONS = [
   "jar",
@@ -28,6 +44,7 @@ async function updateProduct(formData: FormData) {
   const id = formData.get("id") as string;
   const name = formData.get("name") as string;
   const sku = formData.get("sku") as string;
+  const barcodeValueRaw = formData.get("barcodeValue") as string;
   const unitOfMeasure = formData.get("unitOfMeasure") as string;
   const reorderPoint = parseInt(formData.get("reorderPoint") as string, 10) || 0;
   const leadTimeDays = parseInt(formData.get("leadTimeDays") as string, 10) || 0;
@@ -46,11 +63,19 @@ async function updateProduct(formData: FormData) {
 
   const strainChanged = existingProduct && existingProduct.strainId !== strainId;
 
+  // Barcode logic: If barcodeValue is empty or matches old SKU, default to new SKU
+  // This ensures barcode stays in sync with SKU unless user explicitly customized it
+  let barcodeValue: string | null = barcodeValueRaw?.trim() || null;
+  if (!barcodeValue || barcodeValue === existingProduct?.sku) {
+    barcodeValue = sku; // Default to SKU
+  }
+
   await prisma.product.update({
     where: { id },
     data: {
       name,
       sku,
+      barcodeValue,
       unitOfMeasure,
       reorderPoint,
       leadTimeDays,
@@ -94,6 +119,52 @@ async function archiveProduct(formData: FormData) {
 
   revalidatePath("/ops/products");
   redirect("/ops/products");
+}
+
+async function saveManufacturingSetup(
+  productId: string,
+  steps: ManufacturingStep[],
+  equipment: string[]
+) {
+  "use server";
+
+  const session = await auth();
+  if (!session?.user?.id) {
+    throw new Error("Not authenticated");
+  }
+
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+    select: { name: true, manufacturingSteps: true, requiredEquipment: true }
+  });
+
+  if (!product) {
+    throw new Error("Product not found");
+  }
+
+  await prisma.product.update({
+    where: { id: productId },
+    data: {
+      manufacturingSteps: steps as unknown as Prisma.InputJsonValue,
+      requiredEquipment: equipment as unknown as Prisma.InputJsonValue,
+    },
+  });
+
+  await logAction({
+    entityType: ActivityEntity.PRODUCT,
+    entityId: productId,
+    action: 'manufacturing_setup_updated',
+    userId: session.user.id,
+    summary: `Updated manufacturing setup for "${product.name}"`,
+    before: { 
+      manufacturingSteps: product.manufacturingSteps, 
+      requiredEquipment: product.requiredEquipment 
+    },
+    after: { manufacturingSteps: steps, requiredEquipment: equipment },
+    tags: ['product', 'manufacturing', 'updated']
+  });
+
+  revalidatePath(`/ops/products/${productId}`);
 }
 
 export default async function ProductDetailPage({
@@ -140,6 +211,14 @@ export default async function ProductDetailPage({
   if (!product) {
     notFound();
   }
+
+  // Calculate product cost from BOM
+  const productCost = await calculateProductCost(id);
+
+  // Get active predictions for both modes
+  const activePredictions = await getActivePredictionsByMode(id);
+  const defaultMode = product.defaultExperienceMode;
+  const activePrediction = activePredictions[defaultMode];
 
   // Fetch all active strains for the dropdown
   const strains = await prisma.strain.findMany({
@@ -188,11 +267,6 @@ export default async function ProductDetailPage({
           </p>
         </div>
         <div className="flex gap-2">
-          <PrintLabelButton
-            entityType="PRODUCT"
-            entityId={id}
-            entityCode={product.sku}
-          />
           {!isEditing ? (
             <>
               <Link
@@ -254,6 +328,22 @@ export default async function ProductDetailPage({
                   required
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                 />
+              </div>
+              <div>
+                <label htmlFor="barcodeValue" className="block text-sm font-medium text-gray-700">
+                  Barcode Value
+                </label>
+                <input
+                  type="text"
+                  name="barcodeValue"
+                  id="barcodeValue"
+                  defaultValue={product.barcodeValue ?? product.sku}
+                  placeholder={product.sku}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Defaults to SKU. Used when printing labels with barcodes.
+                </p>
               </div>
               <div>
                 <label htmlFor="unitOfMeasure" className="block text-sm font-medium text-gray-700">
@@ -374,6 +464,12 @@ export default async function ProductDetailPage({
               </dd>
             </div>
             <div>
+              <dt className="text-sm font-medium text-gray-500">Barcode</dt>
+              <dd className="mt-1 text-sm text-gray-900 font-mono">
+                {product.barcodeValue ?? product.sku}
+              </dd>
+            </div>
+            <div>
               <dt className="text-sm font-medium text-gray-500">Unit of Measure</dt>
               <dd className="mt-1 text-sm text-gray-900">{product.unitOfMeasure}</dd>
             </div>
@@ -399,8 +495,38 @@ export default async function ProductDetailPage({
                   : "Not set"}
               </dd>
             </div>
+            <CalculatedCostDisplay
+              totalCostPerUnit={productCost.totalCostPerUnit}
+              bomBreakdown={productCost.bomBreakdown}
+              hasBom={product.bom.length > 0}
+            />
           </dl>
         )}
+      </div>
+
+      {/* Label Settings - "what am I printing" lives here in Product Settings */}
+      <ProductLabelSection
+        entityType="PRODUCT"
+        entityId={id}
+        entityCode={product.sku}
+      />
+
+      {/* Predicted Experience Section */}
+      <div className="bg-white shadow rounded-lg p-6">
+        <PredictionEditor
+          productId={id}
+          defaultMode={defaultMode}
+          initialPredictions={activePredictions}
+          onSave={async (weights, experienceMode) => {
+            'use server';
+            const session = await auth();
+            if (!session?.user?.id) {
+              throw new Error('User session not found');
+            }
+            await createPredictionProfile(id, weights, experienceMode, session.user.id);
+            revalidatePath(`/ops/products/${id}`);
+          }}
+        />
       </div>
 
       {/* Inventory Summary Card */}
@@ -470,6 +596,17 @@ export default async function ProductDetailPage({
         )}
       </div>
 
+      {/* Manufacturing Setup */}
+      <ManufacturingSetup
+        productId={id}
+        initialSteps={(product.manufacturingSteps as unknown as ManufacturingStep[]) || []}
+        initialEquipment={(product.requiredEquipment as unknown as string[]) || []}
+        onSave={async (steps, equipment) => {
+          'use server';
+          await saveManufacturingSetup(id, steps, equipment);
+        }}
+      />
+
       {/* QR Behavior Panel */}
       <QRBehaviorPanelServer
         entityType="PRODUCT"
@@ -511,7 +648,7 @@ export default async function ProductDetailPage({
               {product.productionOrders.map((order) => (
                 <tr key={order.id}>
                   <td className="py-2 text-sm text-blue-600 hover:text-blue-900">
-                    <Link href={`/production/${order.id}`}>{order.orderNumber}</Link>
+                    <Link href={`/ops/production/${order.id}`}>{order.orderNumber}</Link>
                   </td>
                   <td className="py-2 text-sm text-gray-900">{order.quantityToMake}</td>
                   <td className="py-2">

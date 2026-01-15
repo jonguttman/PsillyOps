@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import BlockedOrderAlertActions from './BlockedOrderAlertActions';
 
 interface LowStockMaterial {
   id: string;
@@ -84,22 +85,9 @@ export default function AlertsPanel({
           </li>
         )}
 
-        {/* Blocked Production Orders */}
+        {/* Blocked Production Orders - with inline actions */}
         {blockedOrders.length > 0 && (
-          <li className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 bg-red-500 rounded-full flex-shrink-0" />
-              <span className="text-sm text-gray-700">
-                <strong>{blockedOrders.length}</strong> production order{blockedOrders.length !== 1 ? 's' : ''} blocked
-              </span>
-            </div>
-            <Link
-              href="/ops/production"
-              className="text-xs font-medium text-blue-600 hover:text-blue-800"
-            >
-              View
-            </Link>
-          </li>
+          <BlockedOrderAlertActions blockedOrders={blockedOrders} />
         )}
 
         {/* QC Hold Batches */}

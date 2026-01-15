@@ -36,6 +36,9 @@
 17. [Troubleshooting](#troubleshooting)
 18. [Glossary](#glossary)
 
+**Appendices:**
+- [Appendix A: TripDAR System Complete Guide](#appendix-a-tripdar-system-complete-guide)
+
 ---
 
 ## Overview
@@ -707,7 +710,39 @@ The Production page displays orders in a Kanban-style board with columns:
 - Progress bar (produced vs. target)
 - Scheduled date
 - Work center (if assigned)
+- Assignee (if assigned)
 - Status tags (Shortage, QC Pending, batch count)
+
+**Unassigned Orders Queue:**
+The dashboard displays a prominent queue of unassigned production orders for supervisors to review and assign.
+
+### Setting Up Product Manufacturing
+
+Before starting production, configure manufacturing details for each product:
+
+1. Navigate to **Products** → Select a product
+2. Scroll to **Manufacturing Setup** section
+3. Click **Edit**
+
+**Required Equipment:**
+- Add equipment needed for production (e.g., "Scale", "Mixer", "Capsule Machine")
+- These become equipment check steps when starting production
+
+**Manufacturing Steps:**
+- Add ordered steps for production (e.g., "Weigh ingredients", "Mix powder", "Fill capsules")
+- For each step, configure:
+  - **Label**: Step name
+  - **Estimated Minutes**: Time estimate (optional)
+  - **Required**: Whether step must be completed
+  - **Depends On**: Previous step that must complete first (for sequential steps)
+- Steps can be reordered using the up/down arrows
+- Click **Save** when done
+
+**Step Dependencies:**
+- Steps with no dependencies can run in parallel
+- Steps with dependencies must wait for the dependent step to complete
+- Equipment checks and material issuance steps run in parallel
+- Manufacturing instruction steps run sequentially by default
 
 ### Creating a Production Order
 
@@ -725,6 +760,28 @@ The Production page displays orders in a Kanban-style board with columns:
 - Shows Available vs. Required for each material
 - Highlights shortages in red
 - Creates `ProductionOrderMaterial` records for tracking
+
+### Assigning Production Orders
+
+Production orders can be assigned to team members for accountability:
+
+**Assign During Start:**
+1. Open a PLANNED production order
+2. Click **"Start Production"**
+3. A modal appears showing eligible assignees
+4. Select a team member or leave unassigned
+5. Click **"Start Production"**
+
+**Assign Later:**
+1. Navigate to the production order detail page
+2. Click **"Assign"** button
+3. Select a team member from the list
+4. Provide a reason if reassigning
+
+**Viewing Assignments:**
+- Assigned orders appear in the assignee's **My Work** page
+- Supervisors see unassigned orders in the dashboard queue
+- Admins can view **All Work** to see all team assignments
 
 ### Work Centers
 
@@ -758,37 +815,82 @@ Templates save time for recurring production runs:
 - Template's default batch size auto-fills
 - Instructions provide guidance for operators
 
-### Production Runs (QR-driven Step Checklist)
+### Production Runs (Step-by-Step Execution)
 
-Production Runs provide a **step-by-step checklist** for making a product batch, where a **single QR token follows the run** from start to finish.
+Production Runs provide a **step-by-step checklist** for executing production work. When you start a Production Order, a Production Run is automatically created with all necessary steps.
 
-**Key concepts**
-- **Product step templates**: Each product has an ordered, gap-free list of default step templates (label + required flag).
-  - Editable at: `Products → (open product) → /products/[id]/steps`
-  - Changes affect **future runs only**
-- **Run step snapshot**: When a run is created, it receives an **immutable snapshot** of steps copied from the product templates.
-- **Run-only overrides (Admin/Supervisor)**: A run’s steps can be adjusted **before any step starts**:
-  - Add/remove/reorder steps
-  - Mark a step required/optional (run-only)
-  - These overrides **do not modify** product templates
+**How Production Runs Are Created:**
+1. Starting a Production Order automatically creates a Production Run
+2. The run is linked to the order and inherits its assignment
+3. Batches are created based on quantity ÷ batch size
+4. Steps are generated from the product's manufacturing setup
+
+**Step Types:**
+| Type | Icon | Description |
+|------|------|-------------|
+| EQUIPMENT_CHECK | 🔧 | Gather required equipment |
+| MATERIAL_ISSUE | 📦 | Issue materials from inventory |
+| INSTRUCTION | 📝 | Manufacturing step to perform |
+
+**Step Dependencies:**
+- Equipment checks run in parallel (gather all equipment at once)
+- Material issuance runs in parallel (issue all materials at once)
+- First manufacturing step depends on all materials being issued
+- Subsequent steps follow the dependency chain configured in the product
+
+**Step Execution Rules:**
+- A step can only start if all its dependencies are COMPLETED or SKIPPED
+- Only one INSTRUCTION step can be IN_PROGRESS at a time
+- EQUIPMENT_CHECK and MATERIAL_ISSUE steps can run in parallel
+- Steps show which prior steps must complete before they can start
+
+**Assignment Rules:**
+- Production Runs inherit assignment from the Production Order
+- Runs can be reassigned at any time (with reason for audit)
+- Assigned worker sees the run in their **My Work** page
+- Only the assigned worker (or ADMIN) can complete steps
 
 **Scanning / QR behavior**
-- Production Run QR codes always encode the canonical path: `/qr/{token}`
-- Scanning redirects to the run detail page and logs the scan event for audit.
-
-**Step assignment rules**
-- Any worker may **claim** an unassigned step.
-- Only the **assigned worker** may Start/Stop/Complete/Skip that step.
-- **ADMIN override** is allowed.
+- Production Run QR codes encode the canonical path: `/qr/{token}`
+- Scanning redirects to the run detail page and logs the scan event
 
 **Skip justification**
-- Skipping requires a reason (minimum length enforced in the UI/API).
-- Skipping a **required** step will raise a **run health warning** on the run page and in the run list.
-  - Required steps are visually marked in the checklist, and skipped steps show their justification inline.
+- Skipping requires a reason (minimum length enforced)
+- Skipping a **required** step raises a **run health warning**
+- Required steps are visually marked; skipped steps show their justification
 
 **AI boundaries (safe-by-default)**
-- AI may **propose** production run creation and run edits.
-- AI will **never** silently mutate production data — a human must click **Confirm**.
+- AI may **propose** production run creation and run edits
+- AI will **never** silently mutate production data — a human must click **Confirm**
+
+### My Work Page
+
+The **My Work** page shows all production work assigned to the current user.
+
+**Accessing My Work:**
+1. Navigate to **Production Runs** → **My Work**
+2. Or click your name in the header → **My Work**
+
+**What You See:**
+- **Assigned Production Orders**: Orders assigned to you
+  - Click to expand and see batches and next steps
+  - Shows order number, product, quantity, and status
+- **Assigned Production Runs**: Standalone runs assigned to you
+  - Shows product, quantity, and pending steps
+- **Assigned Steps**: Individual steps assigned to you (legacy)
+
+**Hierarchical View:**
+1. Click on a Production Order to expand it
+2. See the batches created for that order
+3. See the next pending steps
+4. Click **"Continue Production"** to go to the run detail
+
+**Admin: All Work View:**
+Admins can toggle between **My Work** and **All Work** to see:
+- All active production orders across the team
+- Who is assigned to each order
+- Unassigned orders that need assignment
+- Admins can complete steps on behalf of other users
 
 ### Production Order Lifecycle
 
@@ -804,8 +906,26 @@ PLANNED → IN_PROGRESS → COMPLETED
 **Start Production:**
 1. Open production order detail
 2. Click **"Start Production"**
-3. Status changes to IN_PROGRESS
-4. `startedAt` timestamp recorded
+3. **Assignment Modal** appears:
+   - Select a team member to assign the work
+   - Or leave unassigned to assign later
+4. Click **"Start Production"** to confirm
+5. System automatically creates:
+   - **Production Run** linked to the order
+   - **Batches** based on quantity ÷ batch size
+   - **Steps** from product manufacturing setup:
+     - Equipment check steps (from product's required equipment)
+     - Material issuance steps (from product's BOM)
+     - Manufacturing instruction steps (from product's manufacturing steps)
+6. Status changes to IN_PROGRESS
+7. `startedAt` timestamp recorded
+8. Toast notification confirms creation
+
+**What Gets Created:**
+- If quantity = 500 and batch size = 100, system creates 5 batches
+- Each batch gets a unique batch code (SKU-DATE-XX)
+- All batches are linked to the Production Run
+- Steps are created with dependency tracking
 
 **Issue Materials:**
 1. Click **"Issue Materials"** on order detail
@@ -1620,7 +1740,74 @@ All product fields can be edited:
 
 ---
 
-### 6. BOM Editor
+### 6. Predicted Experience (TripDAR)
+
+**Location:** Product detail page → "Predicted Experience" section
+
+**Access:** ADMIN and PRODUCTION roles can edit predictions
+
+#### Purpose
+
+The Predicted Experience feature allows you to set expected experience profiles for products. These predictions help customers understand what to expect and enable the TripDAR experience review system to collect feedback comparing predictions to actual experiences.
+
+#### Experience Modes
+
+Products can have predictions for two different experience modes:
+
+- **MICRO**: Microdose experiences - subtle, functional enhancement
+- **MACRO**: Macro journey experiences - full experience, deeper exploration
+
+A product can have both MICRO and MACRO profiles simultaneously, allowing you to set different expectations for different use cases.
+
+#### Setting Predictions
+
+1. Navigate to **Products** → Click **"View"** on a product
+2. Scroll to the **"Predicted Experience"** section
+3. Use the mode toggle to switch between **MICRO** and **MACRO**
+4. Adjust the five vibe sliders to set the expected experience distribution:
+   - **Transcend**: Mystical/beyond-self (MACRO) or Subtle uplift (MICRO)
+   - **Energize**: Stimulation/intensity (MACRO) or Clarity/energy (MICRO)
+   - **Create**: Visionary/imagination (MACRO) or Creative flow (MICRO)
+   - **Transform**: Breakthrough/dissolution (MACRO) or Perspective shift (MICRO)
+   - **Connect**: Connection/unity (MACRO) or Emotional openness (MICRO)
+5. Ensure the weights sum to 1.0 (100%)
+6. Click **"Save [MODE] Prediction Profile"**
+
+#### Vibe Vocabulary
+
+The labels for each vibe change based on the selected mode:
+
+**MICRO Mode Labels:**
+- Transcend: "Subtle uplift"
+- Energize: "Clarity / energy"
+- Create: "Creative flow"
+- Transform: "Perspective shift"
+- Connect: "Emotional openness"
+
+**MACRO Mode Labels:**
+- Transcend: "Mystical / beyond-self"
+- Energize: "Stimulation / intensity"
+- Create: "Visionary / imagination"
+- Transform: "Breakthrough / dissolution"
+- Connect: "Connection / unity"
+
+#### Product Default Mode
+
+Each product has a `defaultExperienceMode` (defaults to MACRO) that determines:
+- Which mode the Prediction Editor opens first
+- Which mode the survey preselects when both profiles exist
+- Which mode is used when mode isn't specified elsewhere
+
+#### Immutable Profiles
+
+Prediction profiles are immutable snapshots. Each time you save, a new profile version is created. This ensures:
+- Historical predictions are preserved
+- You can track how predictions evolved over time
+- Reviews are always linked to the specific prediction profile that was active when they were submitted
+
+---
+
+### 7. BOM Editor
 
 **URL:** `/products/[id]/bom`
 
@@ -1681,7 +1868,7 @@ The Bill of Materials (BOM) defines what raw materials are needed to produce one
 
 ---
 
-### 7. Inventory Summary
+### 8. Inventory Summary
 
 The Inventory Summary card on the product detail page shows current stock levels.
 
@@ -1706,7 +1893,7 @@ Inventory is pulled from the `InventoryItem` table where:
 
 ---
 
-### 8. Recent Production
+### 9. Recent Production
 
 The Recent Production card shows the last 5 production orders for this product.
 
@@ -1734,7 +1921,7 @@ Clicking an order number navigates to `/production/[orderId]` (when implemented)
 
 ---
 
-### 9. Product Creation Workflow Diagram
+### 10. Product Creation Workflow Diagram
 
 ```mermaid
 sequenceDiagram
@@ -1767,7 +1954,7 @@ sequenceDiagram
 
 ---
 
-### 10. Product Data Flow Diagram
+### 11. Product Data Flow Diagram
 
 ```mermaid
 flowchart TB
@@ -2529,6 +2716,364 @@ If vendor ships in multiple deliveries:
 
 ---
 
+## TripDAR Seals
+
+TripDAR Certification Seals are physical stickers containing QR codes that indicate a product participates in the TripDAR anonymous experience data collection system. Seals are generated through the Ops portal and printed on label stock.
+
+### Generating TripDAR Seals
+
+**Location:** Ops → TripDAR labels (`/ops/seals`)
+
+**Access:** ADMIN and WAREHOUSE roles
+
+#### Generate New Seals (Recommended)
+
+This is the fastest way to create TripDAR seals:
+
+1. Navigate to **Ops** → **TripDAR labels**
+2. Ensure **"Generate New Seals"** mode is selected (default)
+3. Enter the **Number of Seals** you want to create (1-250)
+4. Optionally select a **Product** to link the seals to:
+   - Linked seals can be tracked back to the product
+   - Unlinked seals can be assigned to partners later
+5. Configure print settings:
+   - **Paper Size**: US Letter, A4, or Custom dimensions
+   - **Seal Diameter**: 1.25", 1.5", or 2"
+6. Click **"Download PDF"** or **"Download SVG Sheets"**
+
+The system will:
+- Create unique QR tokens for each seal
+- Generate the seal artwork with embedded QR codes
+- Create a `SealSheet` record linking all tokens
+- Log the generation event for audit
+
+#### Use Existing Tokens
+
+If you have pre-existing QR tokens (e.g., from product label printing):
+
+1. Select **"Use Existing Tokens"** mode
+2. Paste token values (one per line or comma-separated)
+3. Configure print settings
+4. Generate PDF or SVG
+
+### Seal States
+
+When scanned, seals display different states on the `/seal/[token]` page:
+
+| State | Meaning | Display |
+|-------|---------|---------|
+| Sheet Unassigned | Seal not yet assigned to a partner | "TripDAR Ready — not yet activated" |
+| Seal Unbound | Assigned to partner but not linked to product | "TripDAR Ready — awaiting product assignment" |
+| Active | Fully bound and participating | "TripDAR Certified — participates in experience data" |
+| Revoked | Disabled by admin | Revoked message with reason |
+
+### Important Notes
+
+- **Seals ≠ Authenticity**: TripDAR seals indicate experience data participation, not product authenticity
+- **Same Token System**: Seals use the same `QRToken` infrastructure as product labels
+- **Deterministic Generation**: Same token always produces identical seal artwork
+- **Partner Assignment**: Seals can be assigned to TripDAR Partners for their products
+
+### Seal Tuner (Advanced)
+
+**Location:** Ops → TripDAR labels → "Open Seal Tuner" button
+
+**Access:** ADMIN and WAREHOUSE roles
+
+The Seal Tuner is an advanced calibration tool for fine-tuning the visual appearance of TripDAR seals. It provides real-time preview and adjustment of the spore field density, QR code integration, and base layer styling.
+
+#### Opening the Tuner
+
+1. Navigate to **Ops** → **TripDAR labels**
+2. Click the **"Open Seal Tuner"** button
+3. A slide-out panel appears with preview on the left and controls on the right
+
+#### Preview Panel (Left Side)
+
+- **Live Preview**: Shows the seal with current settings using a test token (TUNER_PREVIEW_001)
+- **Show Scan Safety Overlay**: Toggle to display zone boundaries (QR core, transition, outer)
+- **DPI Simulation**: Preview how the seal looks at different print resolutions (300 DPI, 150 DPI, 72 DPI)
+- **Recent Scan Tests**: Shows results of scanning the preview QR with your phone
+
+#### Base Presets
+
+Choose from four algorithm presets that define the spore field generation approach:
+
+| Preset | Description |
+|--------|-------------|
+| **Dot Zones** | Basic radial density zones, small uniform particles |
+| **Quiet Core** | 3-zone system with hard QR exclusion |
+| **Module Masked** | Full QR module awareness, respects light/dark modules |
+| **Material Unified** | Spore particles sized to match QR dots for visual cohesion |
+
+#### Core Density Controls
+
+- **Spore Count**: Total number of spore particles (10,000 - 100,000)
+- **Min Opacity**: Minimum particle opacity (0 - 0.5)
+- **Max Opacity**: Maximum particle opacity (0.5 - 1.0)
+
+#### Zone Boundaries
+
+- **Zone A End (QR Core)**: Where the hard exclusion zone ends (as % of QR radius)
+- **Zone B End (Transition)**: Where the transition zone ends (as % of QR radius)
+
+#### QR Size
+
+- **QR Scale**: Adjust the QR code size (50% - 150% of default)
+
+#### Quiet Core
+
+- **Quiet Core Factor**: Size of the absolute no-spore zone at center
+- **Finder Exclusion**: Buffer around QR finder patterns (1.0x - 2.0x)
+
+#### Base Layer Controls
+
+Adjust the visibility of the seal's structural elements:
+
+- **Outer Ring**: Color and opacity of the outer decorative ring
+- **Text Ring**: Color and opacity of the "TripDAR CERTIFIED" text band
+- **Radar Lines**: Color and opacity of the radar sweep lines
+
+#### Saving Custom Presets
+
+1. Adjust settings to your preference
+2. Enter a name in the **"Save as Custom Preset"** field
+3. Click **Save**
+
+Custom presets are saved to the database and can be reused.
+
+#### Exporting Calibration PDFs
+
+1. Select desired **Export Sizes** (1.25", 1.5", 2")
+2. Choose **Paper Size** (Letter or A4)
+3. Click **"Export Calibration PDF"**
+
+The PDF includes:
+- Multiple seal sizes for comparison
+- Cut guides for testing
+- Embedded configuration settings
+
+#### Tips for Scan Reliability
+
+- **Higher Quiet Core Factor** = more reliable scanning but less artistic integration
+- **Lower Spore Count** = cleaner QR but less visual density
+- **Module Masked preset** provides the best balance of aesthetics and scan reliability
+- Test scans with your actual phone camera before printing production runs
+
+---
+
+## TripDAR Insights
+
+TripDAR (Trip Data & Analytics Repository) is a privacy-forward, trust-first experience data collection system that gathers anonymous feedback comparing predicted product experiences to actual user experiences. This system is designed for internal operations and future ML readiness.
+
+### Core Principles
+
+- **No PII**: No personally identifying information is ever collected or stored
+- **Optional Participation**: All questions are skippable; skipping is valid data
+- **Neutral Responses Valued**: "No change" responses are as valuable as positive ones
+- **Non-Blocking**: The system observes patterns silently but never blocks or notifies users
+- **Signal Quality Focus**: Emphasis on language formation and signal quality, not outcome claims
+
+### Predicted Experience Management (Admin & Production)
+
+**Location:** Product detail page → "Predicted Experience" section
+
+**Access:** ADMIN and PRODUCTION roles
+
+#### Setting Product Predictions
+
+1. Navigate to **Products** → Click **"View"** on a product
+2. Scroll to the **"Predicted Experience"** section
+3. Use the **Mode Toggle** to switch between **MICRO** and **MACRO**
+4. Adjust the five vibe sliders (weights must sum to 1.0):
+   - Each vibe has mode-specific labels (see [Vibe Vocabulary](#vibe-vocabulary) below)
+   - Use the sliders to set the expected distribution
+5. Click **"Save [MODE] Prediction Profile"**
+
+#### Experience Modes
+
+- **MICRO**: Microdose experiences - subtle, functional enhancement
+- **MACRO**: Macro journey experiences - full experience, deeper exploration
+
+Products can have both MICRO and MACRO profiles simultaneously. The product's `defaultExperienceMode` determines which mode is preselected.
+
+#### Vibe Vocabulary
+
+The labels for each vibe change based on the selected mode:
+
+**MICRO Mode:**
+- Transcend: "Subtle uplift"
+- Energize: "Clarity / energy"
+- Create: "Creative flow"
+- Transform: "Perspective shift"
+- Connect: "Emotional openness"
+
+**MACRO Mode:**
+- Transcend: "Mystical / beyond-self"
+- Energize: "Stimulation / intensity"
+- Create: "Visionary / imagination"
+- Transform: "Breakthrough / dissolution"
+- Connect: "Connection / unity"
+
+#### Immutable Profiles
+
+Prediction profiles are immutable snapshots. Each save creates a new profile version, preserving history and ensuring reviews are linked to the specific prediction that was active when submitted.
+
+### TripDAR Dashboard (Admin & Analyst)
+
+**Location:** Insights → TripDAR
+
+**Access:** ADMIN and ANALYST roles
+
+#### Dashboard Overview
+
+The TripDAR dashboard provides a comprehensive view of experience review data:
+
+**Goal Progress:**
+- Shows progress toward the global review goal (default: 1,000 reviews)
+- Configurable via `SystemConfig` key `TRIPDAR_REVIEW_GOAL_GLOBAL`
+- Progress bar with percentage complete
+
+**Key Metrics:**
+- **Total Reviews**: All-time review count
+- **Weekly Submissions**: Reviews submitted in the last 7 days
+- **Completion Rate**: Percentage of questions answered vs. skipped
+- **Skip Rate**: Percentage of questions skipped
+
+**Experience Mode Breakdown:**
+- **MICRO**: Total reviews and weekly submissions for microdose experiences
+- **MACRO**: Total reviews and weekly submissions for macro journey experiences
+
+**Data Quality Metrics:**
+- **Neutral Response Rate**: Percentage of reviews with neutral/no-change responses
+- **Integrity Breakdown**: Clean vs. flagged reviews (based on integrity patterns)
+
+#### Quick Actions
+
+- **Browse Reviews**: Navigate to the review browser for detailed filtering
+- **Export Data**: Download CSV or JSON exports for ML pipelines
+
+### Review Browser (Admin & Analyst)
+
+**Location:** Insights → TripDAR → Reviews
+
+**Access:** ADMIN and ANALYST roles
+
+#### Filtering Reviews
+
+The review browser supports multiple filters:
+
+- **Product ID**: Filter by specific product
+- **Batch ID**: Filter by specific batch
+- **Experience Mode**: Filter by MICRO or MACRO
+- **Integrity Status**: Filter by flagged or clean reviews
+
+#### Review Table Columns
+
+- **Product**: Product name, SKU, and batch code (if applicable)
+- **Mode**: Experience mode badge (MICRO or MACRO)
+- **Overall Match**: Match score (0-4) or "Skipped"
+- **Completion**: Completion rate percentage
+- **Flags**: Integrity and content flags (if any)
+- **Date**: Review submission timestamp
+
+#### Review Details
+
+Click any review to see:
+- Full review data including all vibe deltas
+- Context information (first time, dose, setting)
+- Optional free-text note
+- Integrity and content flags
+- Linked prediction profile
+
+### Data Export (Admin & Analyst)
+
+**Location:** Insights → TripDAR → Export
+
+**Access:** ADMIN and ANALYST roles
+
+#### Export Formats
+
+- **CSV**: Comma-separated values for spreadsheet analysis
+- **JSON**: Structured JSON for ML pipelines
+
+#### Export Fields
+
+Exports include:
+- Review ID, product ID, product name, product SKU
+- Batch ID and batch code (if applicable)
+- **Experience Mode** (MICRO or MACRO)
+- Overall match score and vibe deltas
+- Context fields (first time, dose bands, setting)
+- Free-text note
+- Completion rate
+- Timestamp
+
+#### Filtering Exports
+
+Exports can be filtered by:
+- Product ID
+- Batch ID
+- Experience Mode
+- Date range (from/to)
+- Integrity status (flagged/clean)
+
+### Public Experience Survey
+
+**Location:** Public transparency page (accessed via QR code scan)
+
+**Access:** No authentication required
+
+#### Survey Entry Points
+
+1. **Explicit Button**: "Share Your Experience" button on the transparency page
+2. **Soft Nudge**: Dismissible prompt after scrolling or time delay (12-20 seconds or 60% scroll)
+
+#### Mode Selection
+
+If a product has both MICRO and MACRO prediction profiles:
+1. User sees a mode selection screen: "How did you use it?"
+2. Two options:
+   - **Microdose**: Subtle, functional enhancement
+   - **Macro Journey**: Full experience, deeper exploration
+3. User selects their mode
+4. Survey proceeds with mode-specific labels
+
+If only one profile exists, mode is automatically locked and no selection is shown.
+
+#### Survey Questions
+
+All questions are optional and skippable:
+
+1. **Privacy Disclosure**: Explains data collection policy
+2. **Overall Match**: How well did your experience match expectations? (0-4 scale)
+3. **Vibe Comparison**: For each of the 5 vibes, how did it compare to predicted? (5-point slider)
+4. **Context (Optional)**:
+   - First time trying this product? (Yes/No/Skip)
+   - Dose in grams (ranges or "Prefer not to say")
+   - Dose relative to typical (Less/Typical/More/First time/Prefer not to say)
+   - Setting (Solo, Social, Nature, Ceremony, Work, Other, Prefer not to say)
+5. **Free-Text Note**: Optional note (280-500 characters)
+
+#### Privacy & Data Collection
+
+The survey clearly discloses:
+- No names, emails, accounts, or precise location collected
+- No personal identification
+- Data used only in aggregate
+- No revelation of internal integrity mechanisms
+
+#### Survey Submission
+
+After submission:
+- Review is stored with the selected experience mode
+- Mode-specific vibe labels are preserved
+- Review is linked to the active prediction profile for that mode
+- Integrity and content flags are automatically detected
+- User sees a thank you message
+
+---
+
 ## Tooltips & Quick Help
 
 PsillyOps includes contextual tooltips throughout the application to help users understand features without leaving the page.
@@ -2653,7 +3198,7 @@ PsillyOps uses a tokenized QR code system where each printed label has a unique,
 ### How It Works
 
 1. **Printing**: When you print labels, the system generates unique tokens (e.g., `qr_2x7kP9mN4vBcRtYz8LqW5j`)
-2. **QR Content**: Each QR code contains only a short URL like `https://psillyops.app/qr/qr_xxx`
+2. **QR Content**: Each QR code contains only a short URL like `https://ops.originalpsilly.com/qr/qr_xxx`
 3. **Scanning**: When scanned, the system looks up the token and redirects to the appropriate page
 4. **Tracking**: Each scan is counted and timestamped
 
@@ -3220,10 +3765,97 @@ This allows raster-backed or simpler SVGs to work without manual placeholder ins
 - Click **Activate** next to any version to make it the default
 - Click **Deactivate** to remove the default (no version will be active)
 
+#### Template Management
+
+**Renaming Templates:**
+1. Click the edit icon (✎) next to the template name
+2. Enter the new name
+3. Click **Save** or press Enter
+
+**Archiving Templates:**
+- Templates with no active versions can be archived
+- Click **Archive** to remove the template from the active list
+- Archived templates cannot be recovered (permanent deletion)
+- System prevents archiving templates that have active versions or are associated with products
+
+### Multi-Label Product Support
+
+Products can now have multiple label templates associated simultaneously (e.g., jar label, box label, insert card).
+
+#### Managing Label Associations (Product Settings)
+
+**Default View:**
+- Shows only the labels currently associated with the product
+- Each label displays a printer icon (🖨️) for quick printing
+- Visual badges indicate QR and Barcode carrier status when multiple labels are associated
+
+**Edit Mode:**
+1. Click **Edit** in the top-right of the Associated Labels section
+2. Check/uncheck templates to associate or remove them
+3. Only templates with active versions can be associated
+4. Click **Done** to save and return to default view
+
+**Adding Your First Label:**
+- If no labels are associated, click **Add labels** to enter edit mode
+- Select one or more templates from the list
+- Associated labels will immediately appear with print icons
+
+#### QR Code and Barcode Carriers
+
+When a product has multiple labels associated:
+
+**Single Label:**
+- Automatically includes both QR code and barcode
+
+**Multiple Labels (2+):**
+- Designate one label as the **QR carrier** (displays QR code)
+- Designate one label as the **Barcode carrier** (displays barcode)
+- Other labels automatically exclude these elements during rendering
+- Use the radio buttons in edit mode to assign carriers
+
+**Why This Matters:**
+- Prevents duplicate QR codes or barcodes across multiple labels
+- Ensures each product has exactly one scannable QR and one scannable barcode
+- Non-carrier labels automatically filter out these elements at render time
+
+**Carrier Status Indicators:**
+- In default view, carrier labels show colored badges (QR = purple, Barcode = green)
+- In edit mode, use radio buttons to change carrier assignments
+
+#### Per-Template Print Settings
+
+Each product-label association saves its own print settings:
+
+**Saved Per Template:**
+- Print quantity
+- Top/bottom margins
+- Label width
+- Label height
+
+**How It Works:**
+1. Open the print modal for any associated label
+2. Adjust settings (quantity, margins, dimensions)
+3. Click **Save Settings** to store them for this product-label combination
+4. Next time you print this label for this product, your settings are restored
+
+**Fallback Behavior:**
+- If no per-template settings exist, uses product-level defaults
+- If no product-level defaults exist, uses system defaults (1 label, 0.5in margin)
+
 ### Printing Labels
 
 Labels can be printed from any detail page (Batch, Product, or Inventory):
 
+**For Products (Multiple Label Support):**
+1. Navigate to the product detail page
+2. Scroll to the **Label Settings** section
+3. Click the printer icon (🖨️) next to any associated label
+4. Print modal opens with automatic preview
+5. Adjust settings (quantity, margins) as needed
+6. Click **Save Settings** to store settings for this label
+7. Click **Print** or **Download PDF**
+
+**For Batches and Inventory:**
 1. Navigate to the item detail page
 2. Click **Print Labels** button
 3. Select a label version (active version is pre-selected)
@@ -3737,5 +4369,273 @@ sequenceDiagram
     UI->>UI: router.push(destination)
   end
 ```
+
+---
+
+## Appendix A: TripDAR System Complete Guide
+
+This appendix provides a comprehensive overview of the TripDAR system, consolidating all TripDAR-related functionality into a single reference guide.
+
+### What is TripDAR?
+
+TripDAR (Trip Data & Analytics Repository) is a privacy-forward experience data collection and analysis system. It enables:
+
+1. **Experience Predictions**: Define expected experience profiles for products
+2. **Anonymous Feedback**: Collect user experience data without PII
+3. **Certification Seals**: Physical QR stickers indicating product participation
+4. **Analytics & Insights**: Dashboard for analyzing experience data patterns
+
+### TripDAR System Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        TripDAR SYSTEM                           │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐         │
+│  │  PRODUCTS   │    │   SEALS     │    │  PARTNERS   │         │
+│  │             │    │             │    │             │         │
+│  │ - Prediction│    │ - QR Tokens │    │ - Accounts  │         │
+│  │   Profiles  │    │ - Sheets    │    │ - Products  │         │
+│  │ - Vibes     │    │ - Bindings  │    │ - Bindings  │         │
+│  └──────┬──────┘    └──────┬──────┘    └──────┬──────┘         │
+│         │                  │                  │                 │
+│         └──────────────────┼──────────────────┘                 │
+│                            │                                    │
+│                   ┌────────▼────────┐                           │
+│                   │  EXPERIENCE     │                           │
+│                   │  REVIEWS        │                           │
+│                   │                 │                           │
+│                   │ - Anonymous     │                           │
+│                   │ - Mode-aware    │                           │
+│                   │ - Vibe deltas   │                           │
+│                   └────────┬────────┘                           │
+│                            │                                    │
+│                   ┌────────▼────────┐                           │
+│                   │   INSIGHTS      │                           │
+│                   │   DASHBOARD     │                           │
+│                   └─────────────────┘                           │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Quick Start: End-to-End Workflow
+
+#### Step 1: Set Up Product Predictions (Admin/Production)
+
+1. Navigate to **Products** → Select a product → **View**
+2. Scroll to **"Predicted Experience"** section
+3. Toggle between **MICRO** and **MACRO** modes
+4. Adjust the 5 vibe sliders (must sum to 1.0):
+   - **Transcend**: Mystical/beyond-self experiences
+   - **Energize**: Stimulation/intensity
+   - **Create**: Visionary/imagination
+   - **Transform**: Breakthrough/dissolution
+   - **Connect**: Connection/unity
+5. Click **"Save [MODE] Prediction Profile"**
+
+#### Step 2: Generate TripDAR Seals (Admin/Warehouse)
+
+1. Navigate to **Ops** → **TripDAR labels**
+2. Select **"Generate New Seals"** mode
+3. Enter quantity (1-250 seals)
+4. Optionally link to a product
+5. Configure print settings:
+   - Paper: Letter, A4, or Custom
+   - Seal diameter: 0.5", 0.75", 1.0", 1.25", 1.5", 2.0", or 2.5"
+6. Click **"Download PDF"**
+7. Print on label stock and apply to products
+
+#### Step 3: Consumer Scans Seal
+
+When a consumer scans the TripDAR seal QR code:
+
+1. They land on `/seal/[token]` - the certification page
+2. Page shows: "TripDAR Certified — participates in experience data"
+3. They can click **"Compare Your Experience"** to take the survey
+4. Survey collects anonymous feedback comparing their experience to predictions
+
+#### Step 4: Analyze Results (Admin/Analyst)
+
+1. Navigate to **Insights** → **TripDAR**
+2. View dashboard metrics:
+   - Total reviews and weekly submissions
+   - Completion rates and skip rates
+   - Mode breakdown (MICRO vs MACRO)
+3. Browse individual reviews with filters
+4. Export data for ML pipelines (CSV/JSON)
+
+### Seal Generation Deep Dive
+
+#### Understanding Seal States
+
+| State | When | Display to Consumer |
+|-------|------|---------------------|
+| **UNASSIGNED** | Sheet created but not assigned to partner | "TripDAR Ready — not yet activated" |
+| **UNBOUND** | Assigned to partner, not linked to product | "TripDAR Ready — awaiting product assignment" |
+| **ACTIVE** | Fully bound to a product | "TripDAR Certified — participates in experience data" |
+| **REVOKED** | Disabled by admin | Revoked message with reason |
+| **EXPIRED** | Past expiration date | Expired message |
+
+#### Using the Seal Tuner
+
+The Seal Tuner (`Ops → TripDAR labels → Open Seal Tuner`) provides fine-grained control over seal appearance:
+
+**Preset Algorithms:**
+
+| Preset | Best For | Description |
+|--------|----------|-------------|
+| **Dot Zones** | Experimentation | Basic radial density, small particles |
+| **Quiet Core** | Balanced look | Hard QR exclusion zone |
+| **Module Masked** | Best scan reliability | Respects QR module boundaries |
+| **Material Unified** | Visual cohesion | Spores match QR dot size |
+
+**Key Controls:**
+
+- **Spore Count**: 10,000-100,000 particles (lower = cleaner QR)
+- **Zone A End**: Hard exclusion zone size (higher = more reliable scans)
+- **QR Scale**: 50%-150% of default size
+- **Quiet Core Factor**: Central no-spore zone (0.4-0.7 recommended)
+
+**Base Layer Controls:**
+
+- **Outer Ring**: Thick decorative border (color, opacity)
+- **Text Ring**: "TRIPDAR EXPERIENCE VERIFIED" band (color, opacity)
+- **Text**: The actual text characters (color, opacity, border/stroke)
+- **Radar Lines**: Concentric circles and crosshairs (color, opacity, thickness, above/below QR)
+
+**Export Options:**
+
+- Sizes: 0.5", 0.75", 1.0", 1.25", 1.5", 2.0", 2.5"
+- Paper: US Letter or A4
+- Includes cut guides and embedded settings
+
+### TripDAR Partners (Phase 2B+)
+
+Partners are external entities authorized to use TripDAR seals on their products.
+
+#### Partner Roles
+
+| Role | Permissions |
+|------|-------------|
+| **PARTNER_ADMIN** | Full access to partner portal, can manage users |
+| **PARTNER_OPERATOR** | Can bind seals to products, view data |
+
+#### Partner Workflow
+
+1. **Admin creates Partner account** in PsillyOps
+2. **Admin assigns Seal Sheet** to Partner
+3. **Partner defines PartnerProducts** (lightweight product records)
+4. **Partner binds seals** to their products
+5. **Consumers scan** → data flows to TripDAR
+
+#### Partner Portal Access
+
+- **Login**: `/partner/login`
+- **Dashboard**: `/partner/dashboard`
+- **Bind Seals**: `/partner/bind`
+
+Partners can only see their own data and cannot access PsillyOps inventory.
+
+### Mobile Batch Binding (Phase 2C)
+
+For high-volume seal application, Partners can use Mobile Batch Binding:
+
+1. **Start Session**: Select product, start timed session (default: 5 minutes)
+2. **Scan Seals**: Each scan binds the seal to the selected product
+3. **Feedback**: Haptic/audio confirmation on successful scan
+4. **Auto-Expire**: Session ends automatically when timer expires
+5. **Review**: See session summary with scan count
+
+**Session States:**
+- **ACTIVE**: Currently accepting scans
+- **EXPIRED**: Timer ran out
+- **TERMINATED**: Manually ended by user
+
+### Experience Modes Explained
+
+TripDAR supports two experience modes with different vibe vocabularies:
+
+#### MICRO Mode (Microdosing)
+
+| Vibe | Label | Description |
+|------|-------|-------------|
+| Transcend | "Subtle uplift" | Gentle mood elevation |
+| Energize | "Clarity / energy" | Mental sharpness |
+| Create | "Creative flow" | Enhanced creativity |
+| Transform | "Perspective shift" | New viewpoints |
+| Connect | "Emotional openness" | Increased empathy |
+
+#### MACRO Mode (Full Experience)
+
+| Vibe | Label | Description |
+|------|-------|-------------|
+| Transcend | "Mystical / beyond-self" | Ego dissolution |
+| Energize | "Stimulation / intensity" | Physical/mental intensity |
+| Create | "Visionary / imagination" | Visual/creative experiences |
+| Transform | "Breakthrough / dissolution" | Deep transformation |
+| Connect | "Connection / unity" | Oneness with others/nature |
+
+### Data Privacy & Compliance
+
+TripDAR is designed with privacy as a core principle:
+
+- **No PII**: Never collects names, emails, locations, or device IDs
+- **Anonymous Tokens**: Reviews linked to products, not people
+- **Optional Everything**: All survey questions are skippable
+- **No Tracking**: No cookies, no fingerprinting, no cross-site tracking
+- **Neutral Valued**: "No change" responses are valid data points
+
+### Troubleshooting TripDAR
+
+#### Seal Won't Scan
+
+1. **Check print quality**: Ensure adequate contrast
+2. **Verify size**: Minimum 1" diameter recommended
+3. **Test with Tuner**: Use DPI simulation to preview print quality
+4. **Try different preset**: Module Masked has best scan reliability
+
+#### Survey Not Appearing
+
+1. **Check product has prediction profile**: Survey requires active predictions
+2. **Verify token status**: Revoked/expired tokens won't show survey
+3. **Check binding**: Seal must be bound to a product
+
+#### Dashboard Shows No Data
+
+1. **Verify role**: Requires ADMIN or ANALYST role
+2. **Check date range**: Ensure reviews exist in selected period
+3. **Check filters**: Clear all filters to see all data
+
+### TripDAR URLs Reference
+
+| URL | Purpose | Access |
+|-----|---------|--------|
+| `/ops/seals` | Seal generation & tuner | ADMIN, WAREHOUSE |
+| `/seal/[token]` | Public certification page | Public |
+| `/tripdar/survey/[token]` | Experience survey | Public |
+| `/verify/[token]` | Product authenticity | Public |
+| `/insights/tripdar` | Analytics dashboard | ADMIN, ANALYST |
+| `/partner/login` | Partner portal login | Public |
+| `/partner/dashboard` | Partner dashboard | PARTNER_ADMIN, PARTNER_OPERATOR |
+| `/partner/bind` | Seal binding | PARTNER_ADMIN, PARTNER_OPERATOR |
+
+### Glossary of TripDAR Terms
+
+| Term | Definition |
+|------|------------|
+| **Binding** | Linking a seal token to a specific product |
+| **Experience Mode** | MICRO (microdose) or MACRO (full experience) |
+| **Partner** | External entity authorized to use TripDAR seals |
+| **Prediction Profile** | Immutable snapshot of expected experience vibes |
+| **QR Token** | Unique identifier encoded in seal QR code |
+| **Seal Sheet** | Collection of tokens generated together |
+| **Spore Field** | Decorative particle pattern on seal artwork |
+| **Vibe** | One of 5 experience dimensions (Transcend, Energize, Create, Transform, Connect) |
+| **Vibe Delta** | Difference between predicted and actual experience |
+
+---
+
+*End of TripDAR System Appendix*
 
 

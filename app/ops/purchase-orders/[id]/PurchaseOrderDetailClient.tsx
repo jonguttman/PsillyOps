@@ -60,6 +60,7 @@ interface Location {
   id: string;
   name: string;
   isDefaultReceiving: boolean;
+  displayPath: string;
 }
 
 interface ActivityLog {
@@ -140,6 +141,7 @@ export default function PurchaseOrderDetailClient({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showReceiveModal, setShowReceiveModal] = useState(false);
+  const [showSubmitConfirmModal, setShowSubmitConfirmModal] = useState(false);
   const [receiveQuantities, setReceiveQuantities] = useState<Record<string, number>>({});
   const [selectedLocation, setSelectedLocation] = useState(
     locations.find((l) => l.isDefaultReceiving)?.id || locations[0]?.id || ''
@@ -155,9 +157,12 @@ export default function PurchaseOrderDetailClient({
     0
   );
 
-  const handleSubmit = async () => {
-    if (!confirm('Submit this purchase order to the vendor?')) return;
+  const handleSubmitClick = () => {
+    setShowSubmitConfirmModal(true);
+  };
 
+  const handleSubmitConfirmed = async () => {
+    setShowSubmitConfirmModal(false);
     setLoading(true);
     setError(null);
 
@@ -255,7 +260,7 @@ export default function PurchaseOrderDetailClient({
         <div className="flex items-center gap-2">
           {canSubmit && (
             <button
-              onClick={handleSubmit}
+              onClick={handleSubmitClick}
               disabled={loading}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
             >
@@ -326,7 +331,7 @@ export default function PurchaseOrderDetailClient({
                       <tr key={item.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3">
                           <Link
-                            href={`/materials/${item.material.id}`}
+                            href={`/ops/materials/${item.material.id}`}
                             className="text-sm font-medium text-blue-600 hover:text-blue-800"
                           >
                             {item.material.name}
@@ -428,7 +433,7 @@ export default function PurchaseOrderDetailClient({
             </h3>
             <div className="space-y-2">
               <Link
-                href={`/vendors/${purchaseOrder.vendor.id}`}
+                href={`/ops/vendors/${purchaseOrder.vendor.id}`}
                 className="text-sm font-medium text-blue-600 hover:text-blue-800"
               >
                 {purchaseOrder.vendor.name}
@@ -497,6 +502,41 @@ export default function PurchaseOrderDetailClient({
         </div>
       </div>
 
+      {/* Submit Confirmation Modal */}
+      {showSubmitConfirmModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900">Confirm Submission</h2>
+            </div>
+            <div className="p-6">
+              <p className="text-gray-600">
+                Submit this purchase order to <span className="font-medium text-gray-900">{purchaseOrder.vendor.name}</span>?
+              </p>
+              <p className="text-sm text-gray-500 mt-2">
+                This will change the status to SENT and record the submission time.
+              </p>
+            </div>
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
+              <button
+                onClick={() => setShowSubmitConfirmModal(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmitConfirmed}
+                disabled={loading}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+              >
+                <Send className="w-4 h-4" />
+                {loading ? 'Submitting...' : 'Submit to Vendor'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Receive Modal */}
       {showReceiveModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -521,7 +561,7 @@ export default function PurchaseOrderDetailClient({
                 >
                   {locations.map((loc) => (
                     <option key={loc.id} value={loc.id}>
-                      {loc.name} {loc.isDefaultReceiving ? '(Default)' : ''}
+                      {loc.displayPath}{loc.isDefaultReceiving ? ' (Default)' : ''}
                     </option>
                   ))}
                 </select>

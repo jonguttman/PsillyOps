@@ -62,7 +62,7 @@ async function handleComplete(formData: FormData) {
     userId: session.user.id
   });
 
-  revalidatePath(`/batches/${batchId}`);
+  revalidatePath(`/ops/batches/${batchId}`);
 }
 
 async function handleStatusChange(formData: FormData) {
@@ -74,7 +74,7 @@ async function handleStatusChange(formData: FormData) {
   const status = formData.get('status') as BatchStatus;
 
   await updateBatchStatus(batchId, status, session.user.id);
-  revalidatePath(`/batches/${batchId}`);
+  revalidatePath(`/ops/batches/${batchId}`);
 }
 
 async function handleQCUpdate(formData: FormData) {
@@ -87,7 +87,7 @@ async function handleQCUpdate(formData: FormData) {
   const notes = formData.get('notes') as string || undefined;
 
   await setBatchQCStatus(batchId, qcStatus, session.user.id, notes);
-  revalidatePath(`/batches/${batchId}`);
+  revalidatePath(`/ops/batches/${batchId}`);
 }
 
 async function handleAddLabor(formData: FormData) {
@@ -110,7 +110,7 @@ async function handleAddLabor(formData: FormData) {
     loggedByUserId: session.user.id
   });
 
-  revalidatePath(`/batches/${batchId}`);
+  revalidatePath(`/ops/batches/${batchId}`);
 }
 
 export default async function BatchDetailPage({
@@ -187,7 +187,7 @@ export default async function BatchDetailPage({
           <p className="mt-1 text-sm text-gray-600">
             {batch.product.name}
             {batch.productionOrder && (
-              <> • <Link href={`/production/${batch.productionOrder.id}`} className="text-blue-600 hover:text-blue-900">{batch.productionOrder.orderNumber}</Link></>
+              <> • <Link href={`/ops/production/${batch.productionOrder.id}`} className="text-blue-600 hover:text-blue-900">{batch.productionOrder.orderNumber}</Link></>
             )}
           </p>
         </div>
@@ -223,7 +223,7 @@ export default async function BatchDetailPage({
           <div>
             <dt className="text-sm font-medium text-gray-500">Product</dt>
             <dd className="mt-1">
-              <Link href={`/products/${batch.productId}`} className="text-sm text-blue-600 hover:text-blue-900">
+              <Link href={`/ops/products/${batch.productId}`} className="text-sm text-blue-600 hover:text-blue-900">
                 {batch.product.name}
               </Link>
             </dd>
@@ -523,7 +523,7 @@ export default async function BatchDetailPage({
                     </span>
                   </td>
                   <td className="py-2 text-right">
-                    <Link href={`/inventory/${inv.id}`} className="text-sm text-blue-600 hover:text-blue-900">
+                    <Link href={`/ops/inventory/${inv.id}`} className="text-sm text-blue-600 hover:text-blue-900">
                       View
                     </Link>
                   </td>

@@ -92,6 +92,12 @@ export async function POST(req: Request) {
     // Default: return JSON with both SVG and metadata
     return NextResponse.json(result);
   } catch (error) {
+    // Log error for Vercel function logs
+    console.error('[PREVIEW_ERROR]', {
+      error: String(error),
+      stack: (error as Error)?.stack,
+      timestamp: new Date().toISOString()
+    });
     return handleApiError(error);
   }
 }

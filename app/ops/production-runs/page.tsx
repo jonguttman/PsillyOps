@@ -65,7 +65,7 @@ export default async function ProductionRunsPage() {
               return (
                 <Link
                   key={r.id}
-                  href={`/production-runs/${r.id}`}
+                  href={`/ops/production-runs/${r.id}`}
                   className="block px-5 py-4 hover:bg-gray-50"
                 >
                   <div className="flex items-start justify-between gap-3">

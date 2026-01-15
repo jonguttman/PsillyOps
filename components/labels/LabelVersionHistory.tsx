@@ -18,6 +18,7 @@ interface LabelVersion {
 interface LabelVersionHistoryProps {
   templateId: string;
   templateEntityType: string;
+  entityId?: string; // Optional entity ID for PDF generation context
   versions: LabelVersion[];
   canManage: boolean;
   onActivate: (formData: FormData) => void;
@@ -27,6 +28,7 @@ interface LabelVersionHistoryProps {
 export default function LabelVersionHistory({
   templateId,
   templateEntityType,
+  entityId,
   versions,
   canManage,
   onActivate,
@@ -96,6 +98,7 @@ export default function LabelVersionHistory({
           <LabelPreviewButton 
             versionId={version.id} 
             entityType={templateEntityType}
+            entityId={entityId}
             initialElements={(version.elements as PlaceableElement[] | null) || []}
           />
           {canManage && (

@@ -2,12 +2,13 @@ import { prisma } from '@/lib/db/prisma';
 import { auth } from '@/lib/auth/auth';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import Link from 'next/link';
 import { formatDateTime } from '@/lib/utils/formatters';
-import { createTemplate, createVersion, activateVersion, deactivateVersion } from '@/lib/services/labelService';
+import { createTemplate, activateVersion, deactivateVersion, updateTemplate, archiveTemplate } from '@/lib/services/labelService';
 import { LabelEntityType } from '@prisma/client';
 import LabelUploadForm from '@/components/labels/LabelUploadForm';
 import LabelVersionHistory from '@/components/labels/LabelVersionHistory';
+import TemplateNameEditor from '@/components/labels/TemplateNameEditor';
+import TemplateArchiveButton from '@/components/labels/TemplateArchiveButton';
 
 const ENTITY_TYPE_LABELS: Record<string, string> = {
   PRODUCT: 'Product Labels',
@@ -37,7 +38,7 @@ async function handleCreateTemplate(formData: FormData) {
     userId: session.user.id
   });
 
-  revalidatePath('/labels');
+  revalidatePath('/ops/labels');
 }
 
 async function handleActivateVersion(formData: FormData) {
@@ -47,7 +48,7 @@ async function handleActivateVersion(formData: FormData) {
 
   const versionId = formData.get('versionId') as string;
   await activateVersion(versionId, session.user.id);
-  revalidatePath('/labels');
+  revalidatePath('/ops/labels');
 }
 
 async function handleDeactivateVersion(formData: FormData) {
@@ -57,7 +58,30 @@ async function handleDeactivateVersion(formData: FormData) {
 
   const versionId = formData.get('versionId') as string;
   await deactivateVersion(versionId, session.user.id);
-  revalidatePath('/labels');
+  revalidatePath('/ops/labels');
+}
+
+async function handleRenameTemplate(formData: FormData) {
+  'use server';
+  const session = await auth();
+  if (!session) throw new Error('Not authenticated');
+
+  const templateId = formData.get('templateId') as string;
+  const name = formData.get('name') as string;
+
+  await updateTemplate(templateId, name, session.user.id);
+  revalidatePath('/ops/labels');
+}
+
+async function handleArchiveTemplate(formData: FormData) {
+  'use server';
+  const session = await auth();
+  if (!session) throw new Error('Not authenticated');
+
+  const templateId = formData.get('templateId') as string;
+
+  await archiveTemplate(templateId, session.user.id);
+  revalidatePath('/ops/labels');
 }
 
 export default async function LabelsPage() {
@@ -174,37 +198,59 @@ export default async function LabelsPage() {
               {label}
             </h2>
 
-            {typeTemplates.map((template) => (
-              <div key={template.id} className="bg-white shadow rounded-lg overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-200">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <h3 className="text-lg font-medium text-gray-900">{template.name}</h3>
-                      <p className="text-sm text-gray-500">
-                        Created {formatDateTime(template.createdAt)} • {template.versions.length} version(s)
-                      </p>
-                    </div>
-                    {canManage && (
-                      <LabelUploadForm templateId={template.id} templateName={template.name} />
-                    )}
-                  </div>
-                </div>
+            {typeTemplates.map((template) => {
+              const hasActiveVersion = template.versions.some(v => v.isActive);
+              const canArchive = canManage && !hasActiveVersion;
 
-                {/* Versions Table */}
-                <LabelVersionHistory
-                  templateId={template.id}
-                  templateEntityType={template.entityType}
-                  versions={template.versions.map(v => ({
-                    ...v,
-                    createdAt: v.createdAt.toISOString(),
-                    updatedAt: v.updatedAt ? v.updatedAt.toISOString() : null
-                  }))}
-                  canManage={canManage}
-                  onActivate={handleActivateVersion}
-                  onDeactivate={handleDeactivateVersion}
-                />
-              </div>
-            ))}
+              return (
+                <div key={template.id} className="bg-white shadow rounded-lg overflow-hidden">
+                  <div className="px-6 py-4 border-b border-gray-200">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        {canManage ? (
+                          <TemplateNameEditor
+                            templateId={template.id}
+                            currentName={template.name}
+                            onRename={handleRenameTemplate}
+                          />
+                        ) : (
+                          <h3 className="text-lg font-medium text-gray-900">{template.name}</h3>
+                        )}
+                        <p className="text-sm text-gray-500">
+                          Created {formatDateTime(template.createdAt)} • {template.versions.length} version(s)
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {canArchive && (
+                          <TemplateArchiveButton
+                            templateId={template.id}
+                            templateName={template.name}
+                            onArchive={handleArchiveTemplate}
+                          />
+                        )}
+                        {canManage && (
+                          <LabelUploadForm templateId={template.id} templateName={template.name} />
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Versions Table */}
+                  <LabelVersionHistory
+                    templateId={template.id}
+                    templateEntityType={template.entityType}
+                    versions={template.versions.map(v => ({
+                      ...v,
+                      createdAt: v.createdAt.toISOString(),
+                      updatedAt: v.updatedAt ? v.updatedAt.toISOString() : null
+                    }))}
+                    canManage={canManage}
+                    onActivate={handleActivateVersion}
+                    onDeactivate={handleDeactivateVersion}
+                  />
+                </div>
+              );
+            })}
           </div>
         );
       })}
@@ -224,4 +270,3 @@ export default async function LabelsPage() {
     </div>
   );
 }
-

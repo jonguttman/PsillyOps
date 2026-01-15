@@ -461,11 +461,20 @@ export async function produceFinishedGoods(params: {
   }
 
   const location = await prisma.location.findUnique({
-    where: { id: locationId }
+    where: { id: locationId },
+    select: { id: true, name: true, active: true },
   });
 
   if (!location) {
     throw new AppError(ErrorCodes.NOT_FOUND, 'Location not found');
+  }
+
+  // Validate location is active
+  if (!location.active) {
+    throw new AppError(
+      ErrorCodes.VALIDATION_ERROR,
+      `Location "${location.name}" is inactive. Please select an active location.`
+    );
   }
 
   // Check if inventory already exists for this batch at this location
@@ -794,35 +803,154 @@ export async function getAvailableMaterialStock(materialId: string): Promise<num
   return items.reduce((sum, item) => sum + (item.quantityOnHand - item.quantityReserved), 0);
 }
 
+// ========================================
+// DEFAULT LOCATION RESOLUTION HELPERS
+// ========================================
+
+/**
+ * Resolve the preferred storage location for a product.
+ * Returns the product's defaultLocationId if set, otherwise null.
+ * 
+ * NOTE: This is preparatory work for hierarchy and fulfillment.
+ * It is NOT automatically called during inventory creation.
+ * Callers must explicitly use this if they want default behavior.
+ * 
+ * @param productId - The product ID to resolve location for
+ * @returns Location info or null if no default configured
+ */
+export async function resolveProductDefaultLocation(productId: string): Promise<{
+  id: string;
+  name: string;
+  type: string;
+  active: boolean;
+} | null> {
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+    select: {
+      defaultLocation: {
+        select: { id: true, name: true, type: true, active: true },
+      },
+    },
+  });
+
+  if (!product?.defaultLocation) {
+    return null;
+  }
+
+  return product.defaultLocation;
+}
+
+/**
+ * Resolve the preferred storage location for a material.
+ * Follows fallback chain: material.defaultLocationId → system default receiving.
+ * 
+ * @param materialId - The material ID to resolve location for
+ * @returns Location info or null if no default configured
+ */
+export async function resolveMaterialDefaultLocation(materialId: string): Promise<{
+  id: string;
+  name: string;
+  type: string;
+  active: boolean;
+} | null> {
+  const material = await prisma.rawMaterial.findUnique({
+    where: { id: materialId },
+    select: {
+      defaultLocation: {
+        select: { id: true, name: true, type: true, active: true },
+      },
+    },
+  });
+
+  // First try material's default
+  if (material?.defaultLocation) {
+    return material.defaultLocation;
+  }
+
+  // Fallback to system default receiving location
+  const systemDefault = await prisma.location.findFirst({
+    where: { isDefaultReceiving: true, active: true },
+    select: { id: true, name: true, type: true, active: true },
+  });
+
+  return systemDefault;
+}
+
+// ========================================
+// MATERIAL RECEIVING
+// ========================================
+
 /**
  * Receive materials from purchase order
  */
 export async function receiveMaterials(params: {
   materialId: string;
   quantity: number;
-  locationId: string;
+  locationId?: string;
   lotNumber?: string;
   expiryDate?: Date;
   unitCost?: number;
   purchaseOrderId?: string;
   userId: string;
 }): Promise<string> {
-  const { materialId, quantity, locationId, lotNumber, expiryDate, unitCost, purchaseOrderId, userId } = params;
+  const { materialId, quantity, lotNumber, expiryDate, unitCost, purchaseOrderId, userId } = params;
+  let { locationId } = params;
 
+  // Fetch material with defaultLocationId
   const material = await prisma.rawMaterial.findUnique({
-    where: { id: materialId }
+    where: { id: materialId },
+    include: {
+      defaultLocation: { select: { id: true, name: true, active: true } },
+    },
   });
 
   if (!material) {
     throw new AppError(ErrorCodes.NOT_FOUND, 'Material not found');
   }
 
-  const location = await prisma.location.findUnique({
-    where: { id: locationId }
-  });
+  // Resolve location with fallback chain
+  let location: { id: string; name: string; active: boolean } | null = null;
 
-  if (!location) {
-    throw new AppError(ErrorCodes.NOT_FOUND, 'Location not found');
+  // 1. If locationId explicitly provided, use it
+  if (locationId) {
+    location = await prisma.location.findUnique({
+      where: { id: locationId },
+      select: { id: true, name: true, active: true },
+    });
+    if (!location) {
+      throw new AppError(ErrorCodes.NOT_FOUND, 'Specified location not found');
+    }
+  }
+  // 2. Fallback to material's default location
+  else if (material.defaultLocation) {
+    location = material.defaultLocation;
+    locationId = location.id;
+  }
+  // 3. Fallback to system default receiving location
+  else {
+    location = await prisma.location.findFirst({
+      where: { isDefaultReceiving: true, active: true },
+      select: { id: true, name: true, active: true },
+    });
+    if (location) {
+      locationId = location.id;
+    }
+  }
+
+  // If no location resolved, throw explicit error
+  if (!location || !locationId) {
+    throw new AppError(
+      ErrorCodes.VALIDATION_ERROR,
+      'No receiving location configured. Set a material default location or system default receiving location in Settings → Locations.'
+    );
+  }
+
+  // Validate location is active
+  if (!location.active) {
+    throw new AppError(
+      ErrorCodes.VALIDATION_ERROR,
+      `Location "${location.name}" is inactive. Please select an active location or update the default.`
+    );
   }
 
   // Create inventory item

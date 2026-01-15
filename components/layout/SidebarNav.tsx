@@ -21,7 +21,11 @@ import {
   HelpCircle,
   Users,
   Shield,
-  LucideIcon
+  Settings,
+  LucideIcon,
+  ArrowRightLeft,
+  BarChart3,
+  CircleDot
 } from 'lucide-react';
 
 interface NavItem {
@@ -64,6 +68,17 @@ export function SidebarNav({ userRole }: SidebarNavProps) {
     if (href === '/ops/dashboard') {
       return pathname === '/ops/dashboard' || pathname === '/ops' || pathname === '/';
     }
+    // Special handling for QR section to avoid conflicts
+    if (href === '/ops/qr/redirects') {
+      return pathname.startsWith('/ops/qr/redirects');
+    }
+    if (href === '/ops/qr/fallback') {
+      return pathname === '/ops/qr/fallback';
+    }
+    // Special handling for Insights section
+    if (href === '/ops/insights/tripdar') {
+      return pathname.startsWith('/ops/insights/tripdar');
+    }
     return pathname.startsWith(href);
   };
 
@@ -84,12 +99,19 @@ export function SidebarNav({ userRole }: SidebarNavProps) {
   // LABELS section - Label templates
   const labelsItems: NavItem[] = [
     { href: '/ops/labels', label: 'Templates', icon: Tags },
+    { href: '/ops/seals', label: 'TripDAR Seals', icon: Shield },
   ];
 
-  // QR section - Identity & traceability
-  const qrItems: NavItem[] = [
-    ...(userRole === 'ADMIN' ? [{ href: '/ops/qr-redirects', label: 'Redirect Rules', icon: QrCode }] : []),
-  ];
+  // QR section - QR code management (ADMIN only)
+  const qrItems: NavItem[] = userRole === 'ADMIN' ? [
+    { href: '/ops/qr/redirects', label: 'Redirects', icon: ArrowRightLeft },
+    { href: '/ops/qr/fallback', label: 'Defaults', icon: QrCode },
+  ] : [];
+
+  // Insights section - Experience data (ADMIN + ANALYST)
+  const insightsItems: NavItem[] = (userRole === 'ADMIN' || userRole === 'ANALYST') ? [
+    { href: '/ops/insights/tripdar', label: 'TripDAR', icon: BarChart3 },
+  ] : [];
 
   // Mobile tools - lightweight pages for phone workflows
   const mobileItems: NavItem[] = [
@@ -99,8 +121,11 @@ export function SidebarNav({ userRole }: SidebarNavProps) {
   // SYSTEM section - Governance
   const systemItems: NavItem[] = [
     { href: '/ops/activity', label: 'Activity', icon: Activity },
+    ...(userRole === 'ADMIN' ? [{ href: '/ops/settings', label: 'Settings', icon: Settings }] : []),
     ...(userRole === 'ADMIN' ? [{ href: '/ops/security', label: 'Security', icon: Shield }] : []),
     ...(userRole === 'ADMIN' ? [{ href: '/ops/users', label: 'Users', icon: Users }] : []),
+    ...(userRole === 'ADMIN' ? [{ href: '/ops/transparency', label: 'Transparency', icon: Shield }] : []),
+    ...(userRole === 'ADMIN' ? [{ href: '/ops/system/seals', label: 'Seal Config', icon: CircleDot }] : []),
     { href: '/ops/strains', label: 'Strains', icon: Dna },
     { href: '/ops/vendors', label: 'Vendors', icon: Building2 },
     { href: '/ops/help', label: 'Help', icon: HelpCircle },
@@ -134,10 +159,25 @@ export function SidebarNav({ userRole }: SidebarNavProps) {
         ))}
       </SidebarSection>
 
-      {/* QR - Identity & traceability (only show if there are items) */}
+      {/* QR - QR code management (only show if there are items) */}
       {qrItems.length > 0 && (
         <SidebarSection title="QR" defaultExpanded={false} persistKey="qr">
           {qrItems.map((item) => (
+            <NavItem
+              key={item.href}
+              href={item.href}
+              label={item.label}
+              icon={item.icon}
+              isActive={isActive(item.href)}
+            />
+          ))}
+        </SidebarSection>
+      )}
+
+      {/* INSIGHTS - Experience data (only show if there are items) */}
+      {insightsItems.length > 0 && (
+        <SidebarSection title="Insights" defaultExpanded={false} persistKey="insights">
+          {insightsItems.map((item) => (
             <NavItem
               key={item.href}
               href={item.href}

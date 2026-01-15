@@ -5,6 +5,9 @@ import { getProductionRun } from '@/lib/services/productionRunService';
 import { getBaseUrl } from '@/lib/services/qrTokenService';
 import ProductionRunClient from '@/components/production/ProductionRunClient';
 import type { ProductionRunApiDetail } from '@/components/production/ProductionRunClient';
+import { MobileProductionRun, type ProductionRunData } from '@/components/mobile';
+import { ProductionRunAssignment } from '@/components/production/ProductionRunAssignment';
+import { UserRole } from '@prisma/client';
 
 export default async function ProductionRunDetailPage({
   params,
@@ -64,21 +67,92 @@ export default async function ProductionRunDetailPage({
     currentStep: null,
   };
 
+  // Convert to mobile format
+  const mobileRunData: ProductionRunData = {
+    id: run.id,
+    status: run.status as ProductionRunData['status'],
+    quantity: run.quantity,
+    actualQuantity: undefined, // Not stored on run
+    product: {
+      id: run.product.id,
+      name: run.product.name,
+      sku: run.product.sku,
+    },
+    steps: run.steps.map((s) => ({
+      id: s.id,
+      key: s.templateKey,
+      label: s.label,
+      order: s.order,
+      status: s.status as ProductionRunData['steps'][number]['status'],
+      notes: s.skipReason || undefined,
+      startedAt: s.startedAt ? s.startedAt.toISOString() : undefined,
+      completedAt: s.completedAt ? s.completedAt.toISOString() : undefined,
+    })),
+    batchCode: undefined, // Not on run
+    notes: undefined,
+    startedAt: run.startedAt ? run.startedAt.toISOString() : undefined,
+    completedAt: run.completedAt ? run.completedAt.toISOString() : undefined,
+  };
+
+  // Prepare assignment data
+  const assignmentData = {
+    assignedTo: run.assignedTo ? {
+      id: run.assignedTo.id,
+      name: run.assignedTo.name,
+      role: run.assignedTo.role as UserRole,
+    } : null,
+    assignedBy: run.assignedBy ? {
+      id: run.assignedBy.id,
+      name: run.assignedBy.name,
+    } : null,
+    assignedAt: run.assignedAt ? run.assignedAt.toISOString() : null,
+    assignmentReason: run.assignmentReason,
+  };
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <Link href="/ops/dashboard" className="text-sm text-gray-600 hover:text-gray-900">
-          ← Back
-        </Link>
+    <>
+      {/* Desktop view */}
+      <div className="hidden md:block space-y-4">
+        <div className="flex items-center justify-between">
+          <Link href="/ops/dashboard" className="text-sm text-gray-600 hover:text-gray-900">
+            ← Back
+          </Link>
+        </div>
+
+        {/* Assignment Card - positioned before main content */}
+        <ProductionRunAssignment
+          runId={run.id}
+          productName={run.product.name}
+          status={run.status}
+          assignment={assignmentData}
+          userRole={session.user.role}
+        />
+
+        <ProductionRunClient
+          runId={run.id}
+          initial={initial}
+          userRole={session.user.role}
+          userId={session.user.id}
+        />
       </div>
 
-      <ProductionRunClient
-        runId={run.id}
-        initial={initial}
-        userRole={session.user.role}
-        userId={session.user.id}
-      />
-    </div>
+      {/* Mobile view */}
+      <div className="block md:hidden">
+        {/* Mobile Assignment Card */}
+        <div className="mb-4">
+          <ProductionRunAssignment
+            runId={run.id}
+            productName={run.product.name}
+            status={run.status}
+            assignment={assignmentData}
+            userRole={session.user.role}
+          />
+        </div>
+        <MobileProductionRun 
+          run={mobileRunData}
+        />
+      </div>
+    </>
   );
 }
 

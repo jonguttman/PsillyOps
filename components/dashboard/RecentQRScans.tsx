@@ -121,7 +121,7 @@ export default function RecentQRScans() {
                 <tr 
                   key={scan.id} 
                   className="hover:bg-gray-50 cursor-pointer"
-                  onClick={() => scan.tokenId && (window.location.href = `/qr/${scan.tokenId}`)}
+                  onClick={() => scan.tokenId && (window.location.href = `/ops/qr-tokens/${scan.tokenId}`)}
                 >
                   <td className="px-4 py-2.5 text-xs text-gray-500 whitespace-nowrap">
                     {formatDistanceToNow(new Date(scan.scannedAt), { addSuffix: true })}

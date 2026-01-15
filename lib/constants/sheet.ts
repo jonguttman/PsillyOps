@@ -39,12 +39,23 @@ export const MARGIN_PRESETS: Record<Exclude<MarginPreset, 'custom'>, { value: nu
 export const DEFAULT_MARGIN_IN = 0.25;
 
 // ========================================
+// ASYMMETRIC MARGINS (for registration marks)
+// ========================================
+// Top/bottom margins are larger to prevent registration mark clipping
+// Left/right margins stay narrow to maximize printable width
+
+export const MARGIN_LEFT_IN = 0.25;   // Keep narrow for max width
+export const MARGIN_RIGHT_IN = 0.25;  // Keep narrow for max width
+export const MARGIN_TOP_IN = 0.5;     // Increased for registration marks
+export const MARGIN_BOTTOM_IN = 0.5;  // Increased for registration marks
+
+// ========================================
 // LEGACY CONSTANTS (for backward compatibility)
 // ========================================
 
 export const SHEET_MARGIN_IN = DEFAULT_MARGIN_IN;
-export const SHEET_USABLE_WIDTH_IN = SHEET_WIDTH_IN - 2 * SHEET_MARGIN_IN;   // 8.0
-export const SHEET_USABLE_HEIGHT_IN = SHEET_HEIGHT_IN - 2 * SHEET_MARGIN_IN; // 10.5
+export const SHEET_USABLE_WIDTH_IN = SHEET_WIDTH_IN - MARGIN_LEFT_IN - MARGIN_RIGHT_IN;   // 8.0
+export const SHEET_USABLE_HEIGHT_IN = SHEET_HEIGHT_IN - MARGIN_TOP_IN - MARGIN_BOTTOM_IN; // 10.0
 
 // ========================================
 // SHEET INFO (for display)

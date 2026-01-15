@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth/auth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { MaterialCategory } from "@/lib/types/enums";
+import { InventoryStatus } from "@prisma/client";
 
 // Category colors for badges
 const CATEGORY_COLORS: Record<string, string> = {
@@ -47,12 +48,13 @@ export default async function MaterialsPage({
     where: includeArchived ? {} : { active: true, archivedAt: null },
     orderBy: { name: "asc" },
     include: {
-      preferredVendor: {
-        select: { id: true, name: true }
-      },
       vendors: {
         where: { preferred: true },
         select: { lastPrice: true }
+      },
+      inventory: {
+        where: { status: InventoryStatus.AVAILABLE },
+        select: { quantityOnHand: true }
       },
       _count: {
         select: {
@@ -61,6 +63,17 @@ export default async function MaterialsPage({
         }
       }
     }
+  });
+
+  // Compute QOH for each material server-side
+  const materialsWithQOH = materials.map((material) => {
+    const qoh = material.archivedAt
+      ? 0
+      : material.inventory.reduce((sum, inv) => sum + inv.quantityOnHand, 0);
+    return {
+      ...material,
+      qoh,
+    };
   });
 
   return (
@@ -101,8 +114,8 @@ export default async function MaterialsPage({
               <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 SKU
               </th>
-              <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Preferred Vendor
+              <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                QOH
               </th>
               <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Cost
@@ -119,7 +132,7 @@ export default async function MaterialsPage({
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {materials.length === 0 ? (
+            {materialsWithQOH.length === 0 ? (
               <tr>
                 <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
                   No materials found.{" "}
@@ -129,7 +142,7 @@ export default async function MaterialsPage({
                 </td>
               </tr>
             ) : (
-              materials.map((material) => (
+              materialsWithQOH.map((material) => (
                 <tr key={material.id} className="hover:bg-gray-50">
                   <td className="px-4 py-4 whitespace-nowrap">
                     <div className="flex items-center gap-2">
@@ -160,10 +173,17 @@ export default async function MaterialsPage({
                   <td className="px-3 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-900">{material.sku}</div>
                   </td>
-                  <td className="px-3 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">
-                      {material.preferredVendor?.name || (
-                        <span className="text-gray-400">Not set</span>
+                  <td className="px-3 py-4 whitespace-nowrap text-right">
+                    <div className="text-sm font-medium text-gray-900">
+                      {material.qoh > 0 ? (
+                        <>
+                          {material.qoh.toLocaleString()}
+                          <span className="text-xs text-gray-500 ml-1">
+                            {material.unitOfMeasure}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-gray-400">0</span>
                       )}
                     </div>
                   </td>
@@ -213,18 +233,18 @@ export default async function MaterialsPage({
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white shadow rounded-lg p-4">
           <div className="text-sm text-gray-500">Total Materials</div>
-          <div className="text-2xl font-semibold text-gray-900">{materials.length}</div>
+          <div className="text-2xl font-semibold text-gray-900">{materialsWithQOH.length}</div>
         </div>
         <div className="bg-white shadow rounded-lg p-4">
           <div className="text-sm text-gray-500">With Preferred Vendor</div>
           <div className="text-2xl font-semibold text-gray-900">
-            {materials.filter(m => m.preferredVendor).length}
+            {materialsWithQOH.filter(m => m.vendors.length > 0).length}
           </div>
         </div>
         <div className="bg-white shadow rounded-lg p-4">
           <div className="text-sm text-gray-500">Used in BOMs</div>
           <div className="text-2xl font-semibold text-gray-900">
-            {materials.filter(m => m._count.bomUsage > 0).length}
+            {materialsWithQOH.filter(m => m._count.bomUsage > 0).length}
           </div>
         </div>
       </div>

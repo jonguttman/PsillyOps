@@ -9,6 +9,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Multi-Label Product Support
+- **Multiple Label Associations**: Products can now have multiple label templates associated simultaneously (e.g., jar label + box label)
+- **QR/Barcode Carrier Selection**: When 2+ labels are associated, designate which label carries the QR code and which carries the barcode
+- **Smart Element Filtering**: Non-carrier labels automatically exclude QR/barcode elements during rendering to prevent duplication
+- **Per-Template Print Settings**: Each product-label association saves its own print settings (quantity, margins, width, height)
+- **Icon-Based Print Interface**: Each associated label displays an inline print icon for direct access
+- **Edit Mode Toggle**: Clean default view shows only associated labels; click "Edit" to manage associations and carrier selections
+- **Auto-Preview**: Print modals now automatically render label preview when opened
+- **Carrier Status Badges**: Visual indicators show which labels carry QR codes and barcodes
+
+### Label Template Management Enhancements
+- **Template Renaming**: Edit template names inline without creating new versions
+- **Template Archiving**: Archive templates that have no active versions to keep the template list clean
+- **Archive Safety**: System prevents archiving templates with active versions or active associations
+
+### Bug Fixes
+- **Prisma Client Browser Error**: Fixed server-side code leaking into client bundle by refactoring `PredictionEditor` component
+- **Print Settings Persistence**: Resolved issue where label width and height were not saving correctly per template
+
+### TripDAR Seal Generator — Low-Friction Mode
+- **Generate New Seals Mode**: New default mode in `/ops/seals` that creates QR tokens and seals in one step
+- **Mode Toggle**: UI now offers "Generate New Seals" (default) vs "Use Existing Tokens" modes
+- **Quantity Input**: Enter number of seals to generate (1-250 per batch)
+- **Optional Product Linking**: Seals can optionally be linked to a product for tracking
+- **Automatic Token Creation**: System creates `QRToken` records with `CUSTOM` or `PRODUCT` entity type
+- **One-Click Workflow**: No more manual token creation → copy → paste workflow
+- **Backward Compatible**: "Use Existing Tokens" mode preserves original behavior for existing tokens
+- **Full Audit Trail**: All token creation and seal generation events logged with `logCategory: 'certification'`
+
+### TripDAR Experience Mode Support
+- **ExperienceMode Enum**: Added `MICRO` and `MACRO` experience modes to distinguish between microdose and macro journey experiences
+- **Prediction Profiles**: Prediction profiles now support mode-specific predictions (products can have both MICRO and MACRO profiles)
+- **Product Default Mode**: Products now have a `defaultExperienceMode` field (defaults to MACRO) that determines which mode is used when not explicitly specified
+- **Mode-Specific Vibe Vocabulary**: Vibe labels (Transcend, Energize, Create, Transform, Connect) now have mode-specific wording:
+  - **MICRO**: "Subtle uplift", "Clarity / energy", "Creative flow", "Perspective shift", "Emotional openness"
+  - **MACRO**: "Mystical / beyond-self", "Stimulation / intensity", "Visionary / imagination", "Breakthrough / dissolution", "Connection / unity"
+- **Survey Mode Selection**: When a product has both MICRO and MACRO profiles, users are prompted to select which mode they used before starting the survey
+- **Mode Lock-In**: Once mode is selected in the survey, all questions use mode-specific labels and the review is stored with the selected mode
+- **TripDAR Dashboard**: Dashboard now shows breakdowns by experience mode (MICRO vs MACRO totals and weekly submissions)
+- **Review Browser**: Added experience mode filter and display column in the review browser
+- **Export Support**: CSV/JSON exports now include `experienceMode` field for ML-ready data
+- **Backward Compatibility**: All existing prediction profiles and reviews are automatically assigned MACRO mode (safe migration)
+
 ### Materials Management
 - **Edit Materials**: Metadata fields (name, category, notes, vendor) are now editable on existing materials
 - **Archive Materials**: Soft delete materials with `archivedAt` timestamp; archived materials hidden by default with toggle to show

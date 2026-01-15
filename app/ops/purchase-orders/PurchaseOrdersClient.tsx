@@ -280,7 +280,7 @@ export default function PurchaseOrdersClient({
                   <tr key={po.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3">
                       <Link
-                        href={`/purchase-orders/${po.id}`}
+                        href={`/ops/purchase-orders/${po.id}`}
                         className="text-sm font-medium text-blue-600 hover:text-blue-800"
                       >
                         {po.poNumber}
@@ -329,7 +329,7 @@ export default function PurchaseOrdersClient({
                     </td>
                     <td className="px-4 py-3 text-right">
                       <Link
-                        href={`/purchase-orders/${po.id}`}
+                        href={`/ops/purchase-orders/${po.id}`}
                         className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
                       >
                         <ExternalLink className="w-4 h-4" />

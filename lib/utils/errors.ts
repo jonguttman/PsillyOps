@@ -40,7 +40,9 @@ export const ErrorCodes = {
   INVALID_STATUS: 'INVALID_STATUS',
   DUPLICATE: 'DUPLICATE',
   CONFLICT: 'CONFLICT',
-  INTERNAL_ERROR: 'INTERNAL_ERROR'
+  INTERNAL_ERROR: 'INTERNAL_ERROR',
+  QR_TOKEN_NOT_FOUND: 'QR_TOKEN_NOT_FOUND',
+  QR_TOKEN_INACTIVE: 'QR_TOKEN_INACTIVE'
 } as const;
 
 // Standard error handler for API routes
@@ -82,9 +84,12 @@ function getStatusCode(code: string): number {
     case ErrorCodes.FORBIDDEN:
       return 403;
     case ErrorCodes.NOT_FOUND:
+    case ErrorCodes.QR_TOKEN_NOT_FOUND:
       return 404;
     case ErrorCodes.CONFLICT:
       return 409;
+    case ErrorCodes.QR_TOKEN_INACTIVE:
+      return 410;
     case ErrorCodes.VALIDATION_ERROR:
     case ErrorCodes.INVALID_INPUT:
     case ErrorCodes.INVALID_OPERATION:

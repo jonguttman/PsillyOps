@@ -55,9 +55,14 @@ export default {
           '0%': { opacity: '0', transform: 'translateY(4px) translateX(-50%)' },
           '100%': { opacity: '1', transform: 'translateY(0) translateX(-50%)' },
         },
+        lineSweep: {
+          '0%': { transform: 'translateX(-100%)' },
+          '100%': { transform: 'translateX(0%)' },
+        },
       },
       animation: {
         fadeIn: 'fadeIn 150ms ease-out',
+        lineSweep: 'lineSweep 700ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards',
       },
     },
   },

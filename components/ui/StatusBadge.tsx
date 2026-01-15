@@ -155,3 +155,6 @@ export function MovementTypeBadge({ type, userRole }: { type: string; userRole?:
 
 
 
+
+
+

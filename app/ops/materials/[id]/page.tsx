@@ -138,7 +138,7 @@ async function setPreferredVendor(formData: FormData) {
     data: { preferredVendorId: vendorId }
   });
 
-  revalidatePath(`/materials/${materialId}`);
+  revalidatePath(`/ops/materials/${materialId}`);
 }
 
 async function addAttachment(formData: FormData) {
@@ -157,7 +157,7 @@ async function addAttachment(formData: FormData) {
     }
   });
 
-  revalidatePath(`/materials/${materialId}`);
+  revalidatePath(`/ops/materials/${materialId}`);
 }
 
 async function removeAttachment(formData: FormData) {
@@ -169,7 +169,7 @@ async function removeAttachment(formData: FormData) {
     where: { id: attachmentId }
   });
 
-  revalidatePath(`/materials/${materialId}`);
+  revalidatePath(`/ops/materials/${materialId}`);
 }
 
 export default async function MaterialDetailPage({
@@ -438,7 +438,7 @@ export default async function MaterialDetailPage({
               {material.vendors.map(mv => (
                 <tr key={mv.id}>
                   <td className="py-2 text-sm text-gray-900">
-                    <Link href={`/vendors/${mv.vendorId}`} className="text-blue-600 hover:text-blue-900">{mv.vendor.name}</Link>
+                    <Link href={`/ops/vendors/${mv.vendorId}`} className="text-blue-600 hover:text-blue-900">{mv.vendor.name}</Link>
                   </td>
                   <td className="py-2 text-sm text-gray-900 text-right">{mv.lastPrice ? `$${mv.lastPrice.toFixed(2)}` : "—"}</td>
                   <td className="py-2 text-sm text-gray-900 text-right">{mv.moq > 0 ? mv.moq : "—"}</td>
@@ -451,7 +451,7 @@ export default async function MaterialDetailPage({
                     )}
                   </td>
                   <td className="py-2 text-right">
-                    <Link href={`/materials/${id}/vendors`} className="text-sm text-blue-600 hover:text-blue-900">Edit</Link>
+                    <Link href={`/ops/materials/${id}/vendors`} className="text-sm text-blue-600 hover:text-blue-900">Edit</Link>
                   </td>
                 </tr>
               ))}

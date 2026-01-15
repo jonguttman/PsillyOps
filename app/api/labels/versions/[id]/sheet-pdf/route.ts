@@ -4,15 +4,25 @@
  * POST /api/labels/versions/[id]/sheet-pdf
  * 
  * Generates a print-ready PDF of labels arranged on letter-size sheets.
+ * 
+ * Supports two modes:
+ * - 'preview': Design-time preview with placeholder QR codes (no entity required)
+ * - 'token': Production print with unique QR tokens per label (entity required)
+ * 
+ * The mode MUST be explicitly specified by the caller.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { renderSheetPdfBuffer } from '@/lib/services/sheetPdfService';
+import { auth } from '@/lib/auth/auth';
+import { renderSheetPdfBuffer, PdfRenderMode } from '@/lib/services/sheetPdfService';
 import { PlaceableElement } from '@/lib/types/placement';
 import { SheetDecorations } from '@/lib/constants/sheet';
-
-// Maximum labels to prevent abuse
-const MAX_LABELS = 2000;
+import { LabelEntityType } from '@prisma/client';
+import { 
+  validateSheetConfig, 
+  formatValidationError,
+  DEFAULT_MARGIN_TOP_BOTTOM_IN,
+} from '@/lib/utils/sheetValidation';
 
 interface SheetPdfRequestBody {
   quantity: number;
@@ -20,6 +30,15 @@ interface SheetPdfRequestBody {
   labelWidthIn?: number | null;
   labelHeightIn?: number | null;
   decorations?: SheetDecorations;
+  /**
+   * PDF render mode - MUST be explicitly set
+   * - 'preview': Label setup/editor preview, placeholder QR codes, no entity required
+   * - 'token': Production print, unique QR tokens, entity required
+   */
+  mode: PdfRenderMode;
+  // Entity info - REQUIRED when mode === 'token', ignored when mode === 'preview'
+  entityType?: LabelEntityType;
+  entityId?: string;
 }
 
 export async function POST(
@@ -27,6 +46,15 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Authentication required - tokens are persisted with user audit trail
+    const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+    
     const { id: versionId } = await params;
     
     if (!versionId) {
@@ -47,52 +75,67 @@ export async function POST(
       );
     }
     
-    // Validate quantity
-    const { quantity, elements, labelWidthIn, labelHeightIn, decorations } = body;
+    const { quantity, elements, labelWidthIn, labelHeightIn, decorations, mode, entityType, entityId } = body;
     
-    if (typeof quantity !== 'number' || quantity < 1) {
+    // Mode is REQUIRED - no silent defaults
+    if (!mode || (mode !== 'preview' && mode !== 'token')) {
       return NextResponse.json(
-        { error: 'quantity must be a positive number' },
+        { error: `mode is required and must be either "preview" or "token". Received: ${mode}` },
         { status: 400 }
       );
     }
     
-    if (quantity > MAX_LABELS) {
+    // Mode-specific validation
+    if (mode === 'token') {
+      // Token mode REQUIRES entity context for QR token generation
+      if (!entityType || !entityId) {
+        return NextResponse.json(
+          { error: 'Entity context (entityType and entityId) is required for production PDF generation. Please access this from a Product or Batch page.' },
+          { status: 400 }
+        );
+      }
+    }
+    // Preview mode does NOT require entity context - that's the whole point
+    
+    // Use defaults for validation if not provided
+    const effectiveLabelWidth = labelWidthIn ?? 2;
+    const effectiveLabelHeight = labelHeightIn ?? 1;
+    const effectiveQuantity = typeof quantity === 'number' ? quantity : 1;
+    
+    // Validate using shared validation utility
+    const validation = validateSheetConfig({
+      labelWidthIn: effectiveLabelWidth,
+      labelHeightIn: effectiveLabelHeight,
+      marginTopBottomIn: DEFAULT_MARGIN_TOP_BOTTOM_IN,
+      quantity: effectiveQuantity,
+    });
+    
+    if (!validation.valid) {
       return NextResponse.json(
-        { error: `quantity exceeds maximum of ${MAX_LABELS} labels` },
+        { error: formatValidationError(validation) },
         { status: 400 }
       );
     }
     
-    // Elements are validated by the service layer
-    
-    // Validate label dimensions if provided
-    if (labelWidthIn !== undefined && labelWidthIn !== null) {
-      if (typeof labelWidthIn !== 'number' || labelWidthIn <= 0 || labelWidthIn > 8.5) {
-        return NextResponse.json(
-          { error: 'labelWidthIn must be a positive number <= 8.5' },
-          { status: 400 }
-        );
-      }
+    // Additional check: ensure labels fit on sheet
+    if (validation.layout && validation.layout.perSheet === 0) {
+      return NextResponse.json(
+        { error: 'Label is too large to fit on a letter-size sheet' },
+        { status: 400 }
+      );
     }
     
-    if (labelHeightIn !== undefined && labelHeightIn !== null) {
-      if (typeof labelHeightIn !== 'number' || labelHeightIn <= 0 || labelHeightIn > 11) {
-        return NextResponse.json(
-          { error: 'labelHeightIn must be a positive number <= 11' },
-          { status: 400 }
-        );
-      }
-    }
-    
-    // Generate PDF
+    // Generate PDF based on mode
     const result = await renderSheetPdfBuffer({
       versionId,
-      quantity,
-      elements,
-      labelWidthIn: labelWidthIn ?? undefined,
-      labelHeightIn: labelHeightIn ?? undefined,
+      quantity: validation.clampedQuantity,
+      labelWidthIn: effectiveLabelWidth,
+      labelHeightIn: effectiveLabelHeight,
       decorations,
+      mode,
+      entityType,
+      entityId,
+      userId: mode === 'token' ? session.user.id : undefined,
     });
     
     // Return PDF as downloadable file

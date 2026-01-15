@@ -61,7 +61,7 @@ async function addVendorRelationship(formData: FormData) {
     });
   }
 
-  revalidatePath(`/materials/${materialId}/vendors`);
+  revalidatePath(`/ops/materials/${materialId}/vendors`);
 }
 
 async function updateVendorRelationship(formData: FormData) {
@@ -97,7 +97,7 @@ async function updateVendorRelationship(formData: FormData) {
     });
   }
 
-  revalidatePath(`/materials/${materialId}/vendors`);
+  revalidatePath(`/ops/materials/${materialId}/vendors`);
 }
 
 async function removeVendorRelationship(formData: FormData) {
@@ -116,7 +116,7 @@ async function removeVendorRelationship(formData: FormData) {
 
   await prisma.materialVendor.delete({ where: { id } });
 
-  revalidatePath(`/materials/${materialId}/vendors`);
+  revalidatePath(`/ops/materials/${materialId}/vendors`);
 }
 
 async function setPreferred(formData: FormData) {
@@ -139,7 +139,7 @@ async function setPreferred(formData: FormData) {
     data: { preferredVendorId: vendorId }
   });
 
-  revalidatePath(`/materials/${materialId}/vendors`);
+  revalidatePath(`/ops/materials/${materialId}/vendors`);
 }
 
 export default async function MaterialVendorsPage({

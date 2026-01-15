@@ -29,8 +29,8 @@ async function handleCreate(formData: FormData) {
     userId: session.user.id
   });
 
-  revalidatePath('/production');
-  redirect(`/production/${orderId}`);
+  revalidatePath('/ops/production');
+  redirect(`/ops/production/${orderId}`);
 }
 
 export default async function NewProductionOrderPage() {

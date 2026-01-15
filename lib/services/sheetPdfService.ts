@@ -8,11 +8,14 @@
 import { Resvg } from '@resvg/resvg-js';
 import PDFDocument from 'pdfkit';
 import { 
-  renderLabelPreviewWithMeta, 
+  renderLabelsShared,
+  getBaseUrl,
   composeLetterSheetsFromLabelSvgs,
-  computeLetterSheetLayout
+  computeLetterSheetLayout,
+  getSvgPhysicalSizeInches
 } from './labelService';
 import { PlaceableElement } from '../types/placement';
+import { LabelEntityType } from '@prisma/client';
 import { 
   SHEET_WIDTH_IN, 
   SHEET_HEIGHT_IN, 
@@ -39,6 +42,16 @@ const PAGE_HEIGHT_PT = LETTER_HEIGHT_IN * POINTS_PER_INCH; // 792
 // Maximum labels to prevent abuse
 const MAX_LABELS = 2000;
 
+// Preview QR payload - non-routable, clearly marked as preview
+const PREVIEW_QR_PAYLOAD = 'PREVIEW-QR-NOT-ACTIVE';
+
+/**
+ * PDF generation mode:
+ * - 'preview': Design-time preview, uses placeholder QR codes, no entity context required
+ * - 'token': Production printing, generates unique QR tokens, entity context REQUIRED
+ */
+export type PdfRenderMode = 'preview' | 'token';
+
 export interface SheetPdfParams {
   versionId: string;
   quantity: number;
@@ -46,6 +59,17 @@ export interface SheetPdfParams {
   labelWidthIn?: number;
   labelHeightIn?: number;
   decorations?: SheetDecorations;
+  /**
+   * PDF render mode - MUST be explicitly set by caller
+   * - 'preview': Label setup/editor preview, placeholder QR codes
+   * - 'token': Production print, unique QR tokens per label
+   */
+  mode: PdfRenderMode;
+  // Entity info - REQUIRED when mode === 'token', ignored when mode === 'preview'
+  entityType?: LabelEntityType;
+  entityId?: string;
+  // Optional user ID for audit trail (only used in token mode)
+  userId?: string;
 }
 
 export interface SheetPdfResult {
@@ -58,7 +82,7 @@ export interface SheetPdfResult {
 /**
  * Renders a sheet SVG to PNG at 300 DPI
  */
-function renderSvgToPng(svgString: string): Buffer {
+export function renderSvgToPng(svgString: string): Buffer {
   const resvg = new Resvg(svgString, {
     fitTo: {
       mode: 'width',
@@ -83,7 +107,7 @@ function renderSvgToPng(svgString: string): Buffer {
 /**
  * Creates a PDF document with the given PNG pages
  */
-function createPdfFromPngs(pngBuffers: Buffer[]): Promise<Buffer> {
+export function createPdfFromPngs(pngBuffers: Buffer[]): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     
@@ -118,21 +142,31 @@ function createPdfFromPngs(pngBuffers: Buffer[]): Promise<Buffer> {
 /**
  * Generates a print-ready PDF buffer from sheet parameters.
  * 
- * This function:
- * 1. Renders the label SVG with elements
- * 2. Computes sheet layout (labels per sheet, rotation, etc.)
- * 3. Generates sheet SVGs for each page
- * 4. Converts each sheet SVG to PNG at 300 DPI
- * 5. Combines PNGs into a multi-page PDF
+ * Supports two modes:
+ * 
+ * MODE: 'preview' (Label Setup / Editor)
+ * - No entity context required
+ * - QR codes are placeholder text (PREVIEW-QR-NOT-ACTIVE)
+ * - Visual "PREVIEW" watermark on QR codes
+ * - No tokens created in database
+ * 
+ * MODE: 'token' (Production Print)
+ * - Entity context REQUIRED (entityType + entityId)
+ * - Each label gets a unique QR token
+ * - Tokens are persisted in database
+ * - Used for Product/Batch printing
  */
 export async function renderSheetPdfBuffer(params: SheetPdfParams): Promise<SheetPdfResult> {
   const { 
     versionId, 
     quantity, 
-    elements, 
     labelWidthIn, 
     labelHeightIn,
     decorations = DEFAULT_SHEET_DECORATIONS,
+    mode,
+    entityType,
+    entityId,
+    userId,
   } = params;
   
   // Validate and clamp quantity
@@ -142,16 +176,53 @@ export async function renderSheetPdfBuffer(params: SheetPdfParams): Promise<Shee
     throw new Error(`Quantity exceeds maximum of ${MAX_LABELS} labels`);
   }
   
-  // Step 1: Render a single label to get the SVG template
-  const labelResult = await renderLabelPreviewWithMeta(versionId, {
-    elements,
-    labelWidthIn,
-    labelHeightIn,
-  });
+  // Mode-specific validation
+  if (mode === 'token') {
+    // Token mode REQUIRES entity context for QR token generation
+    if (!entityType || !entityId) {
+      throw new Error('Entity context (entityType and entityId) is required for production PDF generation. Please access this from a Product or Batch page.');
+    }
+  }
+  // Preview mode does NOT require entity context - that's the whole point
+  
+  // Get the base URL for QR codes (only used in token mode)
+  const baseUrl = getBaseUrl();
+  
+  // Step 1: Render labels based on mode
+  let labelSvgs: string[];
+  
+  if (mode === 'token') {
+    // TOKEN MODE: Generate unique QR tokens for each label
+    // This creates one QR token per label in the database
+    const renderResult = await renderLabelsShared({
+      mode: 'token',
+      versionId,
+      entityType: entityType!,
+      entityId: entityId!,
+      quantity: clampedQuantity,
+      userId,
+      baseUrl,
+    });
+    labelSvgs = renderResult.svgs;
+  } else {
+    // PREVIEW MODE: Use placeholder QR codes, no tokens created
+    // All labels are identical (same placeholder QR)
+    const renderResult = await renderLabelsShared({
+      mode: 'preview',
+      versionId,
+      quantity: clampedQuantity,
+      // Use the non-routable preview payload
+      previewQrPayload: PREVIEW_QR_PAYLOAD,
+    });
+    labelSvgs = renderResult.svgs;
+  }
   
   // Step 2: Compute layout to determine labels per sheet
-  const effectiveWidthIn = labelWidthIn ?? labelResult.meta.widthIn;
-  const effectiveHeightIn = labelHeightIn ?? labelResult.meta.heightIn;
+  // Get dimensions from first SVG (all have same dimensions)
+  const firstSvg = labelSvgs[0];
+  const { widthIn: svgWidthIn, heightIn: svgHeightIn } = getSvgPhysicalSizeInches(firstSvg);
+  const effectiveWidthIn = labelWidthIn ?? svgWidthIn;
+  const effectiveHeightIn = labelHeightIn ?? svgHeightIn;
   
   const layout = computeLetterSheetLayout(
     effectiveWidthIn,
@@ -168,15 +239,17 @@ export async function renderSheetPdfBuffer(params: SheetPdfParams): Promise<Shee
   const pageCount = Math.ceil(clampedQuantity / layout.perSheet);
   
   // Step 4: Generate sheet SVGs for each page
-  // For PDF, we render ALL labels (not placeholders like in preview)
-  // Create an array of identical label SVGs for the full quantity
-  const labelSvgs: string[] = Array(clampedQuantity).fill(labelResult.svg);
-  
+  // In token mode: each label is unique (has its own QR token)
+  // In preview mode: all labels are identical (same placeholder QR) - can use instancing
   const { sheets } = composeLetterSheetsFromLabelSvgs({
     labelSvgs,
     orientation: 'portrait',
     marginIn: LETTER_MARGIN_IN,
     decorations,
+    uniqueLabels: mode === 'token', // Only use unique labels in token mode
+    // Pass dimension overrides if provided
+    labelWidthInOverride: labelWidthIn,
+    labelHeightInOverride: labelHeightIn,
   });
   
   // Step 5: Convert each sheet SVG to PNG

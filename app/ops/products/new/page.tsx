@@ -45,7 +45,7 @@ async function createProduct(formData: FormData) {
     },
   });
 
-  revalidatePath("/products");
+  revalidatePath("/ops/products");
   redirect("/ops/products");
 }
 

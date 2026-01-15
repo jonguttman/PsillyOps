@@ -16,6 +16,9 @@
     "@auth/prisma-adapter": "^2.7.4",
     "@prisma/client": "^6.1.0",
     "@resvg/resvg-js": "^2.6.2",
+    "@vercel/blob": "^2.0.0",
+    "@zxing/browser": "^0.1.5",
+    "@zxing/library": "^0.21.3",
     "bcryptjs": "^2.4.3",
     "bwip-js": "^4.8.0",
     "date-fns": "^4.1.0",
@@ -33,6 +36,8 @@
     "react-moveable": "^0.56.0",
     "rehype-raw": "^7.0.0",
     "remark-gfm": "^4.0.1",
+    "simplex-noise": "^4.0.3",
+    "svg-to-pdfkit": "^0.1.8",
     "zod": "^3.24.1"
   },
   "devDependencies": {
@@ -42,6 +47,7 @@
     "@types/qrcode": "^1.5.5",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
+    "@types/svg-to-pdfkit": "^0.1.3",
     "autoprefixer": "^10.4.20",
     "eslint": "^9.17.0",
     "eslint-config-next": "^15.1.0",

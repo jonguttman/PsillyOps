@@ -139,7 +139,7 @@ export default function SupplyWatchCard({
               <ul className="space-y-1">
                 {lowStockMaterials.slice(0, 5).map((m) => (
                   <li key={m.id} className="flex items-center justify-between gap-2">
-                    <Link href={`/materials/${m.id}`} className="text-xs text-blue-700 hover:underline truncate">
+                    <Link href={`/ops/materials/${m.id}`} className="text-xs text-blue-700 hover:underline truncate">
                       {m.name}
                     </Link>
                     <span className="text-xs text-gray-500 flex-shrink-0">
@@ -163,7 +163,7 @@ export default function SupplyWatchCard({
                   const sign = a.deltaQty > 0 ? '+' : '';
                   return (
                     <li key={a.id} className="flex items-center justify-between gap-2">
-                      <Link href={`/inventory/${a.inventory.id}`} className="text-xs text-blue-700 hover:underline truncate">
+                      <Link href={`/ops/inventory/${a.inventory.id}`} className="text-xs text-blue-700 hover:underline truncate">
                         {name}
                       </Link>
                       <span className="text-xs text-gray-500 flex-shrink-0" title={a.reason}>

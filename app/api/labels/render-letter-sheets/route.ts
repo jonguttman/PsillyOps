@@ -14,6 +14,7 @@ import {
 import { createPrintJob } from '@/lib/services/printJobService';
 import { handleApiError, AppError, ErrorCodes } from '@/lib/utils/errors';
 import { hasPermission } from '@/lib/auth/rbac';
+import { MAX_LABELS_PER_JOB } from '@/lib/utils/sheetValidation';
 
 const VALID_ENTITY_TYPES = ['PRODUCT', 'BATCH', 'INVENTORY'] as const;
 type EntityType = typeof VALID_ENTITY_TYPES[number];
@@ -36,11 +37,14 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { versionId, entityType, entityId, quantity = 1 } = body as {
+    const { versionId, entityType, entityId, quantity = 1, labelWidthIn, labelHeightIn, marginIn } = body as {
       versionId?: string;
       entityType: EntityType;
       entityId: string;
       quantity: number;
+      labelWidthIn?: number;
+      labelHeightIn?: number;
+      marginIn?: number;
     };
 
     if (!entityType || !VALID_ENTITY_TYPES.includes(entityType)) {
@@ -50,7 +54,12 @@ export async function POST(req: NextRequest) {
       throw new AppError(ErrorCodes.INVALID_INPUT, 'entityId is required');
     }
 
-    const qty = Math.min(Math.max(parseInt(String(quantity), 10) || 1, 1), 1000);
+    // Validate and clamp quantity using shared constant
+    const rawQty = parseInt(String(quantity), 10) || 1;
+    if (rawQty <= 0) {
+      throw new AppError(ErrorCodes.INVALID_INPUT, 'Quantity must be at least 1');
+    }
+    const qty = Math.min(Math.max(rawQty, 1), MAX_LABELS_PER_JOB);
 
     // Resolve version (active if omitted)
     let resolvedVersionId = versionId;
@@ -82,7 +91,13 @@ export async function POST(req: NextRequest) {
       baseUrl
     });
 
-    const { sheets, meta } = composeLetterSheetsFromLabelSvgs({ labelSvgs: rendered.svgs });
+    const { sheets, meta } = composeLetterSheetsFromLabelSvgs({ 
+      labelSvgs: rendered.svgs,
+      marginIn,
+      labelWidthInOverride: labelWidthIn,
+      labelHeightInOverride: labelHeightIn,
+    });
+    // #endregion
 
     // Create print job record
     const printJob = await createPrintJob({
@@ -107,5 +122,3 @@ export async function POST(req: NextRequest) {
     return handleApiError(error);
   }
 }
-
-

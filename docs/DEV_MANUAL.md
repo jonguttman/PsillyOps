@@ -14,6 +14,7 @@
 5. [Service Layer](#service-layer)
    - [Label Sheet Composition & QR Strategy](#label-sheet-composition--qr-strategy)
 6. [API Routes](#api-routes)
+   - [Internal API Routes](#internal-api-routes)
 7. [Authentication & Authorization](#authentication--authorization)
 8. [Intelligent Logging System](#intelligent-logging-system)
 9. [Development Workflow](#development-workflow)
@@ -237,6 +238,7 @@ Most enums are defined in both `prisma/schema.prisma` and `lib/types/enums.ts`:
 - **InventoryStatus**: AVAILABLE, RESERVED, DAMAGED, SCRAPPED
 - **PurchaseOrderStatus**: DRAFT, SENT, PARTIALLY_RECEIVED, RECEIVED, CANCELLED
 - **ActivityEntity**: PRODUCT, MATERIAL, BATCH, ORDER, PRODUCTION_ORDER, PURCHASE_ORDER
+- **ExperienceMode**: MICRO, MACRO (TripDAR experience data collection)
 
 ### Material Categories
 
@@ -463,6 +465,142 @@ const result = await applyDocumentImport(importId, userId);
 await rejectDocumentImport(importId, 'Incorrect data', userId);
 ```
 
+### TripDAR Seal Services
+
+#### sealGeneratorService.ts
+**Deterministic seal SVG generation**
+
+```typescript
+// Generate a single seal SVG
+const svg = await generateSealSvg(token, sealVersion);
+
+// Seal generation is deterministic: same token + version = identical SVG
+// Uses sha256(token|version) for QR cloud pattern generation
+```
+
+**Key features:**
+- Loads base SVG from `public/tripdar_seal_base_and_text.svg`
+- Injects QR code pointing to `/seal/{token}`
+- Generates microfiber dots deterministically from token hash
+- Validates base SVG checksum to prevent tampering
+
+#### sealBatchService.ts
+**Batch seal generation with sheet layout**
+
+```typescript
+// Generate seals for multiple tokens
+const result = await generateSealBatch({
+  tokens: ['qr_abc123', 'qr_def456'],
+  sheetConfig: {
+    paperSize: 'letter',
+    sealDiameter: 1.5,
+    marginIn: 0.25,
+  },
+  userId: 'user_123',
+});
+
+// Returns: { sealSvgs, sheetSvgs, pageCount, sealsPerSheet, layout, metadata }
+```
+
+#### API Routes for Seal Generation
+
+**POST `/api/seals/generate`**
+Supports two modes:
+
+```typescript
+// Mode 1: Generate new seals (creates tokens automatically)
+{
+  quantity: 10,
+  productId?: 'prod_123',  // Optional product link
+  config: { paperSize, sealDiameter, marginIn }
+}
+
+// Mode 2: Use existing tokens
+{
+  tokens: ['qr_abc123', 'qr_def456'],
+  config: { paperSize, sealDiameter, marginIn }
+}
+```
+
+**POST `/api/seals/pdf`**
+Same request format as `/generate`, returns PDF binary.
+
+**Key invariants:**
+- Generator never modifies token state
+- Same inputs always produce identical output (idempotent)
+- All generation events logged with `logCategory: 'certification'`
+- Maximum 250 tokens per batch (`MAX_TOKENS_PER_BATCH`)
+
+### TripDAR Services (Experience Data Collection)
+
+#### predictionService.ts
+**Prediction profile management with ExperienceMode support**
+
+```typescript
+// Create or update prediction profile for a product and mode
+createPredictionProfile(productId, weights, userId, experienceMode);
+
+// Get active prediction for a product and mode
+const prediction = await getActivePrediction(productId, experienceMode);
+
+// Get both MICRO and MACRO predictions for a product
+const predictions = await getActivePredictionsByMode(productId);
+```
+
+**Key features:**
+- Products can have separate prediction profiles for MICRO and MACRO modes
+- Each profile stores vibe weights (transcend, energize, create, transform, connect) as percentages
+- Only one active profile per product per mode (enforced by unique constraint)
+- Profiles are versioned via `archivedAt` timestamp
+
+#### vibeVocabularyService.ts
+**Mode-specific vibe label mapping**
+
+```typescript
+// Get mode-specific labels for vibe sliders
+const labels = getVibeLabels(ExperienceMode.MICRO);
+// Returns: { transcend: "Subtle uplift", energize: "Clarity / energy", ... }
+```
+
+**Implementation:**
+- Default labels defined in code for MICRO and MACRO modes
+- Designed to be overrideable via `SystemConfig` (future enhancement)
+- Used by `PredictionEditor` and `ExperienceSurvey` components
+
+#### experienceService.ts
+**Experience review submission and analytics**
+
+```typescript
+// Submit a review (public-facing)
+const review = await submitReview({
+  productId,
+  batchId: null,
+  experienceMode: ExperienceMode.MACRO,
+  overallMatch: 3,
+  vibeDeltas: { transcend: 1, energize: 0, ... },
+  context: { firstTime: false, doseBandGrams: '0.75-1.5g', setting: 'social' },
+  note: 'Great experience...'
+}, deviceHash);
+
+// Get review statistics (ops dashboard)
+const stats = await getReviewStats();
+// Returns: { total, weeklySubmissions, completionRate, neutralRate, byMode: {...} }
+
+// Export reviews for ML pipelines
+const reviews = await getReviewsForExport({ experienceMode: ExperienceMode.MACRO });
+```
+
+**Privacy-first design:**
+- No PII collection (no names, emails, accounts, precise location)
+- Server-side `deviceHash` generation (short-lived, rotated ~48h)
+- Integrity flags for abuse detection (never blocks users)
+- All questions are skippable
+
+**Data model:**
+- `PredictionProfile`: Immutable prediction snapshots per product/mode
+- `ExperienceReview`: Anonymous feedback with vibe deltas and optional context
+- `DeviceScanLog`: Ephemeral device session tracking (integrity only)
+
 ---
 
 ## Label Sheet Composition & QR Strategy
@@ -569,6 +707,123 @@ API routes catch and convert:
 
 ```typescript
 return handleApiError(error);  // Returns proper JSON + status
+```
+
+### TripDAR Seal API Routes
+
+#### Seal Generation (ADMIN or WAREHOUSE)
+
+- `POST /api/seals/generate`
+  - Generate seal SVGs for tokens
+  - Mode 1: `{ quantity, productId?, config }` - creates new tokens
+  - Mode 2: `{ tokens[], config }` - uses existing tokens
+  - Returns: `{ sealSvgs, sheetSvgs, pageCount, sealsPerSheet, sheetId, metadata }`
+  - Creates `SealSheet` record and links tokens
+
+- `POST /api/seals/pdf`
+  - Generate print-ready PDF of seals
+  - Same request format as `/generate`
+  - Returns: PDF binary with `Content-Disposition: attachment`
+
+#### Seal Page (Public)
+
+- `GET /seal/[token]`
+  - Public TripDAR certification page
+  - Displays seal state (unassigned, unbound, active, revoked)
+  - Links to experience survey
+  - Never redirects, never mutates token state
+
+### TripDAR API Routes
+
+#### Public Routes (No Authentication)
+
+- `POST /api/experience/submit`
+  - Submit an experience review (public-facing)
+  - Accepts: `productId`, `batchId` (optional), `experienceMode`, `overallMatch`, `vibeDeltas`, `context`, `note`
+  - Returns: `{ success: true, reviewId: string }`
+  - Server generates `deviceHash` automatically (no client identifier sent)
+
+#### Ops Routes (ANALYST or ADMIN)
+
+- `GET /api/insights/tripdar/stats`
+  - Get review statistics for dashboard
+  - Returns: `{ total, weeklySubmissions, completionRate, neutralRate, byMode: { MICRO: {...}, MACRO: {...} } }`
+  - Requires: ANALYST or ADMIN role
+
+- `GET /api/insights/tripdar/reviews`
+  - List reviews with filtering
+  - Query params: `experienceMode`, `productId`, `batchId`, `page`, `limit`
+  - Returns: `{ reviews: [...], total, page, limit }`
+  - Requires: ANALYST or ADMIN role
+
+- `GET /api/insights/tripdar/export`
+  - Export reviews as CSV or JSON for ML pipelines
+  - Query params: `format` (csv|json), `experienceMode`, `productId`, `batchId`
+  - Returns: CSV file or JSON array
+  - Requires: ADMIN role
+
+### Internal API Routes
+
+#### QR Token → Product Lookup (Internal Only)
+
+**Endpoint:** `GET /api/internal/products/by-qr/[token]`
+
+**Purpose:** Allows first-party apps (e.g., Psilly Journal) to resolve QR tokens to product info with silent analytics logging.
+
+**Authentication:**
+- Valid session cookie, OR
+- Bearer token: `Authorization: Bearer ${INTERNAL_SERVICE_TOKEN}`
+
+**Response (200):**
+```json
+{
+  "product_id": "clxyz...",
+  "name": "Hercules Capsules",
+  "sku": "HERC-001",
+  "batch_id": "clxyz...",
+  "token": "qr_abc123...",
+  "entity_type": "BATCH"
+}
+```
+
+**Error Responses:**
+
+| Status | Code | Description |
+|--------|------|-------------|
+| 401 | UNAUTHORIZED | No valid authentication provided |
+| 404 | QR_TOKEN_NOT_FOUND | Token doesn't exist or has invalid format |
+| 410 | QR_TOKEN_INACTIVE | Token has been revoked or expired |
+| 500 | INTERNAL_ERROR | Unexpected server error |
+
+**Resolution Logic:**
+- `PRODUCT` tokens → direct product lookup
+- `BATCH` tokens → resolve to batch's product
+- `INVENTORY` tokens → resolve to inventory item's product
+
+**Silent Analytics:**
+- Logs `qr_token_scanned_internal` event to ActivityLog
+- Includes `source: 'psilly-journal'` in metadata
+- Does NOT trigger notifications or UI updates
+- Does NOT attach to user accounts (system-originated)
+
+**Environment Variable:**
+```bash
+INTERNAL_SERVICE_TOKEN="your_secure_random_token"
+```
+
+Generate a secure token:
+```bash
+openssl rand -base64 32
+```
+
+**Usage Example:**
+```bash
+# Using service token
+curl -H "Authorization: Bearer ${INTERNAL_SERVICE_TOKEN}" \
+  https://your-domain.com/api/internal/products/by-qr/qr_abc123xyz
+
+# Using session (from browser/authenticated context)
+fetch('/api/internal/products/by-qr/qr_abc123xyz')
 ```
 
 ---
@@ -988,6 +1243,7 @@ NEXTAUTH_URL="http://localhost:3000"  # Production: https://your-domain.com
 
 # Optional
 CRON_SECRET="secret_for_cron_jobs"
+INTERNAL_SERVICE_TOKEN="secret_for_internal_api_access"
 SYSTEM_USER_ID="admin_user_id_for_system_actions"
 NODE_ENV="development"
 ```
@@ -999,6 +1255,9 @@ NODE_ENV="development"
 openssl rand -base64 32
 
 # Generate CRON_SECRET
+openssl rand -base64 32
+
+# Generate INTERNAL_SERVICE_TOKEN
 openssl rand -base64 32
 ```
 

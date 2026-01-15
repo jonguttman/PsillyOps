@@ -1,8 +1,9 @@
 // LABEL STORAGE ABSTRACTION
-// Enables future migration to cloud storage (S3/R2/Vercel Blob) without schema changes
+// Supports local filesystem (development) and Vercel Blob (production)
 
 import { promises as fs } from 'fs';
 import path from 'path';
+import { put, del, head } from '@vercel/blob';
 
 // ========================================
 // STORAGE INTERFACE
@@ -69,9 +70,25 @@ export class LocalLabelStorage implements LabelStorage {
   }
 
   /**
-   * Load file from local filesystem
+   * Load file from local filesystem or HTTP URL
+   * Handles both local paths and remote URLs (for dev with production data)
    */
   async load(fileUrl: string): Promise<Buffer> {
+    // If it's an HTTP URL (e.g., Vercel Blob URL from production), fetch it directly
+    if (fileUrl.startsWith('http')) {
+      try {
+        const response = await fetch(fileUrl);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch: ${response.status}`);
+        }
+        const arrayBuffer = await response.arrayBuffer();
+        return Buffer.from(arrayBuffer);
+      } catch (error) {
+        throw new Error(`Label file not found: ${fileUrl}`);
+      }
+    }
+    
+    // Otherwise, load from local filesystem
     const filePath = path.join(this.basePath, fileUrl);
     
     try {
@@ -121,17 +138,138 @@ export class LocalLabelStorage implements LabelStorage {
 }
 
 // ========================================
+// VERCEL BLOB STORAGE
+// ========================================
+
+export class VercelBlobStorage implements LabelStorage {
+  private prefix: string;
+
+  constructor(prefix: string = 'labels') {
+    this.prefix = prefix;
+  }
+
+  /**
+   * Save file to Vercel Blob
+   * Returns the full blob URL for database storage
+   */
+  async save(templateId: string, version: string, file: Buffer, ext: string): Promise<string> {
+    // Ensure extension starts with a dot
+    const normalizedExt = ext.startsWith('.') ? ext : `.${ext}`;
+    
+    // Sanitize inputs to prevent issues
+    const safeTemplateId = templateId.replace(/[^a-zA-Z0-9_-]/g, '');
+    const safeVersion = version.replace(/[^a-zA-Z0-9._-]/g, '');
+    
+    // Build the path
+    const pathname = `${this.prefix}/${safeTemplateId}/${safeVersion}${normalizedExt}`;
+    
+    // Log for debugging
+    console.log('[VercelBlobStorage] Saving file:', {
+      pathname,
+      fileSize: file.length,
+      contentType: normalizedExt === '.svg' ? 'image/svg+xml' : 'application/octet-stream',
+      hasBlobToken: !!process.env.BLOB_READ_WRITE_TOKEN,
+    });
+    
+    try {
+      // Upload to Vercel Blob
+      const blob = await put(pathname, file, {
+        access: 'public',
+        contentType: normalizedExt === '.svg' ? 'image/svg+xml' : 'application/octet-stream',
+      });
+      
+      console.log('[VercelBlobStorage] Upload successful:', blob.url);
+      
+      // Return the full URL for database storage
+      return blob.url;
+    } catch (error) {
+      console.error('[VercelBlobStorage] Upload failed:', {
+        error: String(error),
+        pathname,
+        fileSize: file.length,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Load file from Vercel Blob
+   * fileUrl can be either a full URL or a relative path
+   */
+  async load(fileUrl: string): Promise<Buffer> {
+    try {
+      // If it's a full URL (Vercel Blob), fetch directly
+      if (fileUrl.startsWith('http')) {
+        const response = await fetch(fileUrl);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch blob: ${response.status}`);
+        }
+        const arrayBuffer = await response.arrayBuffer();
+        return Buffer.from(arrayBuffer);
+      } else {
+        // Legacy relative path - this label was uploaded before Vercel Blob was set up
+        // Try to load from local filesystem as fallback (won't work on Vercel but helps with migration)
+        console.warn(`[LabelStorage] Legacy path detected: ${fileUrl}. Please re-upload this label template.`);
+        throw new Error(`Label file not found: ${fileUrl}. This label was uploaded before cloud storage was configured. Please re-upload the label template.`);
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('Label file not found')) {
+        throw error;
+      }
+      throw new Error(`Label file not found: ${fileUrl}`);
+    }
+  }
+
+  /**
+   * Delete file from Vercel Blob
+   */
+  async delete(fileUrl: string): Promise<void> {
+    if (fileUrl.startsWith('http')) {
+      try {
+        await del(fileUrl);
+      } catch (error) {
+        // Ignore errors (file might not exist)
+        console.warn(`Failed to delete blob: ${fileUrl}`, error);
+      }
+    }
+  }
+
+  /**
+   * Check if file exists in Vercel Blob
+   */
+  async exists(fileUrl: string): Promise<boolean> {
+    if (!fileUrl.startsWith('http')) {
+      return false;
+    }
+    
+    try {
+      const blob = await head(fileUrl);
+      return !!blob;
+    } catch {
+      return false;
+    }
+  }
+}
+
+// ========================================
 // SINGLETON INSTANCE
 // ========================================
 
-// Default storage instance - can be swapped out for cloud storage later
+// Default storage instance - automatically selects based on environment
 let storageInstance: LabelStorage | null = null;
 
 export function getLabelStorage(): LabelStorage {
   if (!storageInstance) {
-    // Use environment variable or default path
-    const basePath = process.env.LABEL_STORAGE_PATH || './storage/labels';
-    storageInstance = new LocalLabelStorage(basePath);
+    // Use Vercel Blob in production (when BLOB_READ_WRITE_TOKEN is set)
+    // Fall back to local storage in development
+    if (process.env.BLOB_READ_WRITE_TOKEN) {
+      console.log('[LabelStorage] Using Vercel Blob storage');
+      storageInstance = new VercelBlobStorage('labels');
+    } else {
+      console.log('[LabelStorage] Using local filesystem storage');
+      const basePath = process.env.LABEL_STORAGE_PATH || './storage/labels';
+      storageInstance = new LocalLabelStorage(basePath);
+    }
   }
   return storageInstance;
 }

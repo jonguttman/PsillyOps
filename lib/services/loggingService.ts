@@ -57,7 +57,10 @@ export async function logAction({
       if (key === 'updatedAt' || key === 'createdAt') continue;
       
       if (before[key] !== after[key]) {
-        diff[key] = [before[key], after[key]];
+        // Convert undefined to null - Prisma doesn't allow undefined in arrays
+        const beforeVal = before[key] === undefined ? null : before[key];
+        const afterVal = after[key] === undefined ? null : after[key];
+        diff[key] = [beforeVal, afterVal];
       }
     }
   }
