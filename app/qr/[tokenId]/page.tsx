@@ -16,8 +16,10 @@ import { resolveToken, isValidTokenFormat, getTokenByValue } from '@/lib/service
 import { findActiveRedirectRule } from '@/lib/services/qrRedirectService';
 import { getPublicTransparencyRecord, isPubliclyVisible } from '@/lib/services/transparencyService';
 import { logAction } from '@/lib/services/loggingService';
+import { extractClientIP, getGeoFromRequest } from '@/lib/utils/geoip';
 import { ActivityEntity } from '@prisma/client';
 import { prisma } from '@/lib/db/prisma';
+import { headers } from 'next/headers';
 import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
 
@@ -37,6 +39,11 @@ export default async function QRTokenResolverPage({ params, searchParams }: Prop
   if (!isValidTokenFormat(token)) {
     notFound();
   }
+
+  // Capture request context for geo/IP logging (passive, no permission needed)
+  const headersList = await headers();
+  const clientIP = extractClientIP(headersList);
+  const geo = await getGeoFromRequest(headersList);
 
   // Resolve the token
   const result = await resolveToken(token);
@@ -152,6 +159,7 @@ export default async function QRTokenResolverPage({ params, searchParams }: Prop
         entityType: ActivityEntity.PRODUCTION_RUN,
         entityId: productionRun.id,
         action: 'qr_scanned_production_run',
+        ipAddress: clientIP,
         summary: `QR scanned: Production run for ${productionRun.product.name} × ${productionRun.quantity}`,
         metadata: {
           runStatus: productionRun.status,
@@ -181,6 +189,7 @@ export default async function QRTokenResolverPage({ params, searchParams }: Prop
         entityType: ActivityEntity.LABEL,
         entityId: result.entityId,
         action: 'qr_token_scanned',
+        ipAddress: clientIP,
         summary: `QR token scanned for ${result.entityType} ${result.entityId} → ${resolutionType} resolution`,
         metadata: {
           tokenId: result.token?.id,
@@ -368,15 +377,17 @@ export default async function QRTokenResolverPage({ params, searchParams }: Prop
 
 /**
  * Get the redirect path for an entity type
+ * Includes ?t= token param to pass scan context to authenticity pages
  */
-function getRedirectPath(entityType: string, entityId: string): string {
+function getRedirectPath(entityType: string, entityId: string, tokenCode: string): string {
+  const tokenParam = `?t=${tokenCode}`;
   switch (entityType) {
     case 'PRODUCT':
-      return `/qr/product/${entityId}`;
+      return `/qr/product/${entityId}${tokenParam}`;
     case 'BATCH':
-      return `/qr/batch/${entityId}`;
+      return `/qr/batch/${entityId}${tokenParam}`;
     case 'INVENTORY':
-      return `/qr/inventory/${entityId}`;
+      return `/qr/inventory/${entityId}${tokenParam}`;
     default:
       return '/';
   }
