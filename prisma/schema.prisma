@@ -90,6 +90,9 @@ model Product {
   labelWidthIn            Float?
   sheetMarginTopBottomIn  Float?
   upc                     String?
+  // Public-facing fields for QR pages
+  publicImageUrl          String?
+  publicDescription       String?
   // Manufacturing configuration
   manufacturingSteps      Json?                    // Array of {key, label, order, required, dependsOnKeys[], estimatedMinutes}
   requiredEquipment       Json?                    // Array of strings: ["Scale", "Mixer", "Capsule Machine"]
@@ -327,6 +330,7 @@ model Batch {
   lossReason        String?
   qcStatus          QCStatus           @default(NOT_REQUIRED)
   notes             String?
+  coaUrl            String?
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   product           Product            @relation(fields: [productId], references: [id])

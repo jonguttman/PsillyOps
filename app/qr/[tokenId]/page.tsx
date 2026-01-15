@@ -129,7 +129,7 @@ export default async function QRTokenResolverPage({ params, searchParams }: Prop
           ruleId = rule.id;
         } else {
           // 4. No rule matched - use default entity routing
-          destination = getRedirectPath(result.entityType, result.entityId);
+          destination = getRedirectPath(result.entityType, result.entityId, token);
           resolutionType = 'DEFAULT';
         }
       }
