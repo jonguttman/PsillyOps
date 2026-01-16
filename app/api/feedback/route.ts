@@ -13,13 +13,16 @@ function getResendClient() {
 
 interface FeedbackRequest {
   category: 'great_experience' | 'question' | 'issue' | 'suggestion';
-  email: string;
+  email?: string;
   message?: string;
   productName: string;
   batchCode: string;
   scanCount?: number;
   verificationDate: string;
 }
+
+// Categories that require email for follow-up
+const EMAIL_REQUIRED_CATEGORIES = ['question', 'issue'];
 
 const CATEGORY_LABELS: Record<string, string> = {
   great_experience: 'Great Experience',
@@ -42,20 +45,31 @@ export async function POST(request: NextRequest) {
     const { category, email, message, productName, batchCode, scanCount, verificationDate } = body;
 
     // Validate required fields
-    if (!category || !email || !productName || !batchCode) {
+    if (!category || !productName || !batchCode) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
       );
     }
 
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
+    // Email is required for questions and issues
+    const emailRequired = EMAIL_REQUIRED_CATEGORIES.includes(category);
+    if (emailRequired && !email) {
       return NextResponse.json(
-        { error: 'Invalid email format' },
+        { error: 'Email is required for questions and issues' },
         { status: 400 }
       );
+    }
+
+    // Validate email format if provided
+    if (email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return NextResponse.json(
+          { error: 'Invalid email format' },
+          { status: 400 }
+        );
+      }
     }
 
     const categoryLabel = CATEGORY_LABELS[category] || category;
@@ -93,9 +107,11 @@ export async function POST(request: NextRequest) {
           </table>
 
           <h2 style="color: #1a1a1a; font-size: 18px;">Customer Contact</h2>
+          ${email ? `
           <p style="color: #1a1a1a; margin: 8px 0;">
             <a href="mailto:${email}" style="color: #2d5f3f;">${email}</a>
           </p>
+          ` : '<p style="color: #666; font-style: italic;">No email provided</p>'}
 
           ${message ? `
           <h2 style="color: #1a1a1a; font-size: 18px; margin-top: 24px;">Message</h2>
@@ -120,7 +136,7 @@ Product Information:
 ${scanCount !== undefined ? `- Scan Count: ${scanCount}` : ''}
 - Verified On: ${verificationDate}
 
-Customer Email: ${email}
+Customer Email: ${email || 'Not provided'}
 
 ${message ? `Message:\n${message}` : 'No additional message provided.'}
 
@@ -132,7 +148,7 @@ This feedback was submitted via the product verification page.
     const { error } = await resend.emails.send({
       from: 'Product Feedback <feedback@originalpsilly.com>',
       to: FEEDBACK_EMAIL,
-      replyTo: email,
+      ...(email && { replyTo: email }),
       subject,
       html: htmlContent,
       text: textContent,
