@@ -8,6 +8,8 @@ interface PublicFieldsEditorProps {
   productId: string;
   currentDescription: string | null;
   currentImageUrl: string | null;
+  currentWhyChoose?: string | null;
+  currentSuggestedUse?: string | null;
   onSaveDescription: (formData: FormData) => Promise<void>;
 }
 
@@ -15,12 +17,16 @@ export default function PublicFieldsEditor({
   productId,
   currentDescription,
   currentImageUrl,
+  currentWhyChoose,
+  currentSuggestedUse,
   onSaveDescription,
 }: PublicFieldsEditorProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [description, setDescription] = useState(currentDescription || '');
   const [imageUrl, setImageUrl] = useState(currentImageUrl || '');
+  const [whyChoose, setWhyChoose] = useState(currentWhyChoose || '');
+  const [suggestedUse, setSuggestedUse] = useState(currentSuggestedUse || '');
   const [isSaving, setIsSaving] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -32,6 +38,8 @@ export default function PublicFieldsEditor({
     formData.append('id', productId);
     formData.append('publicDescription', description);
     formData.append('publicImageUrl', imageUrl);
+    formData.append('publicWhyChoose', whyChoose);
+    formData.append('publicSuggestedUse', suggestedUse);
 
     try {
       await onSaveDescription(formData);
@@ -123,6 +131,50 @@ export default function PublicFieldsEditor({
           />
           <p className="mt-1 text-xs text-gray-500">
             This description will be shown on the public verification page.
+          </p>
+        </div>
+
+        {/* Why People Choose This */}
+        <div>
+          <label htmlFor="publicWhyChoose" className="block text-sm font-medium text-gray-700">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-sm" style={{ background: '#00838f' }} />
+              Why People Choose This
+            </span>
+          </label>
+          <textarea
+            id="publicWhyChoose"
+            rows={3}
+            value={whyChoose}
+            onChange={(e) => setWhyChoose(e.target.value)}
+            placeholder="e.g., Uplifted, balanced energy • Social warmth and openness • Creative flow and mental clarity"
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm"
+            disabled={isPending || isSaving}
+          />
+          <p className="mt-1 text-xs text-gray-500">
+            Displayed in a teal bubble on the verification page. Highlight key benefits.
+          </p>
+        </div>
+
+        {/* Suggested Use */}
+        <div>
+          <label htmlFor="publicSuggestedUse" className="block text-sm font-medium text-gray-700">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-sm" style={{ background: '#7b1fa2' }} />
+              Suggested Use
+            </span>
+          </label>
+          <textarea
+            id="publicSuggestedUse"
+            rows={3}
+            value={suggestedUse}
+            onChange={(e) => setSuggestedUse(e.target.value)}
+            placeholder="e.g., 1 capsule every other day. Take earlier in the day or before social or creative activities."
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+            disabled={isPending || isSaving}
+          />
+          <p className="mt-1 text-xs text-gray-500">
+            Displayed in a purple bubble on the verification page. Include dosage and timing recommendations.
           </p>
         </div>
 
