@@ -23,8 +23,7 @@ export async function POST(
     // Verify batch exists
     const batch = await prisma.batch.findUnique({
       where: { id },
-      select: { id: true, batchCode: true, coaUrl: true },
-      include: { product: { select: { name: true } } }
+      select: { id: true, batchCode: true, coaUrl: true, product: { select: { name: true } } }
     });
 
     if (!batch) {
