@@ -303,12 +303,12 @@ export default async function BatchAuthenticityPage({ params, searchParams }: Pr
             />
           )}
 
-          {/* Why People Choose This - Teal/Cyan accent */}
+          {/* Why People Choose This - Teal accent on cream */}
           {product.publicWhyChoose && (
             <div
               className="rounded-lg p-4 mb-4"
               style={{
-                background: 'linear-gradient(135deg, #e0f7fa 0%, #b2ebf2 100%)',
+                background: 'linear-gradient(135deg, #fef9f0 0%, #fcf6ec 100%)',
                 borderLeft: '4px solid #00838f'
               }}
             >
@@ -320,18 +320,18 @@ export default async function BatchAuthenticityPage({ params, searchParams }: Pr
               </h4>
               <div
                 className="text-sm leading-relaxed prose prose-sm max-w-none"
-                style={{ color: '#00695c' }}
+                style={{ color: '#666666' }}
                 dangerouslySetInnerHTML={{ __html: product.publicWhyChoose }}
               />
             </div>
           )}
 
-          {/* Suggested Use - Purple/Lavender accent */}
+          {/* Suggested Use - Purple accent on cream */}
           {product.publicSuggestedUse && (
             <div
               className="rounded-lg p-4 mb-4"
               style={{
-                background: 'linear-gradient(135deg, #f3e5f5 0%, #e1bee7 100%)',
+                background: 'linear-gradient(135deg, #fef9f0 0%, #fcf6ec 100%)',
                 borderLeft: '4px solid #7b1fa2'
               }}
             >
@@ -343,7 +343,7 @@ export default async function BatchAuthenticityPage({ params, searchParams }: Pr
               </h4>
               <div
                 className="text-sm leading-relaxed prose prose-sm max-w-none"
-                style={{ color: '#6a1b9a' }}
+                style={{ color: '#666666' }}
                 dangerouslySetInnerHTML={{ __html: product.publicSuggestedUse }}
               />
             </div>
