@@ -1,8 +1,8 @@
 // QR Token Resolver Page
-// Handles public scanning of QR tokens and routes to verification or entity pages
-// 
+// Handles public scanning of QR tokens and routes to entity verification pages
+//
 // Behavior:
-// - Default (public scans): Routes to /verify/[token] for verification-first experience
+// - Default (public scans): Routes directly to /qr/batch/ or /qr/product/ based on entity type
 // - ?mode=ops: Preserves existing redirect behavior (campaigns, recalls, entity pages)
 //
 // Supports redirect precedence (ops mode only):
@@ -57,24 +57,26 @@ export default async function QRTokenResolverPage({ params, searchParams }: Prop
     // Get the full token record
     const tokenRecord = await getTokenByValue(token);
     
-    // Phase 1: Default behavior is verification-first (public scans)
-    // Ops mode preserves existing redirect behavior
+    // Public scans: Route directly to entity verification pages
+    // This provides the rich batch/product experience with COA, quality data, etc.
     if (!isOpsMode) {
-      // Public scan: Route to verification page
-      // Verification bypasses all redirect rules
       const verifiedAt = new Date();
-      
+
+      // Determine destination based on entity type
+      const publicDestination = getPublicRedirectPath(result.entityType, result.entityId, token);
+
       // Log scan with verification context
       await logAction({
         entityType: ActivityEntity.LABEL,
         entityId: result.entityId,
         action: 'qr_token_scanned',
-        summary: `QR token scanned for ${result.entityType} ${result.entityId} → verification`,
+        summary: `QR token scanned for ${result.entityType} ${result.entityId} → ${result.entityType.toLowerCase()} page`,
         metadata: {
           tokenId: result.token?.id,
           entityType: result.entityType,
           entityId: result.entityId,
-          resolutionType: 'VERIFICATION',
+          resolutionType: result.entityType,
+          redirectUrl: publicDestination,
           scanContext: 'public_verification',
           surface: 'public',
           isOpsScan: false,
@@ -83,9 +85,9 @@ export default async function QRTokenResolverPage({ params, searchParams }: Prop
         },
         tags: ['qr', 'label', 'scan', 'verification']
       });
-      
-      // Route to verification page
-      redirect(`/verify/${token}`);
+
+      // Route to entity verification page
+      redirect(publicDestination);
     }
     
     // Ops mode: Preserve existing redirect behavior
@@ -376,7 +378,26 @@ export default async function QRTokenResolverPage({ params, searchParams }: Prop
 }
 
 /**
- * Get the redirect path for an entity type
+ * Get the public redirect path for an entity type (for public scans)
+ * Routes to the rich verification pages with token context
+ */
+function getPublicRedirectPath(entityType: string, entityId: string, tokenCode: string): string {
+  const tokenParam = `?t=${tokenCode}`;
+  switch (entityType) {
+    case 'PRODUCT':
+      return `/qr/product/${entityId}${tokenParam}`;
+    case 'BATCH':
+      return `/qr/batch/${entityId}${tokenParam}`;
+    case 'INVENTORY':
+      return `/qr/inventory/${entityId}${tokenParam}`;
+    default:
+      // Fallback to verify page for unknown entity types
+      return `/verify/${tokenCode}`;
+  }
+}
+
+/**
+ * Get the redirect path for an entity type (for ops mode)
  * Includes ?t= token param to pass scan context to authenticity pages
  */
 function getRedirectPath(entityType: string, entityId: string, tokenCode: string): string {
