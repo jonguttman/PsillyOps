@@ -312,12 +312,16 @@ export default async function BatchAuthenticityPage({ params, searchParams }: Pr
                 borderLeft: '4px solid #00838f'
               }}
             >
-              <h4
-                className="font-bold text-base mb-2"
-                style={{ fontFamily: 'var(--font-crimson), serif', color: '#00695c' }}
+              <h2
+                className="text-xl font-bold mb-3 flex items-center gap-2"
+                style={{ fontFamily: 'var(--font-crimson), serif', color: '#1a1a1a' }}
               >
+                <span
+                  className="w-1 h-6 rounded-sm"
+                  style={{ background: '#00838f' }}
+                />
                 Why People Choose This
-              </h4>
+              </h2>
               <div
                 className="text-base leading-relaxed prose max-w-none"
                 style={{ color: '#666666' }}
@@ -335,12 +339,16 @@ export default async function BatchAuthenticityPage({ params, searchParams }: Pr
                 borderLeft: '4px solid #7b1fa2'
               }}
             >
-              <h4
-                className="font-bold text-base mb-2"
-                style={{ fontFamily: 'var(--font-crimson), serif', color: '#6a1b9a' }}
+              <h2
+                className="text-xl font-bold mb-3 flex items-center gap-2"
+                style={{ fontFamily: 'var(--font-crimson), serif', color: '#1a1a1a' }}
               >
+                <span
+                  className="w-1 h-6 rounded-sm"
+                  style={{ background: '#7b1fa2' }}
+                />
                 Suggested Use
-              </h4>
+              </h2>
               <div
                 className="text-base leading-relaxed prose max-w-none"
                 style={{ color: '#666666' }}
