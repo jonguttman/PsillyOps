@@ -129,6 +129,7 @@ export default function RichTextEditor({
     ],
     content: value,
     editable: !disabled,
+    immediatelyRender: false, // Prevent SSR hydration mismatch
     onUpdate: ({ editor }) => {
       const html = editor.getHTML();
       // Return empty string if only contains empty paragraph
