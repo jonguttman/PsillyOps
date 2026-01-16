@@ -107,6 +107,12 @@ export default async function BatchAuthenticityPage({ params, searchParams }: Pr
   // Current verification timestamp
   const verifiedAt = new Date();
 
+  // Cast product to include optional new fields (they may not exist in DB yet)
+  const product = batch.product as typeof batch.product & {
+    publicWhyChoose?: string | null;
+    publicSuggestedUse?: string | null;
+  };
+
   return (
     <div className={`${crimsonPro.variable} ${dmSans.variable} min-h-screen pb-8`} style={{ 
       fontFamily: 'var(--font-dm-sans), -apple-system, sans-serif',
@@ -255,109 +261,88 @@ export default async function BatchAuthenticityPage({ params, searchParams }: Pr
             Product Information
           </h2>
 
-          {/* Info Rows */}
-          <div className="space-y-0">
-            <div className="flex justify-between items-baseline py-3" style={{ borderBottom: '1px solid #e8e3d9' }}>
-              <span className="text-sm font-medium uppercase tracking-wider" style={{ color: '#666666', letterSpacing: '0.05em' }}>
-                Product Name
-              </span>
-              <span 
-                className="text-lg font-bold text-right"
-                style={{ fontFamily: 'var(--font-crimson), serif', color: '#2d5f3f' }}
+          {/* Product Name */}
+          <h3 
+            className="text-2xl font-bold mb-4"
+            style={{ fontFamily: 'var(--font-crimson), serif', color: '#2d5f3f' }}
+          >
+            {product.name}
+          </h3>
+
+          {/* Product Image - 16:9 aspect ratio */}
+          {product.publicImageUrl && (
+            <div 
+              className="relative w-full mb-4 rounded-xl overflow-hidden"
+              style={{ aspectRatio: '16/9', background: '#f5f5f5' }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={product.publicImageUrl}
+                alt={product.name}
+                className="w-full h-full object-cover"
+              />
+            </div>
+          )}
+
+          {/* Product Description */}
+          {product.publicDescription && (
+            <p className="text-sm leading-relaxed mb-4" style={{ color: '#666666' }}>
+              {product.publicDescription}
+            </p>
+          )}
+
+          {/* Why People Choose This - Teal/Cyan accent */}
+          {product.publicWhyChoose && (
+            <div 
+              className="rounded-lg p-4 mb-4"
+              style={{ 
+                background: 'linear-gradient(135deg, #e0f7fa 0%, #b2ebf2 100%)',
+                borderLeft: '4px solid #00838f'
+              }}
+            >
+              <h4 
+                className="font-bold text-sm mb-2"
+                style={{ fontFamily: 'var(--font-crimson), serif', color: '#00695c' }}
               >
-                {batch.product.name}
-              </span>
+                ✨ Why People Choose This
+              </h4>
+              <p className="text-sm leading-relaxed" style={{ color: '#00695c' }}>
+                {product.publicWhyChoose}
+              </p>
             </div>
+          )}
 
-            <div className="flex justify-between items-baseline py-3" style={{ borderBottom: '1px solid #e8e3d9' }}>
-              <span className="text-sm font-medium uppercase tracking-wider" style={{ color: '#666666', letterSpacing: '0.05em' }}>
-                SKU
-              </span>
-              <span className="font-semibold" style={{ color: '#1a1a1a' }}>
-                {batch.product.sku}
-              </span>
+          {/* Suggested Use - Purple/Lavender accent */}
+          {product.publicSuggestedUse && (
+            <div 
+              className="rounded-lg p-4 mb-4"
+              style={{ 
+                background: 'linear-gradient(135deg, #f3e5f5 0%, #e1bee7 100%)',
+                borderLeft: '4px solid #7b1fa2'
+              }}
+            >
+              <h4 
+                className="font-bold text-sm mb-2"
+                style={{ fontFamily: 'var(--font-crimson), serif', color: '#6a1b9a' }}
+              >
+                💫 Suggested Use
+              </h4>
+              <p className="text-sm leading-relaxed" style={{ color: '#6a1b9a' }}>
+                {product.publicSuggestedUse}
+              </p>
             </div>
+          )}
 
-            {batch.product.strain && (
-              <div className="flex justify-between items-baseline py-3" style={{ borderBottom: '1px solid #e8e3d9' }}>
-                <span className="text-sm font-medium uppercase tracking-wider" style={{ color: '#666666', letterSpacing: '0.05em' }}>
-                  Strain
-                </span>
-                <span className="font-semibold" style={{ color: '#1a1a1a' }}>
-                  {batch.product.strain.name}
-                </span>
-              </div>
-            )}
-
-            {qcPassed && (
-              <div className="flex justify-between items-center py-3">
-                <span className="text-sm font-medium uppercase tracking-wider" style={{ color: '#666666', letterSpacing: '0.05em' }}>
-                  Status
-                </span>
-                <span 
-                  className="inline-block px-3 py-1 rounded-full text-sm font-semibold"
-                  style={{ 
-                    background: 'linear-gradient(135deg, #d4f4dd 0%, #c8edd4 100%)',
-                    color: '#2d5f3f'
-                  }}
-                >
-                  Verified
-                </span>
-              </div>
-            )}
-          </div>
-
-          {/* Batch Info Inline */}
+          {/* Batch Number */}
           <div 
             className="rounded-lg p-3 mt-4"
             style={{ background: '#fdfbf7' }}
           >
             <div className="flex justify-between py-1">
               <strong className="text-sm" style={{ color: '#1a1a1a' }}>Batch:</strong>
-              <span className="text-sm" style={{ color: '#666666' }}>{getDisplayBatchCode(batch.batchCode)}</span>
+              <span className="text-sm font-mono" style={{ color: '#666666' }}>{getDisplayBatchCode(batch.batchCode)}</span>
             </div>
-            {batch.manufactureDate && (
-              <div className="flex justify-between py-1">
-                <strong className="text-sm" style={{ color: '#1a1a1a' }}>Manufacture Date:</strong>
-                <span className="text-sm" style={{ color: '#666666' }}>
-                  {new Date(batch.manufactureDate).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                  })}
-                </span>
-              </div>
-            )}
-            {batch.coaUrl && (
-              <div className="flex justify-between py-1">
-                <strong className="text-sm" style={{ color: '#1a1a1a' }}>Lab Tested:</strong>
-                <a 
-                  href={batch.coaUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm font-medium hover:underline"
-                  style={{ color: '#2d5f3f' }}
-                >
-                  ✓ View Certificate
-                </a>
-              </div>
-            )}
           </div>
-
-          {/* Product Description */}
-          {batch.product.publicDescription && (
-            <div 
-              className="rounded-lg p-4 mt-4"
-              style={{ 
-                background: 'linear-gradient(135deg, #fef9f0 0%, #fcf6ec 100%)',
-                borderLeft: '4px solid #d4af37'
-              }}
-            >
-              <p className="text-sm leading-relaxed" style={{ color: '#666666' }}>
-                {batch.product.publicDescription}
-              </p>
-            </div>
-          )}
         </div>
 
         {/* Quality Overview Card */}
