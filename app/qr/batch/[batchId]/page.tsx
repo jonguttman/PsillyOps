@@ -303,47 +303,55 @@ export default async function BatchAuthenticityPage({ params, searchParams }: Pr
             />
           )}
 
-          {/* Why People Choose This - Teal/Cyan accent */}
+          {/* Why People Choose This - Teal accent on cream */}
           {product.publicWhyChoose && (
             <div
               className="rounded-lg p-4 mb-4"
               style={{
-                background: 'linear-gradient(135deg, #e0f7fa 0%, #b2ebf2 100%)',
+                background: 'linear-gradient(135deg, #fef9f0 0%, #fcf6ec 100%)',
                 borderLeft: '4px solid #00838f'
               }}
             >
-              <h4
-                className="font-bold text-sm mb-2"
-                style={{ fontFamily: 'var(--font-crimson), serif', color: '#00695c' }}
+              <h2
+                className="text-xl font-bold mb-3 flex items-center gap-2"
+                style={{ fontFamily: 'var(--font-crimson), serif', color: '#1a1a1a' }}
               >
+                <span
+                  className="w-1 h-6 rounded-sm"
+                  style={{ background: '#00838f' }}
+                />
                 Why People Choose This
-              </h4>
+              </h2>
               <div
-                className="text-sm leading-relaxed prose prose-sm max-w-none"
-                style={{ color: '#00695c' }}
+                className="text-base leading-relaxed prose max-w-none"
+                style={{ color: '#666666' }}
                 dangerouslySetInnerHTML={{ __html: product.publicWhyChoose }}
               />
             </div>
           )}
 
-          {/* Suggested Use - Purple/Lavender accent */}
+          {/* Suggested Use - Purple accent on cream */}
           {product.publicSuggestedUse && (
             <div
               className="rounded-lg p-4 mb-4"
               style={{
-                background: 'linear-gradient(135deg, #f3e5f5 0%, #e1bee7 100%)',
+                background: 'linear-gradient(135deg, #fef9f0 0%, #fcf6ec 100%)',
                 borderLeft: '4px solid #7b1fa2'
               }}
             >
-              <h4
-                className="font-bold text-sm mb-2"
-                style={{ fontFamily: 'var(--font-crimson), serif', color: '#6a1b9a' }}
+              <h2
+                className="text-xl font-bold mb-3 flex items-center gap-2"
+                style={{ fontFamily: 'var(--font-crimson), serif', color: '#1a1a1a' }}
               >
+                <span
+                  className="w-1 h-6 rounded-sm"
+                  style={{ background: '#7b1fa2' }}
+                />
                 Suggested Use
-              </h4>
+              </h2>
               <div
-                className="text-sm leading-relaxed prose prose-sm max-w-none"
-                style={{ color: '#6a1b9a' }}
+                className="text-base leading-relaxed prose max-w-none"
+                style={{ color: '#666666' }}
                 dangerouslySetInnerHTML={{ __html: product.publicSuggestedUse }}
               />
             </div>
