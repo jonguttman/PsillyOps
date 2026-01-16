@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
 import { formatDate, formatDateTime } from '@/lib/utils/formatters';
 import { completeBatch, updateBatchStatus, setBatchQCStatus, addLaborEntry } from '@/lib/services/productionService';
-import { BatchStatus, QCStatus } from '@prisma/client';
+import { BatchStatus, QCStatus, Prisma } from '@prisma/client';
 import PrintLabelButton from '@/components/labels/PrintLabelButton';
 import { QRBehaviorPanelServer } from '@/components/qr/QRBehaviorPanelServer';
 import { QRTokenInspector } from '@/components/qr/QRTokenInspector';
@@ -193,7 +193,7 @@ async function handleUpdateQualityData(formData: FormData) {
   await prisma.batch.update({
     where: { id: batchId },
     data: {
-      qualityData: hasData ? qualityData : null,
+      qualityData: hasData ? qualityData : Prisma.JsonNull,
     }
   });
 
