@@ -31,10 +31,14 @@ export default function FeedbackForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
+  // Email is required for questions and issues (so we can follow up)
+  const emailRequired = selectedCategory === 'question' || selectedCategory === 'issue';
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!selectedCategory || !email) return;
+    if (!selectedCategory) return;
+    if (emailRequired && !email) return;
 
     setIsSubmitting(true);
     setSubmitStatus('idle');
@@ -148,14 +152,18 @@ export default function FeedbackForm({
 
           <div>
             <label htmlFor="feedback-email" className="block text-sm font-medium mb-1" style={{ color: '#1a1a1a' }}>
-              Your Email <span style={{ color: '#d32f2f' }}>*</span>
+              Your Email {emailRequired ? (
+                <span style={{ color: '#d32f2f' }}>*</span>
+              ) : (
+                <span style={{ color: '#999999' }}>(optional)</span>
+              )}
             </label>
             <input
               type="email"
               id="feedback-email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              required
+              required={emailRequired}
               placeholder="you@example.com"
               className="w-full px-3 py-2 rounded-lg text-sm"
               style={{
@@ -165,7 +173,7 @@ export default function FeedbackForm({
               }}
             />
             <p className="text-xs mt-1" style={{ color: '#999999' }}>
-              So we can follow up with you
+              {emailRequired ? 'So we can follow up with you' : 'Optional - include if you\'d like a response'}
             </p>
           </div>
 
@@ -215,7 +223,7 @@ export default function FeedbackForm({
             </button>
             <button
               type="submit"
-              disabled={!selectedCategory || !email || isSubmitting}
+              disabled={!selectedCategory || (emailRequired && !email) || isSubmitting}
               className="flex-1 px-4 py-2 rounded-lg text-sm font-medium text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               style={{
                 background: 'linear-gradient(135deg, #2d5f3f 0%, #4a7d5e 100%)',
