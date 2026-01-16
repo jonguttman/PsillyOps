@@ -93,6 +93,9 @@ model Product {
   // Manufacturing configuration
   manufacturingSteps      Json?                    // Array of {key, label, order, required, dependsOnKeys[], estimatedMinutes}
   requiredEquipment       Json?                    // Array of strings: ["Scale", "Mixer", "Capsule Machine"]
+  // Public verification page fields
+  publicDescription       String?                  // Description shown on public verification page
+  publicImageUrl          String?                  // Image URL for public verification page
   bom                     BOMItem[]
   batches                 Batch[]
   inventory               InventoryItem[]
