@@ -1,14 +1,24 @@
 import { prisma } from '@/lib/db/prisma';
 import { notFound } from 'next/navigation';
-import Link from 'next/link';
 import type { QualityData } from '@/lib/types/qualityData';
 import {
   DEFAULT_QUALITY_DISCLAIMER,
   SAFETY_STATUS_LABELS,
-  SAFETY_STATUS_STYLES,
-  COMPONENT_LEVEL_LABELS,
-  COMPONENT_LEVEL_STYLES,
 } from '@/lib/types/qualityData';
+import { Crimson_Pro, DM_Sans } from 'next/font/google';
+
+// Load fonts
+const crimsonPro = Crimson_Pro({
+  subsets: ['latin'],
+  weight: ['400', '600', '700'],
+  variable: '--font-crimson',
+});
+
+const dmSans = DM_Sans({
+  subsets: ['latin'],
+  weight: ['400', '500', '700'],
+  variable: '--font-dm-sans',
+});
 
 interface Props {
   params: Promise<{ batchId: string }>;
@@ -31,6 +41,15 @@ function getDisplayBatchCode(fullBatchCode: string): string {
   
   return fullBatchCode;
 }
+
+// Safety status styles for the new design
+const SAFETY_BADGE_STYLES: Record<string, string> = {
+  passed: 'bg-gradient-to-r from-[#d4f4dd] to-[#c8edd4] text-[#2d5f3f]',
+  within_limits: 'bg-gradient-to-r from-[#d4f4dd] to-[#c8edd4] text-[#2d5f3f]',
+  no_pathogens: 'bg-gradient-to-r from-[#d4f4dd] to-[#c8edd4] text-[#2d5f3f]',
+  pending: 'bg-[#fef9f0] text-[#b8860b]',
+  not_tested: 'bg-[#f5f5f5] text-[#666666]',
+};
 
 export default async function BatchAuthenticityPage({ params, searchParams }: Props) {
   const { batchId } = await params;
@@ -78,430 +97,542 @@ export default async function BatchAuthenticityPage({ params, searchParams }: Pr
   // Determine if batch is within shelf life
   const isExpired = batch.expirationDate ? new Date(batch.expirationDate) < new Date() : false;
   const qcPassed = batch.qcStatus === 'PASSED';
+  const qualityData = batch.qualityData as QualityData | null;
+  const hasQualityData = qualityData && (
+    qualityData.identityConfirmation ||
+    qualityData.safetyScreening ||
+    (qualityData.activeComponents && qualityData.activeComponents.length > 0)
+  );
+
+  // Current verification timestamp
+  const verifiedAt = new Date();
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-green-50 to-white">
+    <div className={`${crimsonPro.variable} ${dmSans.variable} min-h-screen pb-8`} style={{ 
+      fontFamily: 'var(--font-dm-sans), -apple-system, sans-serif',
+      background: '#fdfbf7'
+    }}>
+      {/* Inline styles for animations */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes scaleIn {
+          from { transform: scale(0); }
+          to { transform: scale(1); }
+        }
+        .animate-fadeIn {
+          animation: fadeIn 0.6s ease-out both;
+        }
+        .animate-scaleIn {
+          animation: scaleIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+        }
+        .delay-1 { animation-delay: 0.1s; }
+        .delay-2 { animation-delay: 0.2s; }
+        .delay-3 { animation-delay: 0.3s; }
+        .delay-4 { animation-delay: 0.4s; }
+        .delay-5 { animation-delay: 0.5s; }
+      `}} />
+
       {/* Header */}
-      <header className={`${isExpired ? 'bg-amber-600' : 'bg-green-600'} text-white`}>
-        <div className="max-w-2xl mx-auto px-6 py-6">
-          <div className="flex items-center space-x-3">
-            <div className="flex-shrink-0">
-              {isExpired ? (
-                <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-              ) : (
-                <svg className="w-10 h-10" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              )}
-            </div>
-            <div>
-              <p className={`${isExpired ? 'text-amber-100' : 'text-green-100'} text-sm font-medium`}>
-                Batch Verification
-              </p>
-              <h1 className="text-2xl font-bold">
-                {isExpired ? 'Product Expired' : 'Verified Authentic'}
-              </h1>
-            </div>
-          </div>
+      <header 
+        className="text-white shadow-md"
+        style={{ 
+          background: isExpired 
+            ? 'linear-gradient(135deg, #b45309 0%, #d97706 100%)' 
+            : 'linear-gradient(135deg, #2d5f3f 0%, #4a7d5e 100%)',
+          boxShadow: isExpired 
+            ? '0 2px 8px rgba(180, 83, 9, 0.15)'
+            : '0 2px 8px rgba(45, 95, 63, 0.15)'
+        }}
+      >
+        <div className="max-w-[640px] mx-auto px-4 py-4 flex items-center gap-3">
+          <span className="text-2xl">🍄</span>
+          <h1 
+            className="text-xl font-semibold tracking-tight"
+            style={{ fontFamily: 'var(--font-crimson), serif', letterSpacing: '0.01em' }}
+          >
+            Product Verification
+          </h1>
         </div>
       </header>
 
-      <main className="max-w-2xl mx-auto px-6 py-8 space-y-6">
-        {/* First Scan Celebration */}
-        {scanInfo?.isFirstScan && !isExpired && (
-          <div className="bg-gradient-to-r from-amber-400 to-orange-500 text-white rounded-xl p-4 shadow-lg">
-            <div className="flex items-center space-x-3">
-              <span className="text-2xl">&#127881;</span>
-              <div>
-                <p className="font-bold">First Scan!</p>
-                <p className="text-sm opacity-90">You&apos;re the first to verify this batch.</p>
-              </div>
-            </div>
+      <div className="max-w-[640px] mx-auto px-4">
+        {/* Verification Badge */}
+        <div 
+          className="bg-white rounded-[20px] p-10 text-center my-6 animate-fadeIn"
+          style={{ 
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.06)',
+            border: '1px solid #e8e3d9'
+          }}
+        >
+          {/* Animated Check Icon */}
+          <div 
+            className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 animate-scaleIn"
+            style={{ background: isExpired 
+              ? 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)' 
+              : 'linear-gradient(135deg, #d4f4dd 0%, #c8edd4 100%)' 
+            }}
+          >
+            {isExpired ? (
+              <svg className="w-10 h-10" style={{ stroke: '#b45309' }} fill="none" viewBox="0 0 24 24" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            ) : (
+              <svg className="w-10 h-10" style={{ stroke: '#2d5f3f' }} fill="none" viewBox="0 0 24 24" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            )}
           </div>
-        )}
+          
+          <h1 
+            className="text-3xl font-bold mb-2"
+            style={{ fontFamily: 'var(--font-crimson), serif', color: '#1a1a1a' }}
+          >
+            {isExpired ? 'Product Expired' : 'Authentic Product Verified'}
+          </h1>
+          <p style={{ color: '#666666', fontSize: '0.95rem' }}>
+            {isExpired 
+              ? 'This product has passed its expiration date'
+              : 'This product has been verified against our official records'
+            }
+          </p>
+
+          {/* First Scan Badge */}
+          {scanInfo?.isFirstScan && !isExpired && (
+            <div 
+              className="inline-flex items-center gap-2 mt-4 px-4 py-2 rounded-full"
+              style={{ 
+                background: 'linear-gradient(135deg, #fef9f0 0%, #fcf6ec 100%)',
+                border: '1px solid #d4af37'
+              }}
+            >
+              <span>🎉</span>
+              <span className="font-semibold" style={{ color: '#b8860b' }}>First Scan!</span>
+            </div>
+          )}
+        </div>
 
         {/* Expiration Warning */}
         {isExpired && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-            <div className="flex items-start space-x-3">
-              <svg className="w-6 h-6 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-              <div>
-                <p className="font-semibold text-amber-800">This batch has passed its expiration date</p>
-                <p className="text-sm text-amber-700 mt-1">
-                  Expired on {new Date(batch.expirationDate!).toLocaleDateString('en-US', {
+          <div 
+            className="rounded-lg p-4 mb-4 animate-fadeIn"
+            style={{ 
+              background: 'linear-gradient(135deg, #fef9f0 0%, #fcf6ec 100%)',
+              borderLeft: '4px solid #d97706'
+            }}
+          >
+            <p className="font-semibold" style={{ color: '#92400e' }}>
+              Expired on {new Date(batch.expirationDate!).toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+              })}
+            </p>
+            <p className="text-sm mt-1" style={{ color: '#b45309' }}>
+              Please check the product packaging for current information or contact support.
+            </p>
+          </div>
+        )}
+
+        {/* Product Information Card */}
+        <div 
+          className="bg-white rounded-2xl p-6 mb-4 animate-fadeIn delay-1"
+          style={{ 
+            boxShadow: '0 2px 12px rgba(0, 0, 0, 0.05)',
+            border: '1px solid #e8e3d9'
+          }}
+        >
+          <h2 
+            className="text-xl font-bold mb-5 flex items-center gap-2"
+            style={{ fontFamily: 'var(--font-crimson), serif', color: '#1a1a1a' }}
+          >
+            <span 
+              className="w-1 h-6 rounded-sm"
+              style={{ background: 'linear-gradient(180deg, #d4af37 0%, #2d5f3f 100%)' }}
+            />
+            Product Information
+          </h2>
+
+          {/* Info Rows */}
+          <div className="space-y-0">
+            <div className="flex justify-between items-baseline py-3" style={{ borderBottom: '1px solid #e8e3d9' }}>
+              <span className="text-sm font-medium uppercase tracking-wider" style={{ color: '#666666', letterSpacing: '0.05em' }}>
+                Product Name
+              </span>
+              <span 
+                className="text-lg font-bold text-right"
+                style={{ fontFamily: 'var(--font-crimson), serif', color: '#2d5f3f' }}
+              >
+                {batch.product.name}
+              </span>
+            </div>
+
+            <div className="flex justify-between items-baseline py-3" style={{ borderBottom: '1px solid #e8e3d9' }}>
+              <span className="text-sm font-medium uppercase tracking-wider" style={{ color: '#666666', letterSpacing: '0.05em' }}>
+                SKU
+              </span>
+              <span className="font-semibold" style={{ color: '#1a1a1a' }}>
+                {batch.product.sku}
+              </span>
+            </div>
+
+            {batch.product.strain && (
+              <div className="flex justify-between items-baseline py-3" style={{ borderBottom: '1px solid #e8e3d9' }}>
+                <span className="text-sm font-medium uppercase tracking-wider" style={{ color: '#666666', letterSpacing: '0.05em' }}>
+                  Strain
+                </span>
+                <span className="font-semibold" style={{ color: '#1a1a1a' }}>
+                  {batch.product.strain.name}
+                </span>
+              </div>
+            )}
+
+            {qcPassed && (
+              <div className="flex justify-between items-center py-3">
+                <span className="text-sm font-medium uppercase tracking-wider" style={{ color: '#666666', letterSpacing: '0.05em' }}>
+                  Status
+                </span>
+                <span 
+                  className="inline-block px-3 py-1 rounded-full text-sm font-semibold"
+                  style={{ 
+                    background: 'linear-gradient(135deg, #d4f4dd 0%, #c8edd4 100%)',
+                    color: '#2d5f3f'
+                  }}
+                >
+                  Verified
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Batch Info Inline */}
+          <div 
+            className="rounded-lg p-3 mt-4"
+            style={{ background: '#fdfbf7' }}
+          >
+            <div className="flex justify-between py-1">
+              <strong className="text-sm" style={{ color: '#1a1a1a' }}>Batch:</strong>
+              <span className="text-sm" style={{ color: '#666666' }}>{getDisplayBatchCode(batch.batchCode)}</span>
+            </div>
+            {batch.manufactureDate && (
+              <div className="flex justify-between py-1">
+                <strong className="text-sm" style={{ color: '#1a1a1a' }}>Manufacture Date:</strong>
+                <span className="text-sm" style={{ color: '#666666' }}>
+                  {new Date(batch.manufactureDate).toLocaleDateString('en-US', {
                     year: 'numeric',
                     month: 'long',
                     day: 'numeric'
                   })}
-                </p>
+                </span>
+              </div>
+            )}
+            {batch.coaUrl && (
+              <div className="flex justify-between py-1">
+                <strong className="text-sm" style={{ color: '#1a1a1a' }}>Lab Tested:</strong>
+                <a 
+                  href={batch.coaUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm font-medium hover:underline"
+                  style={{ color: '#2d5f3f' }}
+                >
+                  ✓ View Certificate
+                </a>
+              </div>
+            )}
+          </div>
+
+          {/* Product Description */}
+          {batch.product.publicDescription && (
+            <div 
+              className="rounded-lg p-4 mt-4"
+              style={{ 
+                background: 'linear-gradient(135deg, #fef9f0 0%, #fcf6ec 100%)',
+                borderLeft: '4px solid #d4af37'
+              }}
+            >
+              <p className="text-sm leading-relaxed" style={{ color: '#666666' }}>
+                {batch.product.publicDescription}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Quality Overview Card */}
+        {hasQualityData && (
+          <div 
+            className="bg-white rounded-2xl p-6 mb-4 animate-fadeIn delay-2"
+            style={{ 
+              boxShadow: '0 2px 12px rgba(0, 0, 0, 0.05)',
+              border: '1px solid #e8e3d9'
+            }}
+          >
+            <h2 
+              className="text-xl font-bold mb-5 flex items-center gap-2"
+              style={{ fontFamily: 'var(--font-crimson), serif', color: '#1a1a1a' }}
+            >
+              <span 
+                className="w-1 h-6 rounded-sm"
+                style={{ background: 'linear-gradient(180deg, #d4af37 0%, #2d5f3f 100%)' }}
+              />
+              Quality Overview
+            </h2>
+
+            {/* Identity Confirmation */}
+            {qualityData?.identityConfirmation && 
+              Object.values(qualityData.identityConfirmation).some(v => v) && (
+              <div className="mb-5">
+                <h3 className="text-xs font-medium uppercase tracking-wider mb-3 flex items-center gap-2" style={{ color: '#666666' }}>
+                  <svg className="w-4 h-4" style={{ color: '#2d5f3f' }} fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  Identity Confirmation
+                </h3>
+                <div className="space-y-2">
+                  {qualityData.identityConfirmation.species && (
+                    <div className="flex justify-between text-sm py-2" style={{ borderBottom: '1px solid #e8e3d9' }}>
+                      <span style={{ color: '#666666' }}>Species</span>
+                      <span className="font-medium" style={{ color: '#1a1a1a' }}>{qualityData.identityConfirmation.species}</span>
+                    </div>
+                  )}
+                  {qualityData.identityConfirmation.form && (
+                    <div className="flex justify-between text-sm py-2" style={{ borderBottom: '1px solid #e8e3d9' }}>
+                      <span style={{ color: '#666666' }}>Form</span>
+                      <span style={{ color: '#1a1a1a' }}>{qualityData.identityConfirmation.form}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Safety Screening */}
+            {qualityData?.safetyScreening && 
+              Object.values(qualityData.safetyScreening).some(v => v) && (
+              <div className="mb-5">
+                <h3 className="text-xs font-medium uppercase tracking-wider mb-3 flex items-center gap-2" style={{ color: '#666666' }}>
+                  <svg className="w-4 h-4" style={{ color: '#2d5f3f' }} fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  Safety Screening
+                </h3>
+                <div className="space-y-2">
+                  {qualityData.safetyScreening.heavyMetals && (
+                    <div className="flex justify-between items-center text-sm py-2" style={{ borderBottom: '1px solid #e8e3d9' }}>
+                      <span style={{ color: '#666666' }}>Heavy Metals</span>
+                      <span 
+                        className={`px-2 py-0.5 rounded-full text-xs font-medium ${SAFETY_BADGE_STYLES[qualityData.safetyScreening.heavyMetals.status] || ''}`}
+                      >
+                        {SAFETY_STATUS_LABELS[qualityData.safetyScreening.heavyMetals.status]}
+                      </span>
+                    </div>
+                  )}
+                  {qualityData.safetyScreening.microbialScreen && (
+                    <div className="flex justify-between items-center text-sm py-2" style={{ borderBottom: '1px solid #e8e3d9' }}>
+                      <span style={{ color: '#666666' }}>Microbial Screen</span>
+                      <span 
+                        className={`px-2 py-0.5 rounded-full text-xs font-medium ${SAFETY_BADGE_STYLES[qualityData.safetyScreening.microbialScreen.status] || ''}`}
+                      >
+                        {SAFETY_STATUS_LABELS[qualityData.safetyScreening.microbialScreen.status]}
+                      </span>
+                    </div>
+                  )}
+                  {qualityData.safetyScreening.visualInspection && (
+                    <div className="flex justify-between items-center text-sm py-2">
+                      <span style={{ color: '#666666' }}>Visual Inspection</span>
+                      <span 
+                        className={`px-2 py-0.5 rounded-full text-xs font-medium ${SAFETY_BADGE_STYLES[qualityData.safetyScreening.visualInspection.status] || ''}`}
+                      >
+                        {SAFETY_STATUS_LABELS[qualityData.safetyScreening.visualInspection.status]}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Disclaimer */}
+            <div className="pt-4" style={{ borderTop: '1px solid #e8e3d9' }}>
+              <p className="text-xs italic" style={{ color: '#999999' }}>
+                {qualityData?.disclaimer || DEFAULT_QUALITY_DISCLAIMER}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Verification Details Card */}
+        {scanInfo && (
+          <div 
+            className="bg-white rounded-2xl p-6 mb-4 animate-fadeIn delay-3"
+            style={{ 
+              boxShadow: '0 2px 12px rgba(0, 0, 0, 0.05)',
+              border: '1px solid #e8e3d9'
+            }}
+          >
+            <h2 
+              className="text-xl font-bold mb-5 flex items-center gap-2"
+              style={{ fontFamily: 'var(--font-crimson), serif', color: '#1a1a1a' }}
+            >
+              <span 
+                className="w-1 h-6 rounded-sm"
+                style={{ background: 'linear-gradient(180deg, #d4af37 0%, #2d5f3f 100%)' }}
+              />
+              Verification Details
+            </h2>
+
+            <div className="space-y-0">
+              <div className="flex justify-between items-center py-3" style={{ borderBottom: '1px solid #e8e3d9' }}>
+                <span className="text-sm font-medium uppercase tracking-wider" style={{ color: '#666666', letterSpacing: '0.05em' }}>
+                  Status
+                </span>
+                <span 
+                  className="inline-block px-3 py-1 rounded-full text-sm font-semibold"
+                  style={{ 
+                    background: 'linear-gradient(135deg, #d4f4dd 0%, #c8edd4 100%)',
+                    color: '#2d5f3f'
+                  }}
+                >
+                  Verified
+                </span>
+              </div>
+
+              <div className="flex justify-between items-baseline py-3" style={{ borderBottom: '1px solid #e8e3d9' }}>
+                <span className="text-sm font-medium uppercase tracking-wider" style={{ color: '#666666', letterSpacing: '0.05em' }}>
+                  Verified On
+                </span>
+                <span className="font-semibold text-right" style={{ color: '#1a1a1a' }}>
+                  {verifiedAt.toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                  })} at {verifiedAt.toLocaleTimeString('en-US', {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    timeZoneName: 'short'
+                  })}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-baseline py-3" style={{ borderBottom: '1px solid #e8e3d9' }}>
+                <span className="text-sm font-medium uppercase tracking-wider" style={{ color: '#666666', letterSpacing: '0.05em' }}>
+                  Total Scans
+                </span>
+                <span className="font-semibold" style={{ color: '#1a1a1a' }}>
+                  {scanInfo.scanCount}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-baseline py-3">
+                <span className="text-sm font-medium uppercase tracking-wider" style={{ color: '#666666', letterSpacing: '0.05em' }}>
+                  First Scan
+                </span>
+                <span className="font-semibold" style={{ color: '#1a1a1a' }}>
+                  {new Date(scanInfo.printedAt).toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                  })}
+                </span>
               </div>
             </div>
           </div>
         )}
 
-        {/* Product Info Card */}
-        <div className="bg-white rounded-xl shadow-md overflow-hidden">
-          {batch.product.publicImageUrl && (
-            <div className="aspect-video bg-gray-100 relative">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={batch.product.publicImageUrl}
-                alt={batch.product.name}
-                className="w-full h-full object-cover"
-              />
-            </div>
-          )}
+        {/* Storage & Handling Card */}
+        <div 
+          className="bg-white rounded-2xl p-6 mb-4 animate-fadeIn delay-4"
+          style={{ 
+            boxShadow: '0 2px 12px rgba(0, 0, 0, 0.05)',
+            border: '1px solid #e8e3d9'
+          }}
+        >
+          <h2 
+            className="text-xl font-bold mb-5 flex items-center gap-2"
+            style={{ fontFamily: 'var(--font-crimson), serif', color: '#1a1a1a' }}
+          >
+            <span 
+              className="w-1 h-6 rounded-sm"
+              style={{ background: 'linear-gradient(180deg, #d4af37 0%, #2d5f3f 100%)' }}
+            />
+            Storage & Handling
+          </h2>
 
-          <div className="p-6">
-            <div className="flex items-start justify-between">
-              <div>
-                <h2 className="text-xl font-bold text-gray-900 mb-1">{batch.product.name}</h2>
-                <p className="text-gray-500 text-sm">Batch: {getDisplayBatchCode(batch.batchCode)}</p>
-              </div>
-              {qcPassed && (
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                  QC Passed
-                </span>
-              )}
-            </div>
-
-            {batch.product.publicDescription && (
-              <p className="text-gray-700 mt-4">{batch.product.publicDescription}</p>
-            )}
-
-            <dl className="grid grid-cols-2 gap-4 text-sm mt-4">
-              {batch.product.strain && (
-                <div>
-                  <dt className="text-gray-400 font-medium">Strain</dt>
-                  <dd className="text-gray-900 font-semibold">{batch.product.strain.name}</dd>
-                </div>
-              )}
-              <div>
-                <dt className="text-gray-400 font-medium">SKU</dt>
-                <dd className="text-gray-900">{batch.product.sku}</dd>
-              </div>
-            </dl>
+          <div 
+            className="rounded-lg p-4"
+            style={{ 
+              background: 'linear-gradient(135deg, #fef9f0 0%, #fcf6ec 100%)',
+              borderLeft: '4px solid #2d5f3f'
+            }}
+          >
+            <ul className="space-y-2 text-sm" style={{ color: '#666666' }}>
+              <li className="flex items-start gap-2">
+                <span style={{ color: '#2d5f3f' }}>✓</span>
+                <span>Store in a cool, dry place (68-80°F / 20-27°C)</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span style={{ color: '#2d5f3f' }}>✓</span>
+                <span>Keep away from direct sunlight and moisture</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span style={{ color: '#2d5f3f' }}>✓</span>
+                <span>Keep out of reach of children and pets</span>
+              </li>
+            </ul>
           </div>
         </div>
 
-        {/* Batch Info Card */}
-        <div className="bg-white rounded-xl shadow-md p-6">
-          <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
-            Batch Information
-          </h3>
-          <dl className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <dt className="text-gray-400">Batch Code</dt>
-              <dd className="text-gray-900 font-mono font-semibold">{getDisplayBatchCode(batch.batchCode)}</dd>
-            </div>
-            {batch.manufactureDate && (
-              <div>
-                <dt className="text-gray-400">Manufacture Date</dt>
-                <dd className="text-gray-900">
-                  {new Date(batch.manufactureDate).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric'
-                  })}
-                </dd>
-              </div>
-            )}
-            {batch.expirationDate && (
-              <div>
-                <dt className="text-gray-400">Best By</dt>
-                <dd className={`font-semibold ${isExpired ? 'text-amber-600' : 'text-gray-900'}`}>
-                  {new Date(batch.expirationDate).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric'
-                  })}
-                </dd>
-              </div>
-            )}
-            <div>
-              <dt className="text-gray-400">Quality Status</dt>
-              <dd className="flex items-center">
-                {qcPassed ? (
-                  <>
-                    <svg className="w-4 h-4 text-green-500 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                    </svg>
-                    <span className="text-green-700 font-medium">Tested & Approved</span>
-                  </>
-                ) : (
-                  <span className="text-gray-600">Standard</span>
-                )}
-              </dd>
-            </div>
-          </dl>
-        </div>
-
-        {/* Certificate of Analysis */}
-        {batch.coaUrl && (
-          <div className="bg-white rounded-xl shadow-md p-6">
-            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
-              Certificate of Analysis
-            </h3>
-            <p className="text-gray-600 text-sm mb-4">
-              View the lab test results for this batch to verify potency and purity.
-            </p>
+        {/* CTA Buttons */}
+        <div className="space-y-3 mb-6 animate-fadeIn delay-5">
+          <a
+            href="https://www.originalpsilly.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block w-full text-center py-4 px-6 rounded-xl text-base font-semibold text-white transition-all hover:-translate-y-0.5"
+            style={{ 
+              background: 'linear-gradient(135deg, #2d5f3f 0%, #4a7d5e 100%)',
+              boxShadow: '0 4px 16px rgba(45, 95, 63, 0.25)'
+            }}
+          >
+            Visit Website
+          </a>
+          
+          {batch.coaUrl && (
             <a
               href={batch.coaUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+              className="block w-full text-center py-4 px-6 rounded-xl text-base font-semibold transition-all hover:-translate-y-0.5"
+              style={{ 
+                background: 'white',
+                color: '#2d5f3f',
+                border: '2px solid #2d5f3f',
+                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)'
+              }}
             >
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              View Lab Results (PDF)
+              📊 View Lab Results
             </a>
-          </div>
-        )}
-
-        {/* Quality Overview */}
-        {(() => {
-          const qualityData = batch.qualityData as QualityData | null;
-          const hasQualityData = qualityData && (
-            qualityData.identityConfirmation ||
-            qualityData.safetyScreening ||
-            (qualityData.activeComponents && qualityData.activeComponents.length > 0)
-          );
-
-          if (!hasQualityData) return null;
-
-          return (
-            <div className="bg-white rounded-xl shadow-md p-6">
-              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
-                Quality Overview
-              </h3>
-
-              {/* Identity Confirmation */}
-              {qualityData.identityConfirmation && (
-                Object.values(qualityData.identityConfirmation).some(v => v)
-              ) && (
-                <div className="mb-6">
-                  <h4 className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2 flex items-center">
-                    <svg className="w-4 h-4 mr-1.5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                    </svg>
-                    Identity Confirmation
-                  </h4>
-                  <dl className="grid grid-cols-1 gap-2 text-sm">
-                    {qualityData.identityConfirmation.species && (
-                      <div className="flex justify-between">
-                        <dt className="text-gray-500">Species</dt>
-                        <dd className="text-gray-900 font-medium">{qualityData.identityConfirmation.species}</dd>
-                      </div>
-                    )}
-                    {qualityData.identityConfirmation.form && (
-                      <div className="flex justify-between">
-                        <dt className="text-gray-500">Form</dt>
-                        <dd className="text-gray-900">{qualityData.identityConfirmation.form}</dd>
-                      </div>
-                    )}
-                    {qualityData.identityConfirmation.method && (
-                      <div className="flex justify-between">
-                        <dt className="text-gray-500">Method</dt>
-                        <dd className="text-gray-900">{qualityData.identityConfirmation.method}</dd>
-                      </div>
-                    )}
-                  </dl>
-                </div>
-              )}
-
-              {/* Safety Screening */}
-              {qualityData.safetyScreening && (
-                Object.values(qualityData.safetyScreening).some(v => v)
-              ) && (
-                <div className="mb-6">
-                  <h4 className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2 flex items-center">
-                    <svg className="w-4 h-4 mr-1.5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                    </svg>
-                    Safety Screening
-                  </h4>
-                  <dl className="space-y-2 text-sm">
-                    {qualityData.safetyScreening.heavyMetals && (
-                      <div className="flex justify-between items-center">
-                        <dt className="text-gray-500">Heavy Metals</dt>
-                        <dd>
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${SAFETY_STATUS_STYLES[qualityData.safetyScreening.heavyMetals.status]}`}>
-                            {SAFETY_STATUS_LABELS[qualityData.safetyScreening.heavyMetals.status]}
-                          </span>
-                        </dd>
-                      </div>
-                    )}
-                    {qualityData.safetyScreening.microbialScreen && (
-                      <div className="flex justify-between items-center">
-                        <dt className="text-gray-500">Microbial Screen</dt>
-                        <dd>
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${SAFETY_STATUS_STYLES[qualityData.safetyScreening.microbialScreen.status]}`}>
-                            {SAFETY_STATUS_LABELS[qualityData.safetyScreening.microbialScreen.status]}
-                          </span>
-                        </dd>
-                      </div>
-                    )}
-                    {qualityData.safetyScreening.visualInspection && (
-                      <div className="flex justify-between items-center">
-                        <dt className="text-gray-500">Visual Inspection</dt>
-                        <dd>
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${SAFETY_STATUS_STYLES[qualityData.safetyScreening.visualInspection.status]}`}>
-                            {SAFETY_STATUS_LABELS[qualityData.safetyScreening.visualInspection.status]}
-                          </span>
-                        </dd>
-                      </div>
-                    )}
-                  </dl>
-                </div>
-              )}
-
-              {/* Active Components */}
-              {qualityData.activeComponents && qualityData.activeComponents.length > 0 && (
-                <div className="mb-6">
-                  <h4 className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2 flex items-center">
-                    <svg className="w-4 h-4 mr-1.5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                    </svg>
-                    Active Components
-                  </h4>
-                  <div className="flex flex-wrap gap-2">
-                    {qualityData.activeComponents.map((component, index) => (
-                      <div
-                        key={index}
-                        className={`inline-flex items-center px-3 py-1 rounded-full text-sm ${COMPONENT_LEVEL_STYLES[component.level]}`}
-                      >
-                        <span className="font-medium">{component.name}</span>
-                        <span className="mx-1.5 text-gray-300">|</span>
-                        <span className="text-xs">{COMPONENT_LEVEL_LABELS[component.level]}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Disclaimer */}
-              <div className="pt-4 border-t border-gray-100">
-                <p className="text-xs text-gray-400 italic">
-                  {qualityData.disclaimer || DEFAULT_QUALITY_DISCLAIMER}
-                </p>
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* Verification Details */}
-        {scanInfo && (
-          <div className="bg-white rounded-xl shadow-md p-6">
-            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
-              Verification Details
-            </h3>
-            <dl className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <dt className="text-gray-400">Scan Number</dt>
-                <dd className="text-gray-900 font-semibold text-lg">#{scanInfo.scanCount}</dd>
-              </div>
-              <div>
-                <dt className="text-gray-400">Label Printed</dt>
-                <dd className="text-gray-900">
-                  {new Date(scanInfo.printedAt).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric'
-                  })}
-                </dd>
-              </div>
-              {scanInfo.lastScannedAt && !scanInfo.isFirstScan && (
-                <div className="col-span-2">
-                  <dt className="text-gray-400">Last Verified</dt>
-                  <dd className="text-gray-900">
-                    {new Date(scanInfo.lastScannedAt).toLocaleDateString('en-US', {
-                      year: 'numeric',
-                      month: 'short',
-                      day: 'numeric',
-                      hour: 'numeric',
-                      minute: '2-digit'
-                    })}
-                  </dd>
-                </div>
-              )}
-            </dl>
-          </div>
-        )}
-
-        {/* Storage Instructions */}
-        <div className="bg-white rounded-xl shadow-md p-6">
-          <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
-            Storage & Handling
-          </h3>
-          <ul className="space-y-3 text-sm text-gray-700">
-            <li className="flex items-start">
-              <span className="flex-shrink-0 w-6 h-6 bg-green-100 text-green-600 rounded-full flex items-center justify-center mr-3 mt-0.5">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </span>
-              <span>Store in a cool, dry place (68-80°F / 20-27°C)</span>
-            </li>
-            <li className="flex items-start">
-              <span className="flex-shrink-0 w-6 h-6 bg-green-100 text-green-600 rounded-full flex items-center justify-center mr-3 mt-0.5">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </span>
-              <span>Keep away from direct sunlight and moisture</span>
-            </li>
-            <li className="flex items-start">
-              <span className="flex-shrink-0 w-6 h-6 bg-green-100 text-green-600 rounded-full flex items-center justify-center mr-3 mt-0.5">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </span>
-              <span>Keep out of reach of children and pets</span>
-            </li>
-          </ul>
+          )}
         </div>
 
-        {/* CTAs */}
-        <div className="flex flex-col sm:flex-row gap-3">
-          <Link
-            href="/"
-            className="flex-1 inline-flex items-center justify-center px-6 py-3 border border-gray-300 text-base font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors"
-          >
-            Visit Website
-          </Link>
-          <Link
-            href="mailto:support@example.com"
-            className="flex-1 inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-lg text-white bg-green-600 hover:bg-green-700 transition-colors"
-          >
-            Contact Support
-          </Link>
-        </div>
-
-        {/* Report Issue Link */}
-        <div className="text-center">
-          <Link
-            href="mailto:support@example.com?subject=Product%20Issue%20Report"
-            className="text-sm text-gray-500 hover:text-gray-700 underline"
-          >
-            Report an issue with this product
-          </Link>
-        </div>
-
-        {/* Trust Badge */}
-        <div className="text-center pt-4">
-          <div className="inline-flex items-center space-x-2 text-gray-400 text-sm">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-            </svg>
-            <span>Secured by PsillyOps Verification</span>
-          </div>
-        </div>
-      </main>
+        {/* Footer */}
+        <footer className="text-center pt-6 pb-4">
+          <p className="text-sm" style={{ color: '#666666' }}>
+            Questions about your product?<br />
+            Contact us at{' '}
+            <a 
+              href="mailto:support@originalpsilly.com" 
+              className="hover:underline"
+              style={{ color: '#2d5f3f' }}
+            >
+              support@originalpsilly.com
+            </a>
+          </p>
+          <p className="text-xs mt-4" style={{ color: '#999999', opacity: 0.7 }}>
+            © {new Date().getFullYear()} Original Psilly. All products tested and verified.
+          </p>
+        </footer>
+      </div>
     </div>
   );
 }
