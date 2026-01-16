@@ -146,7 +146,7 @@ This feedback was submitted via the product verification page.
 
     const resend = getResendClient();
     const { error } = await resend.emails.send({
-      from: 'Product Feedback <feedback@originalpsilly.com>',
+      from: 'Product Feedback <onboarding@resend.dev>',
       to: FEEDBACK_EMAIL,
       ...(email && { replyTo: email }),
       subject,
