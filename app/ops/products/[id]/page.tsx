@@ -121,6 +121,64 @@ async function archiveProduct(formData: FormData) {
   redirect("/ops/products");
 }
 
+async function updatePublicFields(formData: FormData) {
+  "use server";
+
+  const session = await auth();
+  if (!session?.user?.id) {
+    throw new Error("Not authenticated");
+  }
+
+  const id = formData.get("id") as string;
+  const publicDescription = formData.get("publicDescription") as string;
+  const publicImageUrl = formData.get("publicImageUrl") as string;
+
+  // Validate URL if provided
+  if (publicImageUrl && publicImageUrl.trim()) {
+    try {
+      new URL(publicImageUrl);
+    } catch {
+      throw new Error("Invalid image URL format");
+    }
+  }
+
+  const product = await prisma.product.findUnique({
+    where: { id },
+    select: { name: true, publicDescription: true, publicImageUrl: true }
+  });
+
+  if (!product) {
+    throw new Error("Product not found");
+  }
+
+  await prisma.product.update({
+    where: { id },
+    data: {
+      publicDescription: publicDescription?.trim() || null,
+      publicImageUrl: publicImageUrl?.trim() || null,
+    },
+  });
+
+  await logAction({
+    entityType: ActivityEntity.PRODUCT,
+    entityId: id,
+    action: 'public_fields_updated',
+    userId: session.user.id,
+    summary: `Updated public verification fields for "${product.name}"`,
+    before: {
+      publicDescription: product.publicDescription,
+      publicImageUrl: product.publicImageUrl
+    },
+    after: {
+      publicDescription: publicDescription?.trim() || null,
+      publicImageUrl: publicImageUrl?.trim() || null
+    },
+    tags: ['product', 'public', 'updated']
+  });
+
+  revalidatePath(`/ops/products/${id}`);
+}
+
 async function saveManufacturingSetup(
   productId: string,
   steps: ManufacturingStep[],
@@ -502,6 +560,78 @@ export default async function ProductDetailPage({
             />
           </dl>
         )}
+      </div>
+
+      {/* Public Verification Settings */}
+      <div className="bg-white shadow rounded-lg p-6">
+        <h2 className="text-lg font-medium text-gray-900 mb-2">Public Verification Page</h2>
+        <p className="text-sm text-gray-500 mb-4">
+          These fields are displayed when customers scan the product QR code.
+        </p>
+        <form action={updatePublicFields} className="space-y-4">
+          <input type="hidden" name="id" value={id} />
+
+          <div>
+            <label htmlFor="publicImageUrl" className="block text-sm font-medium text-gray-700">
+              Product Image URL
+            </label>
+            <input
+              type="url"
+              name="publicImageUrl"
+              id="publicImageUrl"
+              defaultValue={product.publicImageUrl ?? ""}
+              placeholder="https://example.com/images/product.jpg"
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              URL to the product image that will be displayed on the verification page.
+            </p>
+          </div>
+
+          <div>
+            <label htmlFor="publicDescription" className="block text-sm font-medium text-gray-700">
+              Public Description
+            </label>
+            <textarea
+              name="publicDescription"
+              id="publicDescription"
+              rows={3}
+              defaultValue={product.publicDescription ?? ""}
+              placeholder="Enter a description that customers will see when they scan the product QR code..."
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              This description will be shown on the public verification page.
+            </p>
+          </div>
+
+          {/* Preview current values */}
+          {(product.publicImageUrl || product.publicDescription) && (
+            <div className="bg-gray-50 rounded-md p-4 border border-gray-200">
+              <h4 className="text-sm font-medium text-gray-700 mb-2">Current Preview</h4>
+              {product.publicImageUrl && (
+                <div className="mb-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={product.publicImageUrl}
+                    alt="Product preview"
+                    className="max-w-xs max-h-32 object-contain rounded border"
+                  />
+                </div>
+              )}
+              {product.publicDescription && (
+                <p className="text-sm text-gray-600">{product.publicDescription}</p>
+              )}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
+          >
+            Save Public Fields
+          </button>
+        </form>
       </div>
 
       {/* Label Settings - "what am I printing" lives here in Product Settings */}

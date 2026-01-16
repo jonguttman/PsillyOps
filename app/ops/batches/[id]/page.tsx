@@ -9,6 +9,8 @@ import { BatchStatus, QCStatus } from '@prisma/client';
 import PrintLabelButton from '@/components/labels/PrintLabelButton';
 import { QRBehaviorPanelServer } from '@/components/qr/QRBehaviorPanelServer';
 import { QRTokenInspector } from '@/components/qr/QRTokenInspector';
+import QualityComponentsEditor from '@/components/batches/QualityComponentsEditor';
+import type { QualityData } from '@/lib/types/qualityData';
 
 const STATUS_COLORS: Record<string, string> = {
   PLANNED: 'bg-gray-100 text-gray-800',
@@ -139,6 +141,63 @@ async function handleUpdateCOA(formData: FormData) {
   });
 
   revalidatePath(`/batches/${batchId}`);
+}
+
+async function handleUpdateQualityData(formData: FormData) {
+  'use server';
+  const session = await auth();
+  if (!session) throw new Error('Not authenticated');
+
+  const batchId = formData.get('batchId') as string;
+
+  // Parse identity confirmation
+  const species = formData.get('species') as string || undefined;
+  const form = formData.get('form') as string || undefined;
+  const method = formData.get('method') as string || undefined;
+  const identityConfirmation = (species || form || method) ? { species, form, method } : undefined;
+
+  // Parse safety screening
+  const heavyMetals = formData.get('heavyMetals') as string;
+  const microbialScreen = formData.get('microbialScreen') as string;
+  const visualInspection = formData.get('visualInspection') as string;
+  const safetyScreening = (heavyMetals || microbialScreen || visualInspection) ? {
+    heavyMetals: heavyMetals ? { status: heavyMetals } : undefined,
+    microbialScreen: microbialScreen ? { status: microbialScreen } : undefined,
+    visualInspection: visualInspection ? { status: visualInspection } : undefined,
+  } : undefined;
+
+  // Parse active components from JSON
+  const componentsJson = formData.get('activeComponents') as string;
+  let activeComponents: Array<{ name: string; level: string }> = [];
+  if (componentsJson) {
+    try {
+      activeComponents = JSON.parse(componentsJson);
+    } catch {
+      // Ignore parse errors
+    }
+  }
+
+  const disclaimer = formData.get('disclaimer') as string || undefined;
+
+  // Build qualityData object
+  const qualityData = {
+    identityConfirmation,
+    safetyScreening,
+    activeComponents: activeComponents.length > 0 ? activeComponents : undefined,
+    disclaimer: disclaimer?.trim() || undefined,
+  };
+
+  // If all fields are empty, set to null
+  const hasData = identityConfirmation || safetyScreening || activeComponents.length > 0 || disclaimer;
+
+  await prisma.batch.update({
+    where: { id: batchId },
+    data: {
+      qualityData: hasData ? qualityData : null,
+    }
+  });
+
+  revalidatePath(`/ops/batches/${batchId}`);
 }
 
 export default async function BatchDetailPage({
@@ -497,6 +556,137 @@ export default async function BatchDetailPage({
         <p className="mt-4 text-xs text-gray-500">
           The COA will be displayed on the public batch verification page when customers scan the QR code.
         </p>
+      </div>
+
+      {/* Quality Overview Card */}
+      <div className="bg-white shadow rounded-lg p-6">
+        <h2 className="text-lg font-medium text-gray-900 mb-2">Quality Overview</h2>
+        <p className="text-sm text-gray-500 mb-4">
+          Enter quality data that will be displayed on the public batch verification page.
+          This is manufacturer-published data for transparency purposes.
+        </p>
+
+        <form action={handleUpdateQualityData} className="space-y-6">
+          <input type="hidden" name="batchId" value={id} />
+
+          {/* Identity Confirmation */}
+          <div className="border-b border-gray-200 pb-4">
+            <h3 className="text-sm font-medium text-gray-700 mb-3">Identity Confirmation</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-600">Species</label>
+                <input
+                  type="text"
+                  name="species"
+                  defaultValue={(batch.qualityData as QualityData | null)?.identityConfirmation?.species || ''}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                  placeholder="e.g., Hericium erinaceus"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-600">Form</label>
+                <input
+                  type="text"
+                  name="form"
+                  defaultValue={(batch.qualityData as QualityData | null)?.identityConfirmation?.form || ''}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                  placeholder="e.g., Dried fruiting body powder"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-600">Method</label>
+                <input
+                  type="text"
+                  name="method"
+                  defaultValue={(batch.qualityData as QualityData | null)?.identityConfirmation?.method || ''}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                  placeholder="e.g., Visual identification"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Safety Screening */}
+          <div className="border-b border-gray-200 pb-4">
+            <h3 className="text-sm font-medium text-gray-700 mb-3">Safety Screening</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-600">Heavy Metals</label>
+                <select
+                  name="heavyMetals"
+                  defaultValue={(batch.qualityData as QualityData | null)?.safetyScreening?.heavyMetals?.status || ''}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                >
+                  <option value="">Not specified</option>
+                  <option value="passed">Passed</option>
+                  <option value="within_limits">Within Limits</option>
+                  <option value="pending">Pending</option>
+                  <option value="not_tested">Not Tested</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-600">Microbial Screen</label>
+                <select
+                  name="microbialScreen"
+                  defaultValue={(batch.qualityData as QualityData | null)?.safetyScreening?.microbialScreen?.status || ''}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                >
+                  <option value="">Not specified</option>
+                  <option value="passed">Passed</option>
+                  <option value="no_pathogens">No Pathogens Detected</option>
+                  <option value="pending">Pending</option>
+                  <option value="not_tested">Not Tested</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-600">Visual Inspection</label>
+                <select
+                  name="visualInspection"
+                  defaultValue={(batch.qualityData as QualityData | null)?.safetyScreening?.visualInspection?.status || ''}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                >
+                  <option value="">Not specified</option>
+                  <option value="passed">Passed</option>
+                  <option value="pending">Pending</option>
+                  <option value="not_tested">Not Tested</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Active Components */}
+          <div className="border-b border-gray-200 pb-4">
+            <h3 className="text-sm font-medium text-gray-700 mb-3">Active Components</h3>
+            <p className="text-xs text-gray-500 mb-2">
+              Add qualitative component information (no exact percentages).
+            </p>
+            <QualityComponentsEditor
+              initialComponents={(batch.qualityData as QualityData | null)?.activeComponents || []}
+            />
+          </div>
+
+          {/* Custom Disclaimer */}
+          <div>
+            <label className="block text-sm font-medium text-gray-600">Custom Disclaimer (optional)</label>
+            <textarea
+              name="disclaimer"
+              rows={2}
+              defaultValue={(batch.qualityData as QualityData | null)?.disclaimer || ''}
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+              placeholder="Leave blank to use default disclaimer"
+            />
+            <p className="mt-1 text-xs text-gray-400">
+              Default: &quot;This quality overview presents internal and partner-provided testing data...&quot;
+            </p>
+          </div>
+
+          <button
+            type="submit"
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
+          >
+            Save Quality Data
+          </button>
+        </form>
       </div>
 
       {/* Labor Card */}

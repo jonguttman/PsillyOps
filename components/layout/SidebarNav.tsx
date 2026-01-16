@@ -25,7 +25,8 @@ import {
   LucideIcon,
   ArrowRightLeft,
   BarChart3,
-  CircleDot
+  CircleDot,
+  FlaskConical
 } from 'lucide-react';
 
 interface NavItem {
@@ -87,6 +88,7 @@ export function SidebarNav({ userRole }: SidebarNavProps) {
     { href: '/ops/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/ops/scan', label: 'Scan QR', icon: ScanLine },
     { href: '/ops/products', label: 'Products', icon: Package },
+    { href: '/ops/batches', label: 'Batches', icon: FlaskConical },
     { href: '/ops/materials', label: 'Materials', icon: Boxes },
     { href: '/ops/inventory', label: 'Inventory', icon: Warehouse },
     { href: '/ops/production', label: 'Production', icon: Factory },
