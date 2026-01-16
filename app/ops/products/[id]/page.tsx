@@ -15,6 +15,7 @@ import { ExperienceMode } from "@prisma/client";
 import { calculateProductCost } from "@/lib/services/costingService";
 import CalculatedCostDisplay from "./CalculatedCostDisplay";
 import { ManufacturingSetup } from "@/components/products/ManufacturingSetup";
+import PublicFieldsEditor from "@/components/products/PublicFieldsEditor";
 
 // Types for manufacturing configuration
 interface ManufacturingStep {
@@ -563,76 +564,12 @@ export default async function ProductDetailPage({
       </div>
 
       {/* Public Verification Settings */}
-      <div className="bg-white shadow rounded-lg p-6">
-        <h2 className="text-lg font-medium text-gray-900 mb-2">Public Verification Page</h2>
-        <p className="text-sm text-gray-500 mb-4">
-          These fields are displayed when customers scan the product QR code.
-        </p>
-        <form action={updatePublicFields} className="space-y-4">
-          <input type="hidden" name="id" value={id} />
-
-          <div>
-            <label htmlFor="publicImageUrl" className="block text-sm font-medium text-gray-700">
-              Product Image URL
-            </label>
-            <input
-              type="url"
-              name="publicImageUrl"
-              id="publicImageUrl"
-              defaultValue={product.publicImageUrl ?? ""}
-              placeholder="https://example.com/images/product.jpg"
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-            />
-            <p className="mt-1 text-xs text-gray-500">
-              URL to the product image that will be displayed on the verification page.
-            </p>
-          </div>
-
-          <div>
-            <label htmlFor="publicDescription" className="block text-sm font-medium text-gray-700">
-              Public Description
-            </label>
-            <textarea
-              name="publicDescription"
-              id="publicDescription"
-              rows={3}
-              defaultValue={product.publicDescription ?? ""}
-              placeholder="Enter a description that customers will see when they scan the product QR code..."
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-            />
-            <p className="mt-1 text-xs text-gray-500">
-              This description will be shown on the public verification page.
-            </p>
-          </div>
-
-          {/* Preview current values */}
-          {(product.publicImageUrl || product.publicDescription) && (
-            <div className="bg-gray-50 rounded-md p-4 border border-gray-200">
-              <h4 className="text-sm font-medium text-gray-700 mb-2">Current Preview</h4>
-              {product.publicImageUrl && (
-                <div className="mb-3">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={product.publicImageUrl}
-                    alt="Product preview"
-                    className="max-w-xs max-h-32 object-contain rounded border"
-                  />
-                </div>
-              )}
-              {product.publicDescription && (
-                <p className="text-sm text-gray-600">{product.publicDescription}</p>
-              )}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
-          >
-            Save Public Fields
-          </button>
-        </form>
-      </div>
+      <PublicFieldsEditor
+        productId={id}
+        currentDescription={product.publicDescription}
+        currentImageUrl={product.publicImageUrl}
+        onSaveDescription={updatePublicFields}
+      />
 
       {/* Label Settings - "what am I printing" lives here in Product Settings */}
       <ProductLabelSection
