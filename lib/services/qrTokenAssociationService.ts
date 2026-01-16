@@ -211,7 +211,7 @@ export async function associateTokenWithBatch(params: AssociateTokenParams): Pro
     data: {
       entityType: 'BATCH',
       entityId: targetBatchId,
-      metadata: newMetadata as Prisma.InputJsonValue
+      metadata: newMetadata as unknown as Prisma.InputJsonValue
     }
   });
 
