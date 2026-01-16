@@ -15,6 +15,23 @@ interface Props {
   searchParams: Promise<{ t?: string }>;
 }
 
+/**
+ * Extract display-friendly batch code (remove last counter suffix)
+ * Example: "1015204000052-2026-01-16-04" -> "1015204000052-2026-01-16"
+ */
+function getDisplayBatchCode(fullBatchCode: string): string {
+  const lastDashIndex = fullBatchCode.lastIndexOf('-');
+  if (lastDashIndex === -1) return fullBatchCode;
+  
+  // Check if the last segment is just digits (the counter we want to remove)
+  const lastSegment = fullBatchCode.substring(lastDashIndex + 1);
+  if (/^\d+$/.test(lastSegment)) {
+    return fullBatchCode.substring(0, lastDashIndex);
+  }
+  
+  return fullBatchCode;
+}
+
 export default async function BatchAuthenticityPage({ params, searchParams }: Props) {
   const { batchId } = await params;
   const { t: tokenCode } = await searchParams;
@@ -143,7 +160,7 @@ export default async function BatchAuthenticityPage({ params, searchParams }: Pr
             <div className="flex items-start justify-between">
               <div>
                 <h2 className="text-xl font-bold text-gray-900 mb-1">{batch.product.name}</h2>
-                <p className="text-gray-500 text-sm">Batch: {batch.batchCode}</p>
+                <p className="text-gray-500 text-sm">Batch: {getDisplayBatchCode(batch.batchCode)}</p>
               </div>
               {qcPassed && (
                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
@@ -179,7 +196,7 @@ export default async function BatchAuthenticityPage({ params, searchParams }: Pr
           <dl className="grid grid-cols-2 gap-4 text-sm">
             <div>
               <dt className="text-gray-400">Batch Code</dt>
-              <dd className="text-gray-900 font-mono font-semibold">{batch.batchCode}</dd>
+              <dd className="text-gray-900 font-mono font-semibold">{getDisplayBatchCode(batch.batchCode)}</dd>
             </div>
             {batch.manufactureDate && (
               <div>
@@ -428,7 +445,7 @@ export default async function BatchAuthenticityPage({ params, searchParams }: Pr
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
               </span>
-              <span>Store in a cool, dry place (60-70°F / 15-21°C)</span>
+              <span>Store in a cool, dry place (68-80°F / 20-27°C)</span>
             </li>
             <li className="flex items-start">
               <span className="flex-shrink-0 w-6 h-6 bg-green-100 text-green-600 rounded-full flex items-center justify-center mr-3 mt-0.5">
