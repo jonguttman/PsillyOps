@@ -327,6 +327,8 @@ model Batch {
   lossReason        String?
   qcStatus          QCStatus           @default(NOT_REQUIRED)
   notes             String?
+  coaUrl            String?            // URL to Certificate of Analysis PDF
+  coaUploadedAt     DateTime?          // When COA was uploaded
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   product           Product            @relation(fields: [productId], references: [id])
