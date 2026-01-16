@@ -4,7 +4,7 @@
 
 import { prisma } from '@/lib/db/prisma';
 import { logAction } from './loggingService';
-import { ActivityEntity, LabelEntityType, QRTokenStatus } from '@prisma/client';
+import { ActivityEntity, LabelEntityType, QRTokenStatus, Prisma } from '@prisma/client';
 import { AppError, ErrorCodes } from '@/lib/utils/errors';
 import { isValidTokenFormat } from './qrTokenService';
 
@@ -211,7 +211,7 @@ export async function associateTokenWithBatch(params: AssociateTokenParams): Pro
     data: {
       entityType: 'BATCH',
       entityId: targetBatchId,
-      metadata: newMetadata
+      metadata: newMetadata as Prisma.InputJsonValue
     }
   });
 
