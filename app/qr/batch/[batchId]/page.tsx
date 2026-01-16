@@ -118,7 +118,7 @@ export default async function BatchAuthenticityPage({ params, searchParams }: Pr
       fontFamily: 'var(--font-dm-sans), -apple-system, sans-serif',
       background: '#fdfbf7'
     }}>
-      {/* Inline styles for animations */}
+      {/* Inline styles for animations and rich text content */}
       <style dangerouslySetInnerHTML={{ __html: `
         @keyframes fadeIn {
           from { opacity: 0; transform: translateY(10px); }
@@ -139,6 +139,16 @@ export default async function BatchAuthenticityPage({ params, searchParams }: Pr
         .delay-3 { animation-delay: 0.3s; }
         .delay-4 { animation-delay: 0.4s; }
         .delay-5 { animation-delay: 0.5s; }
+
+        /* Rich text content styling */
+        .prose p { margin: 0 0 0.5em 0; }
+        .prose p:last-child { margin-bottom: 0; }
+        .prose strong { font-weight: 600; }
+        .prose em { font-style: italic; }
+        .prose u { text-decoration: underline; }
+        .prose ul { list-style-type: disc; padding-left: 1.25em; margin: 0.5em 0; }
+        .prose ul:last-child { margin-bottom: 0; }
+        .prose li { margin: 0.25em 0; }
       `}} />
 
       {/* Header */}
@@ -286,50 +296,56 @@ export default async function BatchAuthenticityPage({ params, searchParams }: Pr
 
           {/* Product Description */}
           {product.publicDescription && (
-            <p className="text-sm leading-relaxed mb-4" style={{ color: '#666666' }}>
-              {product.publicDescription}
-            </p>
+            <div
+              className="text-sm leading-relaxed mb-4 prose prose-sm max-w-none"
+              style={{ color: '#666666' }}
+              dangerouslySetInnerHTML={{ __html: product.publicDescription }}
+            />
           )}
 
           {/* Why People Choose This - Teal/Cyan accent */}
           {product.publicWhyChoose && (
-            <div 
+            <div
               className="rounded-lg p-4 mb-4"
-              style={{ 
+              style={{
                 background: 'linear-gradient(135deg, #e0f7fa 0%, #b2ebf2 100%)',
                 borderLeft: '4px solid #00838f'
               }}
             >
-              <h4 
+              <h4
                 className="font-bold text-sm mb-2"
                 style={{ fontFamily: 'var(--font-crimson), serif', color: '#00695c' }}
               >
-                ✨ Why People Choose This
+                Why People Choose This
               </h4>
-              <p className="text-sm leading-relaxed" style={{ color: '#00695c' }}>
-                {product.publicWhyChoose}
-              </p>
+              <div
+                className="text-sm leading-relaxed prose prose-sm max-w-none"
+                style={{ color: '#00695c' }}
+                dangerouslySetInnerHTML={{ __html: product.publicWhyChoose }}
+              />
             </div>
           )}
 
           {/* Suggested Use - Purple/Lavender accent */}
           {product.publicSuggestedUse && (
-            <div 
+            <div
               className="rounded-lg p-4 mb-4"
-              style={{ 
+              style={{
                 background: 'linear-gradient(135deg, #f3e5f5 0%, #e1bee7 100%)',
                 borderLeft: '4px solid #7b1fa2'
               }}
             >
-              <h4 
+              <h4
                 className="font-bold text-sm mb-2"
                 style={{ fontFamily: 'var(--font-crimson), serif', color: '#6a1b9a' }}
               >
-                💫 Suggested Use
+                Suggested Use
               </h4>
-              <p className="text-sm leading-relaxed" style={{ color: '#6a1b9a' }}>
-                {product.publicSuggestedUse}
-              </p>
+              <div
+                className="text-sm leading-relaxed prose prose-sm max-w-none"
+                style={{ color: '#6a1b9a' }}
+                dangerouslySetInnerHTML={{ __html: product.publicSuggestedUse }}
+              />
             </div>
           )}
 
