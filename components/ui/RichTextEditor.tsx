@@ -42,66 +42,56 @@ function ToolbarButton({ onClick, isActive, disabled, title, children }: Toolbar
 }
 
 function Toolbar({ editor, disabled }: { editor: Editor | null; disabled?: boolean }) {
-  if (!editor) return null;
+  const isDisabled = disabled || !editor;
 
   return (
-    <div className="flex items-center gap-0.5 p-1 border-b border-gray-200 bg-gray-50 rounded-t-md">
+    <div className="flex items-center gap-0.5 p-2 border-b border-gray-200 bg-gray-50 rounded-t-md">
       {/* Bold */}
       <ToolbarButton
-        onClick={() => editor.chain().focus().toggleBold().run()}
-        isActive={editor.isActive('bold')}
-        disabled={disabled}
+        onClick={() => editor?.chain().focus().toggleBold().run()}
+        isActive={editor?.isActive('bold') ?? false}
+        disabled={isDisabled}
         title="Bold (Cmd+B)"
       >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
-          <path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z" />
-          <path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z" />
-        </svg>
+        <span className="font-bold text-sm w-4 h-4 flex items-center justify-center">B</span>
       </ToolbarButton>
 
       {/* Italic */}
       <ToolbarButton
-        onClick={() => editor.chain().focus().toggleItalic().run()}
-        isActive={editor.isActive('italic')}
-        disabled={disabled}
+        onClick={() => editor?.chain().focus().toggleItalic().run()}
+        isActive={editor?.isActive('italic') ?? false}
+        disabled={isDisabled}
         title="Italic (Cmd+I)"
       >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-          <line x1="19" y1="4" x2="10" y2="4" />
-          <line x1="14" y1="20" x2="5" y2="20" />
-          <line x1="15" y1="4" x2="9" y2="20" />
-        </svg>
+        <span className="italic text-sm w-4 h-4 flex items-center justify-center">I</span>
       </ToolbarButton>
 
       {/* Underline */}
       <ToolbarButton
-        onClick={() => editor.chain().focus().toggleUnderline().run()}
-        isActive={editor.isActive('underline')}
-        disabled={disabled}
+        onClick={() => editor?.chain().focus().toggleUnderline().run()}
+        isActive={editor?.isActive('underline') ?? false}
+        disabled={isDisabled}
         title="Underline (Cmd+U)"
       >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-          <path d="M6 4v6a6 6 0 0 0 12 0V4" />
-          <line x1="4" y1="20" x2="20" y2="20" />
-        </svg>
+        <span className="underline text-sm w-4 h-4 flex items-center justify-center">U</span>
       </ToolbarButton>
 
       <div className="w-px h-5 bg-gray-300 mx-1" />
 
       {/* Bullet List */}
       <ToolbarButton
-        onClick={() => editor.chain().focus().toggleBulletList().run()}
-        isActive={editor.isActive('bulletList')}
-        disabled={disabled}
+        onClick={() => editor?.chain().focus().toggleBulletList().run()}
+        isActive={editor?.isActive('bulletList') ?? false}
+        disabled={isDisabled}
         title="Bullet List"
       >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
           <line x1="9" y1="6" x2="20" y2="6" />
           <line x1="9" y1="12" x2="20" y2="12" />
           <line x1="9" y1="18" x2="20" y2="18" />
-          <circle cx="5" cy="6" r="1" fill="currentColor" />
-          <circle cx="5" cy="12" r="1" fill="currentColor" />
-          <circle cx="5" cy="18" r="1" fill="currentColor" />
+          <circle cx="5" cy="6" r="1.5" fill="currentColor" stroke="none" />
+          <circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none" />
+          <circle cx="5" cy="18" r="1.5" fill="currentColor" stroke="none" />
         </svg>
       </ToolbarButton>
     </div>
