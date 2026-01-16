@@ -96,6 +96,9 @@ model Product {
   // Manufacturing configuration
   manufacturingSteps      Json?                    // Array of {key, label, order, required, dependsOnKeys[], estimatedMinutes}
   requiredEquipment       Json?                    // Array of strings: ["Scale", "Mixer", "Capsule Machine"]
+  // Public verification page fields
+  publicDescription       String?                  // Description shown on public verification page
+  publicImageUrl          String?                  // Image URL for public verification page
   bom                     BOMItem[]
   batches                 Batch[]
   inventory               InventoryItem[]
@@ -330,7 +333,9 @@ model Batch {
   lossReason        String?
   qcStatus          QCStatus           @default(NOT_REQUIRED)
   notes             String?
-  coaUrl            String?
+  coaUrl            String?            // URL to Certificate of Analysis PDF
+  coaUploadedAt     DateTime?          // When COA was uploaded
+  qualityData       Json?              // Quality overview data for public display
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   product           Product            @relation(fields: [productId], references: [id])

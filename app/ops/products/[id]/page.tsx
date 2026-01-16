@@ -15,6 +15,7 @@ import { ExperienceMode } from "@prisma/client";
 import { calculateProductCost } from "@/lib/services/costingService";
 import CalculatedCostDisplay from "./CalculatedCostDisplay";
 import { ManufacturingSetup } from "@/components/products/ManufacturingSetup";
+import PublicFieldsEditor from "@/components/products/PublicFieldsEditor";
 
 // Types for manufacturing configuration
 interface ManufacturingStep {
@@ -119,6 +120,64 @@ async function archiveProduct(formData: FormData) {
 
   revalidatePath("/ops/products");
   redirect("/ops/products");
+}
+
+async function updatePublicFields(formData: FormData) {
+  "use server";
+
+  const session = await auth();
+  if (!session?.user?.id) {
+    throw new Error("Not authenticated");
+  }
+
+  const id = formData.get("id") as string;
+  const publicDescription = formData.get("publicDescription") as string;
+  const publicImageUrl = formData.get("publicImageUrl") as string;
+
+  // Validate URL if provided
+  if (publicImageUrl && publicImageUrl.trim()) {
+    try {
+      new URL(publicImageUrl);
+    } catch {
+      throw new Error("Invalid image URL format");
+    }
+  }
+
+  const product = await prisma.product.findUnique({
+    where: { id },
+    select: { name: true, publicDescription: true, publicImageUrl: true }
+  });
+
+  if (!product) {
+    throw new Error("Product not found");
+  }
+
+  await prisma.product.update({
+    where: { id },
+    data: {
+      publicDescription: publicDescription?.trim() || null,
+      publicImageUrl: publicImageUrl?.trim() || null,
+    },
+  });
+
+  await logAction({
+    entityType: ActivityEntity.PRODUCT,
+    entityId: id,
+    action: 'public_fields_updated',
+    userId: session.user.id,
+    summary: `Updated public verification fields for "${product.name}"`,
+    before: {
+      publicDescription: product.publicDescription,
+      publicImageUrl: product.publicImageUrl
+    },
+    after: {
+      publicDescription: publicDescription?.trim() || null,
+      publicImageUrl: publicImageUrl?.trim() || null
+    },
+    tags: ['product', 'public', 'updated']
+  });
+
+  revalidatePath(`/ops/products/${id}`);
 }
 
 async function saveManufacturingSetup(
@@ -503,6 +562,14 @@ export default async function ProductDetailPage({
           </dl>
         )}
       </div>
+
+      {/* Public Verification Settings */}
+      <PublicFieldsEditor
+        productId={id}
+        currentDescription={product.publicDescription}
+        currentImageUrl={product.publicImageUrl}
+        onSaveDescription={updatePublicFields}
+      />
 
       {/* Label Settings - "what am I printing" lives here in Product Settings */}
       <ProductLabelSection

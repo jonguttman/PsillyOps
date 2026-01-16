@@ -1,6 +1,14 @@
 import { prisma } from '@/lib/db/prisma';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
+import type { QualityData } from '@/lib/types/qualityData';
+import {
+  DEFAULT_QUALITY_DISCLAIMER,
+  SAFETY_STATUS_LABELS,
+  SAFETY_STATUS_STYLES,
+  COMPONENT_LEVEL_LABELS,
+  COMPONENT_LEVEL_STYLES,
+} from '@/lib/types/qualityData';
 
 interface Props {
   params: Promise<{ batchId: string }>;
@@ -237,6 +245,137 @@ export default async function BatchAuthenticityPage({ params, searchParams }: Pr
             </a>
           </div>
         )}
+
+        {/* Quality Overview */}
+        {(() => {
+          const qualityData = batch.qualityData as QualityData | null;
+          const hasQualityData = qualityData && (
+            qualityData.identityConfirmation ||
+            qualityData.safetyScreening ||
+            (qualityData.activeComponents && qualityData.activeComponents.length > 0)
+          );
+
+          if (!hasQualityData) return null;
+
+          return (
+            <div className="bg-white rounded-xl shadow-md p-6">
+              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
+                Quality Overview
+              </h3>
+
+              {/* Identity Confirmation */}
+              {qualityData.identityConfirmation && (
+                Object.values(qualityData.identityConfirmation).some(v => v)
+              ) && (
+                <div className="mb-6">
+                  <h4 className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2 flex items-center">
+                    <svg className="w-4 h-4 mr-1.5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                    Identity Confirmation
+                  </h4>
+                  <dl className="grid grid-cols-1 gap-2 text-sm">
+                    {qualityData.identityConfirmation.species && (
+                      <div className="flex justify-between">
+                        <dt className="text-gray-500">Species</dt>
+                        <dd className="text-gray-900 font-medium">{qualityData.identityConfirmation.species}</dd>
+                      </div>
+                    )}
+                    {qualityData.identityConfirmation.form && (
+                      <div className="flex justify-between">
+                        <dt className="text-gray-500">Form</dt>
+                        <dd className="text-gray-900">{qualityData.identityConfirmation.form}</dd>
+                      </div>
+                    )}
+                    {qualityData.identityConfirmation.method && (
+                      <div className="flex justify-between">
+                        <dt className="text-gray-500">Method</dt>
+                        <dd className="text-gray-900">{qualityData.identityConfirmation.method}</dd>
+                      </div>
+                    )}
+                  </dl>
+                </div>
+              )}
+
+              {/* Safety Screening */}
+              {qualityData.safetyScreening && (
+                Object.values(qualityData.safetyScreening).some(v => v)
+              ) && (
+                <div className="mb-6">
+                  <h4 className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2 flex items-center">
+                    <svg className="w-4 h-4 mr-1.5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                    Safety Screening
+                  </h4>
+                  <dl className="space-y-2 text-sm">
+                    {qualityData.safetyScreening.heavyMetals && (
+                      <div className="flex justify-between items-center">
+                        <dt className="text-gray-500">Heavy Metals</dt>
+                        <dd>
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${SAFETY_STATUS_STYLES[qualityData.safetyScreening.heavyMetals.status]}`}>
+                            {SAFETY_STATUS_LABELS[qualityData.safetyScreening.heavyMetals.status]}
+                          </span>
+                        </dd>
+                      </div>
+                    )}
+                    {qualityData.safetyScreening.microbialScreen && (
+                      <div className="flex justify-between items-center">
+                        <dt className="text-gray-500">Microbial Screen</dt>
+                        <dd>
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${SAFETY_STATUS_STYLES[qualityData.safetyScreening.microbialScreen.status]}`}>
+                            {SAFETY_STATUS_LABELS[qualityData.safetyScreening.microbialScreen.status]}
+                          </span>
+                        </dd>
+                      </div>
+                    )}
+                    {qualityData.safetyScreening.visualInspection && (
+                      <div className="flex justify-between items-center">
+                        <dt className="text-gray-500">Visual Inspection</dt>
+                        <dd>
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${SAFETY_STATUS_STYLES[qualityData.safetyScreening.visualInspection.status]}`}>
+                            {SAFETY_STATUS_LABELS[qualityData.safetyScreening.visualInspection.status]}
+                          </span>
+                        </dd>
+                      </div>
+                    )}
+                  </dl>
+                </div>
+              )}
+
+              {/* Active Components */}
+              {qualityData.activeComponents && qualityData.activeComponents.length > 0 && (
+                <div className="mb-6">
+                  <h4 className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2 flex items-center">
+                    <svg className="w-4 h-4 mr-1.5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                    Active Components
+                  </h4>
+                  <div className="flex flex-wrap gap-2">
+                    {qualityData.activeComponents.map((component, index) => (
+                      <div
+                        key={index}
+                        className={`inline-flex items-center px-3 py-1 rounded-full text-sm ${COMPONENT_LEVEL_STYLES[component.level]}`}
+                      >
+                        <span className="font-medium">{component.name}</span>
+                        <span className="mx-1.5 text-gray-300">|</span>
+                        <span className="text-xs">{COMPONENT_LEVEL_LABELS[component.level]}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Disclaimer */}
+              <div className="pt-4 border-t border-gray-100">
+                <p className="text-xs text-gray-400 italic">
+                  {qualityData.disclaimer || DEFAULT_QUALITY_DISCLAIMER}
+                </p>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Verification Details */}
         {scanInfo && (

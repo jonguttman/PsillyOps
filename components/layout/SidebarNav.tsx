@@ -25,7 +25,8 @@ import {
   LucideIcon,
   ArrowRightLeft,
   BarChart3,
-  CircleDot
+  CircleDot,
+  FlaskConical
 } from 'lucide-react';
 
 interface NavItem {
@@ -69,6 +70,9 @@ export function SidebarNav({ userRole }: SidebarNavProps) {
       return pathname === '/ops/dashboard' || pathname === '/ops' || pathname === '/';
     }
     // Special handling for QR section to avoid conflicts
+    if (href === '/ops/qr/tokens') {
+      return pathname.startsWith('/ops/qr/tokens');
+    }
     if (href === '/ops/qr/redirects') {
       return pathname.startsWith('/ops/qr/redirects');
     }
@@ -87,6 +91,7 @@ export function SidebarNav({ userRole }: SidebarNavProps) {
     { href: '/ops/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/ops/scan', label: 'Scan QR', icon: ScanLine },
     { href: '/ops/products', label: 'Products', icon: Package },
+    { href: '/ops/batches', label: 'Batches', icon: FlaskConical },
     { href: '/ops/materials', label: 'Materials', icon: Boxes },
     { href: '/ops/inventory', label: 'Inventory', icon: Warehouse },
     { href: '/ops/production', label: 'Production', icon: Factory },
@@ -104,6 +109,7 @@ export function SidebarNav({ userRole }: SidebarNavProps) {
 
   // QR section - QR code management (ADMIN only)
   const qrItems: NavItem[] = userRole === 'ADMIN' ? [
+    { href: '/ops/qr/tokens', label: 'Token Manager', icon: ScanLine },
     { href: '/ops/qr/redirects', label: 'Redirects', icon: ArrowRightLeft },
     { href: '/ops/qr/fallback', label: 'Defaults', icon: QrCode },
   ] : [];
