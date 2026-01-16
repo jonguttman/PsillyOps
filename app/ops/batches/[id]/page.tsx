@@ -113,6 +113,34 @@ async function handleAddLabor(formData: FormData) {
   revalidatePath(`/ops/batches/${batchId}`);
 }
 
+async function handleUpdateCOA(formData: FormData) {
+  'use server';
+  const session = await auth();
+  if (!session) throw new Error('Not authenticated');
+
+  const batchId = formData.get('batchId') as string;
+  const coaUrl = formData.get('coaUrl') as string;
+
+  // Validate URL format if provided
+  if (coaUrl && coaUrl.trim()) {
+    try {
+      new URL(coaUrl);
+    } catch {
+      throw new Error('Invalid URL format');
+    }
+  }
+
+  await prisma.batch.update({
+    where: { id: batchId },
+    data: {
+      coaUrl: coaUrl.trim() || null,
+      coaUploadedAt: coaUrl.trim() ? new Date() : null,
+    }
+  });
+
+  revalidatePath(`/batches/${batchId}`);
+}
+
 export default async function BatchDetailPage({
   params
 }: {
@@ -360,6 +388,115 @@ export default async function BatchDetailPage({
             </div>
           </form>
         )}
+      </div>
+
+      {/* Certificate of Analysis */}
+      <div className="bg-white shadow rounded-lg p-6">
+        <h2 className="text-lg font-medium text-gray-900 mb-4">Certificate of Analysis (COA)</h2>
+
+        {batch.coaUrl ? (
+          <div className="space-y-4">
+            {/* Current COA Display */}
+            <div className="flex items-center justify-between p-4 bg-green-50 border border-green-200 rounded-lg">
+              <div className="flex items-center space-x-3">
+                <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <div>
+                  <p className="font-medium text-green-800">COA Uploaded</p>
+                  {batch.coaUploadedAt && (
+                    <p className="text-sm text-green-600">
+                      Added {formatDateTime(batch.coaUploadedAt)}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <a
+                href={batch.coaUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center px-4 py-2 border border-green-600 text-sm font-medium rounded-md text-green-700 bg-white hover:bg-green-50"
+              >
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+                View COA
+              </a>
+            </div>
+
+            {/* Update/Remove Form */}
+            <form action={handleUpdateCOA} className="p-4 bg-gray-50 rounded-lg">
+              <input type="hidden" name="batchId" value={id} />
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Update COA URL</label>
+                  <input
+                    type="url"
+                    name="coaUrl"
+                    defaultValue={batch.coaUrl}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                    placeholder="https://..."
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Clear the field and save to remove the COA link
+                  </p>
+                </div>
+                <button
+                  type="submit"
+                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
+                >
+                  Update COA
+                </button>
+              </div>
+            </form>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* No COA State */}
+            <div className="flex items-center space-x-3 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+              <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <div>
+                <p className="font-medium text-gray-700">No COA uploaded</p>
+                <p className="text-sm text-gray-500">Add a link to the lab test results for this batch</p>
+              </div>
+            </div>
+
+            {/* Add COA Form */}
+            <form action={handleUpdateCOA} className="p-4 bg-gray-50 rounded-lg">
+              <input type="hidden" name="batchId" value={id} />
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">COA URL</label>
+                  <input
+                    type="url"
+                    name="coaUrl"
+                    required
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                    placeholder="https://lab-results.example.com/batch-123.pdf"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Link to the PDF or webpage with lab test results
+                  </p>
+                </div>
+                <button
+                  type="submit"
+                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
+                >
+                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Add COA
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        <p className="mt-4 text-xs text-gray-500">
+          The COA will be displayed on the public batch verification page when customers scan the QR code.
+        </p>
       </div>
 
       {/* Labor Card */}
