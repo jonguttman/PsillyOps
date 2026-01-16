@@ -313,13 +313,13 @@ export default async function BatchAuthenticityPage({ params, searchParams }: Pr
               }}
             >
               <h4
-                className="font-bold text-sm mb-2"
+                className="font-bold text-base mb-2"
                 style={{ fontFamily: 'var(--font-crimson), serif', color: '#00695c' }}
               >
                 Why People Choose This
               </h4>
               <div
-                className="text-sm leading-relaxed prose prose-sm max-w-none"
+                className="text-base leading-relaxed prose max-w-none"
                 style={{ color: '#666666' }}
                 dangerouslySetInnerHTML={{ __html: product.publicWhyChoose }}
               />
@@ -336,13 +336,13 @@ export default async function BatchAuthenticityPage({ params, searchParams }: Pr
               }}
             >
               <h4
-                className="font-bold text-sm mb-2"
+                className="font-bold text-base mb-2"
                 style={{ fontFamily: 'var(--font-crimson), serif', color: '#6a1b9a' }}
               >
                 Suggested Use
               </h4>
               <div
-                className="text-sm leading-relaxed prose prose-sm max-w-none"
+                className="text-base leading-relaxed prose max-w-none"
                 style={{ color: '#666666' }}
                 dangerouslySetInnerHTML={{ __html: product.publicSuggestedUse }}
               />
