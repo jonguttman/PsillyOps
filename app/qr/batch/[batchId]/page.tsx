@@ -6,6 +6,7 @@ import {
   SAFETY_STATUS_LABELS,
 } from '@/lib/types/qualityData';
 import { Crimson_Pro, DM_Sans } from 'next/font/google';
+import FeedbackForm from '@/components/qr/FeedbackForm';
 
 // Load fonts
 const crimsonPro = Crimson_Pro({
@@ -624,20 +625,29 @@ export default async function BatchAuthenticityPage({ params, searchParams }: Pr
           )}
         </div>
 
+        {/* Feedback Card */}
+        <div
+          className="bg-white rounded-2xl p-6 mb-4 animate-fadeIn delay-5"
+          style={{
+            boxShadow: '0 2px 12px rgba(0, 0, 0, 0.05)',
+            border: '1px solid #e8e3d9'
+          }}
+        >
+          <FeedbackForm
+            productName={product.name}
+            batchCode={getDisplayBatchCode(batch.batchCode)}
+            scanCount={scanInfo?.scanCount}
+            verificationDate={verifiedAt.toLocaleDateString('en-US', {
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric'
+            })}
+          />
+        </div>
+
         {/* Footer */}
-        <footer className="text-center pt-6 pb-4">
-          <p className="text-sm" style={{ color: '#666666' }}>
-            Questions about your product?<br />
-            Contact us at{' '}
-            <a 
-              href="mailto:support@originalpsilly.com" 
-              className="hover:underline"
-              style={{ color: '#2d5f3f' }}
-            >
-              support@originalpsilly.com
-            </a>
-          </p>
-          <p className="text-xs mt-4" style={{ color: '#999999', opacity: 0.7 }}>
+        <footer className="text-center pt-2 pb-4">
+          <p className="text-xs" style={{ color: '#999999', opacity: 0.7 }}>
             © {new Date().getFullYear()} Original Psilly. All products tested and verified.
           </p>
         </footer>
