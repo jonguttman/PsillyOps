@@ -70,6 +70,9 @@ export function SidebarNav({ userRole }: SidebarNavProps) {
       return pathname === '/ops/dashboard' || pathname === '/ops' || pathname === '/';
     }
     // Special handling for QR section to avoid conflicts
+    if (href === '/ops/qr/tokens') {
+      return pathname.startsWith('/ops/qr/tokens');
+    }
     if (href === '/ops/qr/redirects') {
       return pathname.startsWith('/ops/qr/redirects');
     }
@@ -106,6 +109,7 @@ export function SidebarNav({ userRole }: SidebarNavProps) {
 
   // QR section - QR code management (ADMIN only)
   const qrItems: NavItem[] = userRole === 'ADMIN' ? [
+    { href: '/ops/qr/tokens', label: 'Token Manager', icon: ScanLine },
     { href: '/ops/qr/redirects', label: 'Redirects', icon: ArrowRightLeft },
     { href: '/ops/qr/fallback', label: 'Defaults', icon: QrCode },
   ] : [];

@@ -9,6 +9,7 @@ import { BatchStatus, QCStatus, Prisma } from '@prisma/client';
 import PrintLabelButton from '@/components/labels/PrintLabelButton';
 import { QRBehaviorPanelServer } from '@/components/qr/QRBehaviorPanelServer';
 import { QRTokenInspector } from '@/components/qr/QRTokenInspector';
+import QRTokenAssociationSection from '@/components/qr/QRTokenAssociationSection';
 import QualityComponentsEditor from '@/components/batches/QualityComponentsEditor';
 import COAUploadSection from '@/components/batches/COAUploadSection';
 import type { QualityData } from '@/lib/types/qualityData';
@@ -766,6 +767,16 @@ export default async function BatchDetailPage({
         entityId={id}
         entityName={batch.batchCode}
         isAdmin={session.user.role === 'ADMIN'}
+      />
+
+      {/* QR Token Association */}
+      <QRTokenAssociationSection
+        batchId={id}
+        batchCode={batch.batchCode}
+        productId={batch.productId}
+        productName={batch.product.name}
+        isAdmin={session.user.role === 'ADMIN'}
+        canManage={['ADMIN', 'PRODUCTION', 'WAREHOUSE'].includes(session.user.role)}
       />
 
       {/* QR Token Inspector */}
