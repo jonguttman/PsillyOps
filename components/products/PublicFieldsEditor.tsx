@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import FileUploadField from '@/components/ui/FileUploadField';
+import RichTextEditor from '@/components/ui/RichTextEditor';
 
 interface PublicFieldsEditorProps {
   productId: string;
@@ -117,16 +118,13 @@ export default function PublicFieldsEditor({
 
         {/* Public Description */}
         <div>
-          <label htmlFor="publicDescription" className="block text-sm font-medium text-gray-700">
+          <label className="block text-sm font-medium text-gray-700 mb-1">
             Public Description
           </label>
-          <textarea
-            id="publicDescription"
-            rows={3}
+          <RichTextEditor
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={setDescription}
             placeholder="Enter a description that customers will see when they scan the product QR code..."
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
             disabled={isPending || isSaving}
           />
           <p className="mt-1 text-xs text-gray-500">
@@ -136,19 +134,16 @@ export default function PublicFieldsEditor({
 
         {/* Why People Choose This */}
         <div>
-          <label htmlFor="publicWhyChoose" className="block text-sm font-medium text-gray-700">
+          <label className="block text-sm font-medium text-gray-700 mb-1">
             <span className="inline-flex items-center gap-1.5">
               <span className="w-3 h-3 rounded-sm" style={{ background: '#00838f' }} />
               Why People Choose This
             </span>
           </label>
-          <textarea
-            id="publicWhyChoose"
-            rows={3}
+          <RichTextEditor
             value={whyChoose}
-            onChange={(e) => setWhyChoose(e.target.value)}
+            onChange={setWhyChoose}
             placeholder="e.g., Uplifted, balanced energy • Social warmth and openness • Creative flow and mental clarity"
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm"
             disabled={isPending || isSaving}
           />
           <p className="mt-1 text-xs text-gray-500">
@@ -158,19 +153,16 @@ export default function PublicFieldsEditor({
 
         {/* Suggested Use */}
         <div>
-          <label htmlFor="publicSuggestedUse" className="block text-sm font-medium text-gray-700">
+          <label className="block text-sm font-medium text-gray-700 mb-1">
             <span className="inline-flex items-center gap-1.5">
               <span className="w-3 h-3 rounded-sm" style={{ background: '#7b1fa2' }} />
               Suggested Use
             </span>
           </label>
-          <textarea
-            id="publicSuggestedUse"
-            rows={3}
+          <RichTextEditor
             value={suggestedUse}
-            onChange={(e) => setSuggestedUse(e.target.value)}
+            onChange={setSuggestedUse}
             placeholder="e.g., 1 capsule every other day. Take earlier in the day or before social or creative activities."
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
             disabled={isPending || isSaving}
           />
           <p className="mt-1 text-xs text-gray-500">
