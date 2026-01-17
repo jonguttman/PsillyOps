@@ -22,8 +22,8 @@ export interface CreateCatalogLinkParams {
 
 export interface UpdateCatalogLinkParams {
   displayName?: string;
-  customPricing?: Record<string, number>;
-  productSubset?: string[];
+  customPricing?: Record<string, number> | null;
+  productSubset?: string[] | null;
   expiresAt?: Date | null;
   status?: CatalogLinkStatus;
 }
