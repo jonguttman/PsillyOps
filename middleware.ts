@@ -19,7 +19,7 @@ export async function middleware(req: NextRequest) {
   const userRole = token?.role as string;
 
   // Public routes
-  const publicRoutes = ['/login', '/qr', '/verify', '/seal', '/tripdar'];
+  const publicRoutes = ['/login', '/qr', '/verify', '/seal', '/tripdar', '/catalog'];
   const isPublicRoute = publicRoutes.some(route => pathname.startsWith(route));
 
   // Partner routes - special handling

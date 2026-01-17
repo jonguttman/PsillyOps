@@ -50,6 +50,7 @@ model User {
   createdAIProposals         AIProposal[]          @relation("AIProposalCreator")
   executedAIProposals        AIProposal[]          @relation("AIProposalExecutor")
   aiSessions                 AISession[]
+  catalogLinks               CatalogLink[]         @relation("CatalogLinkCreator")
 
   @@index([email])
   @@index([role])
@@ -112,6 +113,7 @@ model Product {
   experienceReviews       ExperienceReview[]
   labels                  ProductLabel[]
   tripdarTokens           TripdarToken[]
+  catalogViews            CatalogProductView[]
 
   @@index([sku])
   @@index([upc])
@@ -415,6 +417,7 @@ model Retailer {
   invoices        Invoice[]
   salesRep        User?           @relation(fields: [salesRepId], references: [id])
   orders          RetailerOrder[]
+  catalogLinks    CatalogLink[]
 
   @@index([salesRepId])
   @@index([name])
@@ -1099,6 +1102,7 @@ enum ActivityEntity {
   LABEL
   LOCATION
   SYSTEM
+  CATALOG_LINK
 }
 
 enum ProductionRunStatus {
@@ -1194,6 +1198,23 @@ enum AIProposalStatus {
   EXPIRED     // TTL elapsed before execution
   BLOCKED     // Phase gate blocked execution
   FAILED      // Execution attempted but failed
+}
+
+// ========================================
+// Catalog Sales Tool
+// ========================================
+
+enum CatalogLinkStatus {
+  ACTIVE
+  EXPIRED
+  REVOKED
+}
+
+enum InquiryStatus {
+  NEW
+  CONTACTED
+  CONVERTED
+  CLOSED
 }
 
 model PredictionProfile {
@@ -1515,5 +1536,95 @@ model TripdarSurveyResponse {
 
   @@index([publicToken])
   @@index([tokenId])
+  @@index([createdAt])
+}
+
+// ========================================
+// Catalog Sales Tool Models
+// ========================================
+
+model CatalogLink {
+  id              String            @id @default(cuid())
+  token           String            @unique  // Short token: "Xk9mP" (6 chars)
+
+  // Association
+  retailerId      String
+  retailer        Retailer          @relation(fields: [retailerId], references: [id])
+
+  // Branding
+  displayName     String?           // Custom display name (defaults to retailer name)
+
+  // Custom pricing (JSON map of productId -> price)
+  customPricing   Json?             // { "prod_123": 45.00, "prod_456": 89.00 }
+
+  // Product subset (null = all products, array = specific product IDs)
+  productSubset   Json?             // ["prod_123", "prod_456"] or null for all
+
+  // Tracking
+  viewCount       Int               @default(0)
+  lastViewedAt    DateTime?
+
+  // Lifecycle
+  status          CatalogLinkStatus @default(ACTIVE)
+  expiresAt       DateTime?         // Optional expiration
+  createdAt       DateTime          @default(now())
+  createdById     String
+  createdBy       User              @relation("CatalogLinkCreator", fields: [createdById], references: [id])
+
+  // Analytics relations
+  productViews    CatalogProductView[]
+  inquiries       CatalogInquiry[]
+
+  @@index([token])
+  @@index([retailerId])
+  @@index([status])
+  @@index([createdById])
+}
+
+model CatalogProductView {
+  id              String      @id @default(cuid())
+  catalogLinkId   String
+  catalogLink     CatalogLink @relation(fields: [catalogLinkId], references: [id], onDelete: Cascade)
+  productId       String
+  product         Product     @relation(fields: [productId], references: [id])
+
+  viewCount       Int         @default(0)
+  lastViewedAt    DateTime    @default(now())
+
+  @@unique([catalogLinkId, productId])
+  @@index([catalogLinkId])
+  @@index([productId])
+}
+
+model CatalogInquiry {
+  id              String        @id @default(cuid())
+  catalogLinkId   String
+  catalogLink     CatalogLink   @relation(fields: [catalogLinkId], references: [id], onDelete: Cascade)
+
+  // Contact info captured
+  contactName     String        // Name of person inquiring
+  businessName    String        // Business name
+  email           String
+  phone           String?
+  followUpWith    String?       // Who they want to follow up with
+
+  // Inquiry details
+  message         String?
+  productsOfInterest Json?      // Array of product IDs they're interested in
+
+  // Tracking
+  ipAddress       String?
+  userAgent       String?
+
+  // Status
+  status          InquiryStatus @default(NEW)
+  respondedAt     DateTime?
+  respondedById   String?
+  notes           String?
+
+  createdAt       DateTime      @default(now())
+
+  @@index([catalogLinkId])
+  @@index([status])
   @@index([createdAt])
 }
