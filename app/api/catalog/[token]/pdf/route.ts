@@ -57,8 +57,8 @@ export async function GET(
     // Generate PDF
     const pdfBuffer = await generateCatalogPdf(displayName, products);
 
-    // Return PDF
-    return new Response(pdfBuffer, {
+    // Return PDF - convert Buffer to Uint8Array for Response compatibility
+    return new Response(new Uint8Array(pdfBuffer), {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
