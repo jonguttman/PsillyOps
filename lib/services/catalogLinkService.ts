@@ -4,7 +4,7 @@
 import { randomBytes } from 'crypto';
 import { prisma } from '@/lib/db/prisma';
 import { logAction } from './loggingService';
-import { ActivityEntity, CatalogLinkStatus, InquiryStatus } from '@prisma/client';
+import { ActivityEntity, CatalogLinkStatus, InquiryStatus, Prisma } from '@prisma/client';
 import { AppError, ErrorCodes } from '@/lib/utils/errors';
 
 // ========================================
@@ -248,8 +248,16 @@ export async function updateCatalogLink(id: string, params: UpdateCatalogLinkPar
     where: { id },
     data: {
       displayName: params.displayName,
-      customPricing: params.customPricing !== undefined ? params.customPricing : undefined,
-      productSubset: params.productSubset !== undefined ? params.productSubset : undefined,
+      customPricing: params.customPricing === null
+        ? Prisma.DbNull
+        : params.customPricing !== undefined
+          ? params.customPricing
+          : undefined,
+      productSubset: params.productSubset === null
+        ? Prisma.DbNull
+        : params.productSubset !== undefined
+          ? params.productSubset
+          : undefined,
       expiresAt: params.expiresAt,
       status: params.status
     },
