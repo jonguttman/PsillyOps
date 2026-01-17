@@ -176,60 +176,38 @@ export default async function BatchAuthenticityPage({ params, searchParams }: Pr
       </header>
 
       <div className="max-w-[640px] mx-auto px-4">
-        {/* Verification Badge */}
-        <div 
-          className="bg-white rounded-[20px] p-10 text-center my-6 animate-fadeIn"
-          style={{ 
-            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.06)',
-            border: '1px solid #e8e3d9'
-          }}
-        >
-          {/* Animated Check Icon */}
-          <div 
-            className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 animate-scaleIn"
-            style={{ background: isExpired 
-              ? 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)' 
-              : 'linear-gradient(135deg, #d4f4dd 0%, #c8edd4 100%)' 
+        {/* Verification Status - Subtle confirmation */}
+        {!isExpired && (
+          <div
+            className="flex items-center gap-3 my-5 px-4 py-3 rounded-xl animate-fadeIn"
+            style={{
+              background: 'linear-gradient(135deg, #d4f4dd 0%, #c8edd4 100%)',
+              border: '1px solid #a8d5b1'
             }}
           >
-            {isExpired ? (
-              <svg className="w-10 h-10" style={{ stroke: '#b45309' }} fill="none" viewBox="0 0 24 24" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-            ) : (
-              <svg className="w-10 h-10" style={{ stroke: '#2d5f3f' }} fill="none" viewBox="0 0 24 24" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
+            <div
+              className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 animate-scaleIn"
+              style={{ background: '#2d5f3f' }}
+            >
+              <svg className="w-4 h-4" style={{ stroke: 'white' }} fill="none" viewBox="0 0 24 24" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="20 6 9 17 4 12" />
               </svg>
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium" style={{ color: '#1a5c2e' }}>
+                This product has been verified against our official records
+              </p>
+            </div>
+            {scanInfo?.isFirstScan && (
+              <span
+                className="px-2 py-1 rounded-full text-xs font-semibold"
+                style={{ background: '#fef9f0', color: '#b8860b', border: '1px solid #d4af37' }}
+              >
+                First Scan!
+              </span>
             )}
           </div>
-          
-          <h1 
-            className="text-3xl font-bold mb-2"
-            style={{ fontFamily: 'var(--font-crimson), serif', color: '#1a1a1a' }}
-          >
-            {isExpired ? 'Product Expired' : 'Authentic Product Verified'}
-          </h1>
-          <p style={{ color: '#666666', fontSize: '0.95rem' }}>
-            {isExpired 
-              ? 'This product has passed its expiration date'
-              : 'This product has been verified against our official records'
-            }
-          </p>
-
-          {/* First Scan Badge */}
-          {scanInfo?.isFirstScan && !isExpired && (
-            <div 
-              className="inline-flex items-center gap-2 mt-4 px-4 py-2 rounded-full"
-              style={{ 
-                background: 'linear-gradient(135deg, #fef9f0 0%, #fcf6ec 100%)',
-                border: '1px solid #d4af37'
-              }}
-            >
-              <span>🎉</span>
-              <span className="font-semibold" style={{ color: '#b8860b' }}>First Scan!</span>
-            </div>
-          )}
-        </div>
+        )}
 
         {/* Expiration Warning */}
         {isExpired && (
