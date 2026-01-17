@@ -3,11 +3,14 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import FileUploadField from '@/components/ui/FileUploadField';
+import RichTextEditor from '@/components/ui/RichTextEditor';
 
 interface PublicFieldsEditorProps {
   productId: string;
   currentDescription: string | null;
   currentImageUrl: string | null;
+  currentWhyChoose?: string | null;
+  currentSuggestedUse?: string | null;
   onSaveDescription: (formData: FormData) => Promise<void>;
 }
 
@@ -15,12 +18,16 @@ export default function PublicFieldsEditor({
   productId,
   currentDescription,
   currentImageUrl,
+  currentWhyChoose,
+  currentSuggestedUse,
   onSaveDescription,
 }: PublicFieldsEditorProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [description, setDescription] = useState(currentDescription || '');
   const [imageUrl, setImageUrl] = useState(currentImageUrl || '');
+  const [whyChoose, setWhyChoose] = useState(currentWhyChoose || '');
+  const [suggestedUse, setSuggestedUse] = useState(currentSuggestedUse || '');
   const [isSaving, setIsSaving] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -32,6 +39,8 @@ export default function PublicFieldsEditor({
     formData.append('id', productId);
     formData.append('publicDescription', description);
     formData.append('publicImageUrl', imageUrl);
+    formData.append('publicWhyChoose', whyChoose);
+    formData.append('publicSuggestedUse', suggestedUse);
 
     try {
       await onSaveDescription(formData);
@@ -109,20 +118,55 @@ export default function PublicFieldsEditor({
 
         {/* Public Description */}
         <div>
-          <label htmlFor="publicDescription" className="block text-sm font-medium text-gray-700">
+          <label className="block text-sm font-medium text-gray-700 mb-1">
             Public Description
           </label>
-          <textarea
-            id="publicDescription"
-            rows={3}
+          <RichTextEditor
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={setDescription}
             placeholder="Enter a description that customers will see when they scan the product QR code..."
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
             disabled={isPending || isSaving}
           />
           <p className="mt-1 text-xs text-gray-500">
             This description will be shown on the public verification page.
+          </p>
+        </div>
+
+        {/* Why People Choose This */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-sm" style={{ background: '#00838f' }} />
+              Why People Choose This
+            </span>
+          </label>
+          <RichTextEditor
+            value={whyChoose}
+            onChange={setWhyChoose}
+            placeholder="e.g., Uplifted, balanced energy • Social warmth and openness • Creative flow and mental clarity"
+            disabled={isPending || isSaving}
+          />
+          <p className="mt-1 text-xs text-gray-500">
+            Displayed in a teal bubble on the verification page. Highlight key benefits.
+          </p>
+        </div>
+
+        {/* Suggested Use */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-sm" style={{ background: '#7b1fa2' }} />
+              Suggested Use
+            </span>
+          </label>
+          <RichTextEditor
+            value={suggestedUse}
+            onChange={setSuggestedUse}
+            placeholder="e.g., 1 capsule every other day. Take earlier in the day or before social or creative activities."
+            disabled={isPending || isSaving}
+          />
+          <p className="mt-1 text-xs text-gray-500">
+            Displayed in a purple bubble on the verification page. Include dosage and timing recommendations.
           </p>
         </div>
 

@@ -93,6 +93,8 @@ model Product {
   // Public-facing fields for QR pages
   publicImageUrl          String?
   publicDescription       String?
+  publicWhyChoose         String?                  // "Why People Choose This" text for verification page
+  publicSuggestedUse      String?                  // "Suggested Use" text for verification page
   // Manufacturing configuration
   manufacturingSteps      Json?                    // Array of {key, label, order, required, dependsOnKeys[], estimatedMinutes}
   requiredEquipment       Json?                    // Array of strings: ["Scale", "Mixer", "Capsule Machine"]

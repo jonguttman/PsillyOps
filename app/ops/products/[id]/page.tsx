@@ -133,6 +133,8 @@ async function updatePublicFields(formData: FormData) {
   const id = formData.get("id") as string;
   const publicDescription = formData.get("publicDescription") as string;
   const publicImageUrl = formData.get("publicImageUrl") as string;
+  const publicWhyChoose = formData.get("publicWhyChoose") as string;
+  const publicSuggestedUse = formData.get("publicSuggestedUse") as string;
 
   // Validate URL if provided
   if (publicImageUrl && publicImageUrl.trim()) {
@@ -145,7 +147,13 @@ async function updatePublicFields(formData: FormData) {
 
   const product = await prisma.product.findUnique({
     where: { id },
-    select: { name: true, publicDescription: true, publicImageUrl: true }
+    select: { 
+      name: true, 
+      publicDescription: true, 
+      publicImageUrl: true,
+      publicWhyChoose: true,
+      publicSuggestedUse: true
+    }
   });
 
   if (!product) {
@@ -157,6 +165,8 @@ async function updatePublicFields(formData: FormData) {
     data: {
       publicDescription: publicDescription?.trim() || null,
       publicImageUrl: publicImageUrl?.trim() || null,
+      publicWhyChoose: publicWhyChoose?.trim() || null,
+      publicSuggestedUse: publicSuggestedUse?.trim() || null,
     },
   });
 
@@ -168,11 +178,15 @@ async function updatePublicFields(formData: FormData) {
     summary: `Updated public verification fields for "${product.name}"`,
     before: {
       publicDescription: product.publicDescription,
-      publicImageUrl: product.publicImageUrl
+      publicImageUrl: product.publicImageUrl,
+      publicWhyChoose: product.publicWhyChoose,
+      publicSuggestedUse: product.publicSuggestedUse
     },
     after: {
       publicDescription: publicDescription?.trim() || null,
-      publicImageUrl: publicImageUrl?.trim() || null
+      publicImageUrl: publicImageUrl?.trim() || null,
+      publicWhyChoose: publicWhyChoose?.trim() || null,
+      publicSuggestedUse: publicSuggestedUse?.trim() || null
     },
     tags: ['product', 'public', 'updated']
   });
@@ -568,6 +582,8 @@ export default async function ProductDetailPage({
         productId={id}
         currentDescription={product.publicDescription}
         currentImageUrl={product.publicImageUrl}
+        currentWhyChoose={product.publicWhyChoose}
+        currentSuggestedUse={product.publicSuggestedUse}
         onSaveDescription={updatePublicFields}
       />
 
