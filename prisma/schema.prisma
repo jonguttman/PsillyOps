@@ -52,6 +52,7 @@ model User {
   aiSessions                 AISession[]
   catalogLinks               CatalogLink[]         @relation("CatalogLinkCreator")
   catalogLinkEdits           CatalogLinkEdit[]     @relation("CatalogLinkEditor")
+  catalogRequestsAssigned    CatalogRequest[]      @relation("CatalogRequestAssignee")
 
   @@index([email])
   @@index([role])
@@ -115,6 +116,7 @@ model Product {
   labels                  ProductLabel[]
   tripdarTokens           TripdarToken[]
   catalogViews            CatalogProductView[]
+  catalogRequestItems     CatalogRequestItem[]
 
   @@index([sku])
   @@index([upc])
@@ -1218,6 +1220,18 @@ enum InquiryStatus {
   CLOSED
 }
 
+enum CatalogRequestStatus {
+  NEW
+  CONTACTED
+  QUOTED
+  CLOSED
+}
+
+enum CatalogRequestItemType {
+  QUOTE
+  SAMPLE
+}
+
 model PredictionProfile {
   id             String             @id @default(cuid())
   productId      String
@@ -1576,6 +1590,7 @@ model CatalogLink {
   productViews    CatalogProductView[]
   inquiries       CatalogInquiry[]
   edits           CatalogLinkEdit[]
+  requests        CatalogRequest[]
 
   @@index([token])
   @@index([retailerId])
@@ -1651,4 +1666,58 @@ model CatalogLinkEdit {
   @@index([catalogLinkId])
   @@index([editedById])
   @@index([createdAt])
+}
+
+// Quote/Sample request from retailer browsing catalog
+model CatalogRequest {
+  id              String               @id @default(cuid())
+  catalogLinkId   String
+  catalogLink     CatalogLink          @relation(fields: [catalogLinkId], references: [id], onDelete: Cascade)
+
+  // Retailer contact info (captured at submission)
+  contactName     String?
+  contactEmail    String?
+  contactPhone    String?
+  message         String?              // Optional message to rep
+
+  // Status tracking
+  status          CatalogRequestStatus @default(NEW)
+
+  // Assignment (inherits from catalog link's retailer's salesRep)
+  assignedToId    String?
+  assignedTo      User?                @relation("CatalogRequestAssignee", fields: [assignedToId], references: [id])
+
+  // Response tracking
+  respondedAt     DateTime?
+  notes           String?              // Internal notes from rep
+
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  items           CatalogRequestItem[]
+
+  @@index([catalogLinkId])
+  @@index([status])
+  @@index([assignedToId])
+  @@index([createdAt])
+}
+
+// Individual items in a catalog request (quote or sample)
+model CatalogRequestItem {
+  id              String                 @id @default(cuid())
+  requestId       String
+  request         CatalogRequest         @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  productId       String
+  product         Product                @relation(fields: [productId], references: [id])
+
+  itemType        CatalogRequestItemType // QUOTE or SAMPLE
+  quantity        Int                    // Quantity requested
+  sampleReason    String?                // Required for SAMPLE type - why they want a sample
+
+  createdAt       DateTime               @default(now())
+
+  @@index([requestId])
+  @@index([productId])
+  @@index([itemType])
 }

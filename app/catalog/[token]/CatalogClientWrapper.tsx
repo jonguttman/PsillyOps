@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { CatalogHeader } from '@/components/catalog/CatalogHeader';
 import { ProductGrid } from '@/components/catalog/ProductGrid';
+import { CartProvider } from '@/components/catalog/CartContext';
+import { CartDrawer } from '@/components/catalog/CartDrawer';
 import { Download, Loader2 } from 'lucide-react';
 
 interface Product {
@@ -62,7 +64,7 @@ export function CatalogClientWrapper({
   };
 
   return (
-    <>
+    <CartProvider>
       {/* Header with download button */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 py-4">
@@ -106,9 +108,9 @@ export function CatalogClientWrapper({
       <footer className="bg-white border-t border-gray-200 mt-12">
         <div className="max-w-6xl mx-auto px-4 py-6">
           <div className="text-center text-sm text-gray-500">
-            <p>Questions about our products or pricing?</p>
+            <p>Interested in our products?</p>
             <p className="mt-1">
-              Click on any product to learn more or submit an inquiry.
+              Add items to your cart to request a quote or sample.
             </p>
           </div>
           <div className="text-center text-xs text-gray-400 mt-4">
@@ -116,6 +118,11 @@ export function CatalogClientWrapper({
           </div>
         </div>
       </footer>
-    </>
+
+      {/* Cart drawer - only show for non-internal views */}
+      {!isInternalView && (
+        <CartDrawer catalogLinkId={catalogLinkId} token={token} />
+      )}
+    </CartProvider>
   );
 }

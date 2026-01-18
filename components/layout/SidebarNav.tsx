@@ -27,7 +27,8 @@ import {
   BarChart3,
   CircleDot,
   FlaskConical,
-  Link as LinkIcon
+  Link as LinkIcon,
+  Inbox
 } from 'lucide-react';
 
 interface NavItem {
@@ -105,6 +106,7 @@ export function SidebarNav({ userRole }: SidebarNavProps) {
   // SALES section - Catalog links (visible to ADMIN and REP)
   const salesItems: NavItem[] = (userRole === 'ADMIN' || userRole === 'REP') ? [
     { href: '/ops/catalog-links', label: 'Catalog Links', icon: LinkIcon },
+    { href: '/ops/catalog-links/requests', label: 'Requests', icon: Inbox },
   ] : [];
 
   // LABELS section - Label templates
