@@ -72,6 +72,33 @@ model Strain {
   @@index([shortCode])
 }
 
+model ProductCategory {
+  id           String                      @id @default(cuid())
+  name         String                      @unique
+  description  String?
+  displayOrder Int                         @default(0)
+  active       Boolean                     @default(true)
+  createdAt    DateTime                    @default(now())
+  updatedAt    DateTime                    @updatedAt
+  products     ProductCategoryAssignment[]
+
+  @@index([displayOrder])
+  @@index([active])
+}
+
+model ProductCategoryAssignment {
+  id         String          @id @default(cuid())
+  productId  String
+  categoryId String
+  createdAt  DateTime        @default(now())
+  product    Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  category   ProductCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, categoryId])
+  @@index([productId])
+  @@index([categoryId])
+}
+
 model Product {
   id                      String                   @id @default(cuid())
   name                    String
@@ -117,6 +144,7 @@ model Product {
   tripdarTokens           TripdarToken[]
   catalogViews            CatalogProductView[]
   catalogRequestItems     CatalogRequestItem[]
+  categories              ProductCategoryAssignment[]
 
   @@index([sku])
   @@index([upc])
@@ -1092,6 +1120,7 @@ enum PurchaseOrderStatus {
 
 enum ActivityEntity {
   PRODUCT
+  PRODUCT_CATEGORY
   MATERIAL
   BATCH
   ORDER

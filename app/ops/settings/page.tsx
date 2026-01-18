@@ -6,18 +6,19 @@ import { auth } from '@/lib/auth/auth';
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/db/prisma';
 import Link from 'next/link';
-import { 
-  Settings, 
-  QrCode, 
-  Shield, 
-  Bell, 
+import {
+  Settings,
+  QrCode,
+  Shield,
+  Bell,
   Sliders,
   FileCheck,
   ChevronRight,
   Check,
   X,
   MapPin,
-  Store
+  Store,
+  Tag
 } from 'lucide-react';
 
 export default async function SettingsPage() {
@@ -33,14 +34,15 @@ export default async function SettingsPage() {
   }
 
   // Fetch status indicators for settings
-  const [fallbackRedirect, transparencyRecordCount, locationCount, retailerCount] = await Promise.all([
+  const [fallbackRedirect, transparencyRecordCount, locationCount, retailerCount, categoryCount] = await Promise.all([
     prisma.qRRedirectRule.findFirst({
       where: { isFallback: true },
       select: { active: true, redirectUrl: true }
     }),
     prisma.transparencyRecord.count(),
     prisma.location.count({ where: { active: true } }),
-    prisma.retailer.count({ where: { active: true } })
+    prisma.retailer.count({ where: { active: true } }),
+    prisma.productCategory.count({ where: { active: true } })
   ]);
 
   return (
@@ -106,6 +108,18 @@ export default async function SettingsPage() {
           description="Manage wholesale customers and retailers"
           status={retailerCount > 0 ? 'configured' : 'not-configured'}
           statusText={retailerCount > 0 ? `${retailerCount} retailers` : 'Not configured'}
+        />
+
+        {/* Product Categories - Active */}
+        <SettingsCard
+          href="/ops/settings/categories"
+          icon={Tag}
+          iconBg="bg-teal-100"
+          iconColor="text-teal-600"
+          title="Product Categories"
+          description="Organize products into categories for the retailer catalog"
+          status={categoryCount > 0 ? 'configured' : 'not-configured'}
+          statusText={categoryCount > 0 ? `${categoryCount} categories` : 'Not configured'}
         />
 
         {/* Security - Active */}

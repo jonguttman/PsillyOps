@@ -16,6 +16,7 @@ import { calculateProductCost } from "@/lib/services/costingService";
 import CalculatedCostDisplay from "./CalculatedCostDisplay";
 import { ManufacturingSetup } from "@/components/products/ManufacturingSetup";
 import PublicFieldsEditor from "@/components/products/PublicFieldsEditor";
+import ProductCategoriesSection from "@/components/products/ProductCategoriesSection";
 
 // Types for manufacturing configuration
 interface ManufacturingStep {
@@ -278,6 +279,13 @@ export default async function ProductDetailPage({
         take: 5,
         orderBy: { createdAt: "desc" },
       },
+      categories: {
+        include: {
+          category: {
+            select: { id: true, name: true, description: true, active: true }
+          }
+        }
+      },
     },
   });
 
@@ -299,6 +307,22 @@ export default async function ProductDetailPage({
     orderBy: { name: 'asc' },
     select: { id: true, name: true, shortCode: true }
   });
+
+  // Fetch all active categories for the category selector
+  const allCategories = await prisma.productCategory.findMany({
+    where: { active: true },
+    orderBy: { displayOrder: 'asc' },
+    select: { id: true, name: true, description: true }
+  });
+
+  // Extract product's current categories (only active ones)
+  const productCategories = product.categories
+    .filter(c => c.category.active)
+    .map(c => ({
+      id: c.category.id,
+      name: c.category.name,
+      description: c.category.description,
+    }));
 
   // Calculate inventory totals
   const totalOnHand = product.inventory.reduce(
@@ -576,6 +600,13 @@ export default async function ProductDetailPage({
           </dl>
         )}
       </div>
+
+      {/* Product Categories */}
+      <ProductCategoriesSection
+        productId={id}
+        currentCategories={productCategories}
+        allCategories={allCategories}
+      />
 
       {/* Public Verification Settings */}
       <PublicFieldsEditor
