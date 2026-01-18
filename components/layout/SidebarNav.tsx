@@ -26,7 +26,8 @@ import {
   ArrowRightLeft,
   BarChart3,
   CircleDot,
-  FlaskConical
+  FlaskConical,
+  Link as LinkIcon
 } from 'lucide-react';
 
 interface NavItem {
@@ -101,6 +102,11 @@ export function SidebarNav({ userRole }: SidebarNavProps) {
     { href: '/ops/purchase-orders', label: 'Purchasing', icon: FileText },
   ];
 
+  // SALES section - Catalog links (visible to ADMIN and REP)
+  const salesItems: NavItem[] = (userRole === 'ADMIN' || userRole === 'REP') ? [
+    { href: '/ops/catalog-links', label: 'Catalog Links', icon: LinkIcon },
+  ] : [];
+
   // LABELS section - Label templates
   const labelsItems: NavItem[] = [
     { href: '/ops/labels', label: 'Templates', icon: Tags },
@@ -151,6 +157,21 @@ export function SidebarNav({ userRole }: SidebarNavProps) {
           />
         ))}
       </SidebarSection>
+
+      {/* SALES - Catalog links (only show if there are items) */}
+      {salesItems.length > 0 && (
+        <SidebarSection title="Sales" defaultExpanded={userRole === 'REP'} persistKey="sales">
+          {salesItems.map((item) => (
+            <NavItem
+              key={item.href}
+              href={item.href}
+              label={item.label}
+              icon={item.icon}
+              isActive={isActive(item.href)}
+            />
+          ))}
+        </SidebarSection>
+      )}
 
       {/* LABELS - Label templates */}
       <SidebarSection title="Labels" defaultExpanded={false} persistKey="labels">
