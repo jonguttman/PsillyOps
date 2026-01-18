@@ -1602,7 +1602,11 @@ model CatalogLink {
   customPricing   Json?             // { "prod_123": 45.00, "prod_456": 89.00 }
 
   // Product subset (null = all products, array = specific product IDs)
+  // DEPRECATED: Use categorySubset instead for new links
   productSubset   Json?             // ["prod_123", "prod_456"] or null for all
+
+  // Category subset (null = all categories, array = specific category IDs)
+  categorySubset  Json?             // ["cat_123", "cat_456"] or null for all
 
   // Tracking
   viewCount       Int               @default(0)

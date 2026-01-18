@@ -20,7 +20,7 @@ const createSchema = z.object({
   retailerId: z.string().min(1, 'Retailer ID is required'),
   displayName: z.string().max(200).optional(),
   customPricing: z.record(z.number().positive()).optional(),
-  productSubset: z.array(z.string()).optional(),
+  categorySubset: z.array(z.string()).optional(),
   expiresAt: z.string().datetime().optional().transform(val => val ? new Date(val) : undefined)
 });
 

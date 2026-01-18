@@ -10,6 +10,15 @@ interface Retailer {
   name: string;
 }
 
+interface Category {
+  id: string;
+  name: string;
+  description: string | null;
+  _count: {
+    products: number;
+  };
+}
+
 interface Product {
   id: string;
   name: string;
@@ -19,6 +28,7 @@ interface Product {
 
 interface NewCatalogLinkFormProps {
   retailers: Retailer[];
+  categories: Category[];
   products: Product[];
   isAdmin: boolean;
   currentUserId: string;
@@ -31,7 +41,7 @@ function getDefaultExpiration(): string {
   return date.toISOString().slice(0, 16); // Format for datetime-local input
 }
 
-export function NewCatalogLinkForm({ retailers, products, isAdmin, currentUserId }: NewCatalogLinkFormProps) {
+export function NewCatalogLinkForm({ retailers, categories, products, isAdmin, currentUserId }: NewCatalogLinkFormProps) {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -53,13 +63,13 @@ export function NewCatalogLinkForm({ retailers, products, isAdmin, currentUserId
   const [formData, setFormData] = useState({
     retailerId: '',
     displayName: '',
-    productSubset: [] as string[],
+    categorySubset: [] as string[],
     customPricing: {} as Record<string, string>,
     expiresAt: getDefaultExpiration(), // Default to 30 days
     neverExpires: false
   });
 
-  const [useProductSubset, setUseProductSubset] = useState(false);
+  const [useCategorySubset, setUseCategorySubset] = useState(false);
   const [useCustomPricing, setUseCustomPricing] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -77,8 +87,8 @@ export function NewCatalogLinkForm({ retailers, products, isAdmin, currentUserId
         payload.displayName = formData.displayName.trim();
       }
 
-      if (useProductSubset && formData.productSubset.length > 0) {
-        payload.productSubset = formData.productSubset;
+      if (useCategorySubset && formData.categorySubset.length > 0) {
+        payload.categorySubset = formData.categorySubset;
       }
 
       // Only ADMINs can set custom pricing
@@ -130,12 +140,12 @@ export function NewCatalogLinkForm({ retailers, products, isAdmin, currentUserId
     }
   };
 
-  const toggleProduct = (productId: string) => {
+  const toggleCategory = (categoryId: string) => {
     setFormData(prev => ({
       ...prev,
-      productSubset: prev.productSubset.includes(productId)
-        ? prev.productSubset.filter(id => id !== productId)
-        : [...prev.productSubset, productId]
+      categorySubset: prev.categorySubset.includes(categoryId)
+        ? prev.categorySubset.filter(id => id !== categoryId)
+        : [...prev.categorySubset, categoryId]
     }));
   };
 
@@ -312,49 +322,58 @@ export function NewCatalogLinkForm({ retailers, products, isAdmin, currentUserId
           </div>
         </div>
 
-        {/* Product subset */}
+        {/* Category selection */}
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-gray-900">Product Selection</h2>
+            <h2 className="font-semibold text-gray-900">Category Selection</h2>
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
-                checked={useProductSubset}
-                onChange={e => setUseProductSubset(e.target.checked)}
+                checked={useCategorySubset}
+                onChange={e => setUseCategorySubset(e.target.checked)}
                 className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
               />
-              Limit to specific products
+              Limit to specific categories
             </label>
           </div>
 
-          {useProductSubset ? (
-            <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-lg">
-              {products.map(product => (
-                <label
-                  key={product.id}
-                  className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 cursor-pointer"
-                >
-                  <input
-                    type="checkbox"
-                    checked={formData.productSubset.includes(product.id)}
-                    onChange={() => toggleProduct(product.id)}
-                    className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900">{product.name}</p>
-                    <p className="text-xs text-gray-500">{product.sku}</p>
-                  </div>
-                  {product.wholesalePrice && (
-                    <span className="text-sm text-gray-500">
-                      ${product.wholesalePrice.toFixed(2)}
+          {useCategorySubset ? (
+            categories.length > 0 ? (
+              <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-lg">
+                {categories.map(category => (
+                  <label
+                    key={category.id}
+                    className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={formData.categorySubset.includes(category.id)}
+                      onChange={() => toggleCategory(category.id)}
+                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900">{category.name}</p>
+                      {category.description && (
+                        <p className="text-xs text-gray-500">{category.description}</p>
+                      )}
+                    </div>
+                    <span className="text-sm text-gray-400">
+                      {category._count.products} products
                     </span>
-                  )}
-                </label>
-              ))}
-            </div>
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-6 border border-dashed border-gray-200 rounded-lg">
+                <p className="text-sm text-gray-500">No categories available</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  Create categories in Settings &gt; Categories first
+                </p>
+              </div>
+            )
           ) : (
             <p className="text-sm text-gray-500">
-              All products with wholesale pricing will be shown ({products.length} products)
+              All categories will be shown ({categories.length} categories, {products.length} products total)
             </p>
           )}
         </div>
