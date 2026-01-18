@@ -52,7 +52,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
                 id: true,
                 name: true,
                 sku: true,
-                imageUrl: true
+                publicImageUrl: true
               }
             }
           }
@@ -77,7 +77,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
         itemType: item.itemType,
         quantity: item.quantity,
         sampleReason: item.sampleReason,
-        product: item.product
+        product: {
+          id: item.product.id,
+          name: item.product.name,
+          sku: item.product.sku,
+          imageUrl: item.product.publicImageUrl
+        }
       }))
     }));
 
