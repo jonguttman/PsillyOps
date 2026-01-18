@@ -13,6 +13,8 @@ interface Product {
   sku: string;
   description: string | null;
   imageUrl: string | null;
+  whyChoose: string | null;
+  suggestedUse: string | null;
   effectivePrice: number | null;
   wholesalePrice: number | null;
   stockStatus: 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK';
@@ -64,6 +66,17 @@ export function ProductDetailClient({
 
   return (
     <CartProvider catalogToken={token}>
+      {/* Prose styles for rich text content */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        .prose p { margin: 0 0 0.5em 0; }
+        .prose p:last-child { margin-bottom: 0; }
+        .prose strong { font-weight: 600; }
+        .prose em { font-style: italic; }
+        .prose u { text-decoration: underline; }
+        .prose ul { list-style-type: disc; padding-left: 1.25em; margin: 0.5em 0; }
+        .prose ul:last-child { margin-bottom: 0; }
+        .prose li { margin: 0.25em 0; }
+      ` }} />
       <div className="min-h-screen bg-gray-50">
         {/* Internal preview banner */}
         {isInternalView && (
@@ -157,7 +170,65 @@ export function ProductDetailClient({
                 {product.description && (
                   <div className="mb-6">
                     <h2 className="text-sm font-medium text-gray-700 mb-2">Description</h2>
-                    <p className="text-gray-600 whitespace-pre-wrap">{product.description}</p>
+                    <div
+                      className="text-sm leading-relaxed prose prose-sm max-w-none"
+                      style={{ color: '#666666' }}
+                      dangerouslySetInnerHTML={{ __html: product.description }}
+                    />
+                  </div>
+                )}
+
+                {/* Why People Choose This */}
+                {product.whyChoose && (
+                  <div
+                    className="rounded-lg p-4 mb-6"
+                    style={{
+                      background: 'linear-gradient(135deg, #fef9f0 0%, #fcf6ec 100%)',
+                      borderLeft: '4px solid #00838f'
+                    }}
+                  >
+                    <h2
+                      className="text-lg font-bold mb-3 flex items-center gap-2"
+                      style={{ color: '#1a1a1a' }}
+                    >
+                      <span
+                        className="w-1 h-5 rounded-sm"
+                        style={{ background: '#00838f' }}
+                      />
+                      Why People Choose This
+                    </h2>
+                    <div
+                      className="text-sm leading-relaxed prose prose-sm max-w-none"
+                      style={{ color: '#666666' }}
+                      dangerouslySetInnerHTML={{ __html: product.whyChoose }}
+                    />
+                  </div>
+                )}
+
+                {/* Suggested Use */}
+                {product.suggestedUse && (
+                  <div
+                    className="rounded-lg p-4 mb-6"
+                    style={{
+                      background: 'linear-gradient(135deg, #fef9f0 0%, #fcf6ec 100%)',
+                      borderLeft: '4px solid #7b1fa2'
+                    }}
+                  >
+                    <h2
+                      className="text-lg font-bold mb-3 flex items-center gap-2"
+                      style={{ color: '#1a1a1a' }}
+                    >
+                      <span
+                        className="w-1 h-5 rounded-sm"
+                        style={{ background: '#7b1fa2' }}
+                      />
+                      Suggested Use
+                    </h2>
+                    <div
+                      className="text-sm leading-relaxed prose prose-sm max-w-none"
+                      style={{ color: '#666666' }}
+                      dangerouslySetInnerHTML={{ __html: product.suggestedUse }}
+                    />
                   </div>
                 )}
 
