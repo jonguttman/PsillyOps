@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { X, ShoppingCart, Package, Minus, Plus, Trash2, Send, Loader2 } from 'lucide-react';
+import Link from 'next/link';
+import { X, ShoppingCart, Package, Minus, Plus, Trash2, Send, Loader2, ClipboardList } from 'lucide-react';
 import { useCart } from './CartContext';
 
 interface CartDrawerProps {
@@ -9,10 +10,13 @@ interface CartDrawerProps {
   token: string;
 }
 
+const REQUESTS_STORAGE_PREFIX = 'catalog-requests-';
+
 export function CartDrawer({ catalogLinkId, token }: CartDrawerProps) {
   const { items, isOpen, setIsOpen, removeItem, updateQuantity, clearCart, itemCount } = useCart();
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [submittedRequestId, setSubmittedRequestId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Contact info
@@ -24,8 +28,25 @@ export function CartDrawer({ catalogLinkId, token }: CartDrawerProps) {
   const quoteItems = items.filter(item => item.itemType === 'QUOTE');
   const sampleItems = items.filter(item => item.itemType === 'SAMPLE');
 
+  // Validation - name and phone are required
+  const isValid = contactName.trim().length > 0 && contactPhone.trim().length > 0;
+
+  const saveRequestToLocalStorage = (requestId: string) => {
+    try {
+      const storageKey = `${REQUESTS_STORAGE_PREFIX}${token}`;
+      const existing = localStorage.getItem(storageKey);
+      const requestIds: string[] = existing ? JSON.parse(existing) : [];
+      if (!requestIds.includes(requestId)) {
+        requestIds.push(requestId);
+        localStorage.setItem(storageKey, JSON.stringify(requestIds));
+      }
+    } catch (err) {
+      console.error('Failed to save request ID to localStorage:', err);
+    }
+  };
+
   const handleSubmit = async () => {
-    if (items.length === 0) return;
+    if (items.length === 0 || !isValid) return;
 
     setSubmitting(true);
     setError(null);
@@ -42,16 +63,24 @@ export function CartDrawer({ catalogLinkId, token }: CartDrawerProps) {
             quantity: item.quantity,
             sampleReason: item.sampleReason
           })),
-          contactName: contactName || undefined,
-          contactEmail: contactEmail || undefined,
-          contactPhone: contactPhone || undefined,
-          message: message || undefined
+          contactName: contactName.trim(),
+          contactEmail: contactEmail.trim() || undefined,
+          contactPhone: contactPhone.trim(),
+          message: message.trim() || undefined
         })
       });
 
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || 'Failed to submit request');
+      }
+
+      const data = await response.json();
+      const requestId = data.id || data.requestId;
+
+      if (requestId) {
+        saveRequestToLocalStorage(requestId);
+        setSubmittedRequestId(requestId);
       }
 
       setSubmitted(true);
@@ -67,6 +96,7 @@ export function CartDrawer({ catalogLinkId, token }: CartDrawerProps) {
     setIsOpen(false);
     if (submitted) {
       setSubmitted(false);
+      setSubmittedRequestId(null);
       setContactName('');
       setContactEmail('');
       setContactPhone('');
@@ -125,12 +155,22 @@ export function CartDrawer({ catalogLinkId, token }: CartDrawerProps) {
               <p className="text-gray-600">
                 Your sales representative will be in touch with you shortly to discuss your quote and sample requests.
               </p>
-              <button
-                onClick={handleClose}
-                className="mt-6 px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-              >
-                Continue Browsing
-              </button>
+              <div className="mt-6 space-y-3">
+                <Link
+                  href={`/catalog/${token}/requests`}
+                  className="flex items-center justify-center gap-2 px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                  onClick={handleClose}
+                >
+                  <ClipboardList className="w-5 h-5" />
+                  View My Requests
+                </Link>
+                <button
+                  onClick={handleClose}
+                  className="w-full px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Continue Browsing
+                </button>
+              </div>
             </div>
           ) : items.length === 0 ? (
             <div className="p-8 text-center text-gray-500">
@@ -181,36 +221,58 @@ export function CartDrawer({ catalogLinkId, token }: CartDrawerProps) {
 
               {/* Contact Info */}
               <div className="border-t pt-4">
-                <h3 className="text-sm font-medium text-gray-700 mb-3">Contact Information (Optional)</h3>
+                <h3 className="text-sm font-medium text-gray-700 mb-3">
+                  Contact Information
+                </h3>
                 <div className="space-y-3">
-                  <input
-                    type="text"
-                    placeholder="Your name"
-                    value={contactName}
-                    onChange={(e) => setContactName(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  />
-                  <input
-                    type="email"
-                    placeholder="Email address"
-                    value={contactEmail}
-                    onChange={(e) => setContactEmail(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  />
-                  <input
-                    type="tel"
-                    placeholder="Phone number"
-                    value={contactPhone}
-                    onChange={(e) => setContactPhone(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  />
-                  <textarea
-                    placeholder="Additional message for your sales rep..."
-                    value={message}
-                    onChange={(e) => setMessage(e.target.value)}
-                    rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
-                  />
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Your name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Enter your name"
+                      value={contactName}
+                      onChange={(e) => setContactName(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Phone number <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="tel"
+                      placeholder="Enter your phone number"
+                      value={contactPhone}
+                      onChange={(e) => setContactPhone(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Email address <span className="text-gray-400">(optional)</span>
+                    </label>
+                    <input
+                      type="email"
+                      placeholder="Enter your email"
+                      value={contactEmail}
+                      onChange={(e) => setContactEmail(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Message <span className="text-gray-400">(optional)</span>
+                    </label>
+                    <textarea
+                      placeholder="Additional message for your sales rep..."
+                      value={message}
+                      onChange={(e) => setMessage(e.target.value)}
+                      rows={3}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -228,8 +290,8 @@ export function CartDrawer({ catalogLinkId, token }: CartDrawerProps) {
           <div className="p-4 border-t bg-gray-50">
             <button
               onClick={handleSubmit}
-              disabled={submitting}
-              className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
+              disabled={submitting || !isValid}
+              className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {submitting ? (
                 <>
@@ -243,9 +305,16 @@ export function CartDrawer({ catalogLinkId, token }: CartDrawerProps) {
                 </>
               )}
             </button>
-            <p className="text-xs text-gray-500 text-center mt-2">
-              Your rep will reach out with pricing and availability
-            </p>
+            {!isValid && (
+              <p className="text-xs text-amber-600 text-center mt-2">
+                Please enter your name and phone number to submit
+              </p>
+            )}
+            {isValid && (
+              <p className="text-xs text-gray-500 text-center mt-2">
+                Your rep will reach out with pricing and availability
+              </p>
+            )}
           </div>
         )}
       </div>
