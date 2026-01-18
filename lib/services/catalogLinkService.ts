@@ -4,7 +4,7 @@
 import { randomBytes } from 'crypto';
 import { prisma } from '@/lib/db/prisma';
 import { logAction } from './loggingService';
-import { ActivityEntity, CatalogLinkStatus, InquiryStatus, Prisma } from '@prisma/client';
+import { ActivityEntity, CatalogLinkStatus, InquiryStatus, CatalogRequestStatus, CatalogRequestItemType, Prisma } from '@prisma/client';
 import { AppError, ErrorCodes } from '@/lib/utils/errors';
 
 // ========================================
@@ -71,6 +71,61 @@ export interface CatalogAnalytics {
   totalInquiries: number;
   topProducts: { productId: string; productName: string; viewCount: number }[];
   recentActivity: { date: Date; action: string; details: string }[];
+}
+
+// Cart/Request types
+export interface CartItem {
+  productId: string;
+  itemType: 'QUOTE' | 'SAMPLE';
+  quantity: number;
+  sampleReason?: string; // Required for SAMPLE type
+}
+
+export interface SubmitCatalogRequestParams {
+  catalogLinkId: string;
+  items: CartItem[];
+  contactName?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  message?: string;
+}
+
+export interface CatalogRequestWithItems {
+  id: string;
+  catalogLinkId: string;
+  contactName: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  message: string | null;
+  status: CatalogRequestStatus;
+  createdAt: Date;
+  updatedAt: Date;
+  catalogLink: {
+    token: string;
+    displayName: string | null;
+    retailer: {
+      id: string;
+      name: string;
+      salesRepId: string | null;
+    };
+  };
+  assignedTo: {
+    id: string;
+    name: string;
+  } | null;
+  items: {
+    id: string;
+    productId: string;
+    itemType: CatalogRequestItemType;
+    quantity: number;
+    sampleReason: string | null;
+    product: {
+      id: string;
+      name: string;
+      sku: string;
+      publicImageUrl: string | null;
+    };
+  }[];
 }
 
 // ========================================
@@ -1151,4 +1206,264 @@ export function getBaseUrl(): string {
  */
 export function buildCatalogUrl(token: string): string {
   return `${getBaseUrl()}/catalog/${token}`;
+}
+
+// ========================================
+// CATALOG REQUESTS (QUOTE/SAMPLE)
+// ========================================
+
+/**
+ * Submit a catalog request (quote or sample request from retailer)
+ */
+export async function submitCatalogRequest(params: SubmitCatalogRequestParams) {
+  const { catalogLinkId, items, contactName, contactEmail, contactPhone, message } = params;
+
+  if (!items || items.length === 0) {
+    throw new AppError(ErrorCodes.VALIDATION_ERROR, 'At least one item is required');
+  }
+
+  // Validate sample items have reasons
+  for (const item of items) {
+    if (item.itemType === 'SAMPLE' && !item.sampleReason?.trim()) {
+      throw new AppError(ErrorCodes.VALIDATION_ERROR, 'Sample requests require a reason');
+    }
+    if (item.quantity < 1) {
+      throw new AppError(ErrorCodes.VALIDATION_ERROR, 'Quantity must be at least 1');
+    }
+  }
+
+  const link = await prisma.catalogLink.findUnique({
+    where: { id: catalogLinkId },
+    include: {
+      retailer: { select: { id: true, name: true, salesRepId: true } }
+    }
+  });
+
+  if (!link) {
+    throw new AppError(ErrorCodes.NOT_FOUND, 'Catalog link not found');
+  }
+
+  // Validate product IDs
+  const productIds = items.map(item => item.productId);
+  const products = await prisma.product.findMany({
+    where: { id: { in: productIds }, active: true },
+    select: { id: true, name: true }
+  });
+  const validProductIds = new Set(products.map(p => p.id));
+  const invalidProductIds = productIds.filter(id => !validProductIds.has(id));
+  if (invalidProductIds.length > 0) {
+    throw new AppError(ErrorCodes.VALIDATION_ERROR, `Invalid product IDs: ${invalidProductIds.join(', ')}`);
+  }
+
+  // Create the request with items
+  const request = await prisma.catalogRequest.create({
+    data: {
+      catalogLinkId,
+      contactName,
+      contactEmail,
+      contactPhone,
+      message,
+      assignedToId: link.retailer.salesRepId, // Auto-assign to retailer's sales rep
+      status: CatalogRequestStatus.NEW,
+      items: {
+        create: items.map(item => ({
+          productId: item.productId,
+          itemType: item.itemType as CatalogRequestItemType,
+          quantity: item.quantity,
+          sampleReason: item.sampleReason || null
+        }))
+      }
+    },
+    include: {
+      items: {
+        include: {
+          product: { select: { id: true, name: true, sku: true } }
+        }
+      }
+    }
+  });
+
+  // Log the request
+  const quoteItems = items.filter(i => i.itemType === 'QUOTE');
+  const sampleItems = items.filter(i => i.itemType === 'SAMPLE');
+
+  await logAction({
+    entityType: ActivityEntity.CATALOG_LINK,
+    entityId: catalogLinkId,
+    action: 'catalog_request_submitted',
+    summary: `New request from ${contactName || 'Anonymous'}: ${quoteItems.length} quote items, ${sampleItems.length} sample requests`,
+    metadata: {
+      requestId: request.id,
+      token: link.token,
+      retailerId: link.retailerId,
+      retailerName: link.retailer.name,
+      contactName,
+      contactEmail,
+      quoteItemCount: quoteItems.length,
+      sampleItemCount: sampleItems.length,
+      assignedToId: link.retailer.salesRepId
+    },
+    tags: ['catalog', 'request', 'public']
+  });
+
+  return request;
+}
+
+/**
+ * Get a catalog request by ID
+ */
+export async function getCatalogRequest(id: string): Promise<CatalogRequestWithItems | null> {
+  const request = await prisma.catalogRequest.findUnique({
+    where: { id },
+    include: {
+      catalogLink: {
+        include: {
+          retailer: { select: { id: true, name: true, salesRepId: true } }
+        }
+      },
+      assignedTo: { select: { id: true, name: true } },
+      items: {
+        include: {
+          product: { select: { id: true, name: true, sku: true, publicImageUrl: true } }
+        }
+      }
+    }
+  });
+
+  if (!request) return null;
+
+  return {
+    id: request.id,
+    catalogLinkId: request.catalogLinkId,
+    contactName: request.contactName,
+    contactEmail: request.contactEmail,
+    contactPhone: request.contactPhone,
+    message: request.message,
+    status: request.status,
+    createdAt: request.createdAt,
+    updatedAt: request.updatedAt,
+    catalogLink: {
+      token: request.catalogLink.token,
+      displayName: request.catalogLink.displayName,
+      retailer: request.catalogLink.retailer
+    },
+    assignedTo: request.assignedTo,
+    items: request.items
+  };
+}
+
+/**
+ * List catalog requests with filters
+ */
+export async function listCatalogRequests(options?: {
+  catalogLinkId?: string;
+  assignedToId?: string;
+  status?: CatalogRequestStatus;
+  limit?: number;
+  offset?: number;
+}) {
+  const where: Prisma.CatalogRequestWhereInput = {};
+  if (options?.catalogLinkId) where.catalogLinkId = options.catalogLinkId;
+  if (options?.assignedToId) where.assignedToId = options.assignedToId;
+  if (options?.status) where.status = options.status;
+
+  const [requests, total] = await Promise.all([
+    prisma.catalogRequest.findMany({
+      where,
+      include: {
+        catalogLink: {
+          include: {
+            retailer: { select: { id: true, name: true, salesRepId: true } }
+          }
+        },
+        assignedTo: { select: { id: true, name: true } },
+        items: {
+          include: {
+            product: { select: { id: true, name: true, sku: true, publicImageUrl: true } }
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' },
+      take: options?.limit || 50,
+      skip: options?.offset || 0
+    }),
+    prisma.catalogRequest.count({ where })
+  ]);
+
+  return { requests, total };
+}
+
+/**
+ * Update catalog request status
+ */
+export async function updateCatalogRequestStatus(
+  id: string,
+  status: CatalogRequestStatus,
+  userId?: string,
+  notes?: string
+) {
+  const existing = await prisma.catalogRequest.findUnique({
+    where: { id },
+    include: {
+      catalogLink: {
+        include: { retailer: { select: { name: true } } }
+      }
+    }
+  });
+
+  if (!existing) {
+    throw new AppError(ErrorCodes.NOT_FOUND, 'Catalog request not found');
+  }
+
+  const updated = await prisma.catalogRequest.update({
+    where: { id },
+    data: {
+      status,
+      notes: notes ?? existing.notes,
+      respondedAt: status !== CatalogRequestStatus.NEW ? new Date() : undefined
+    }
+  });
+
+  await logAction({
+    entityType: ActivityEntity.CATALOG_LINK,
+    entityId: existing.catalogLinkId,
+    action: 'catalog_request_status_updated',
+    userId,
+    summary: `Request status changed to ${status}`,
+    before: { status: existing.status },
+    after: { status },
+    metadata: {
+      requestId: id,
+      retailerName: existing.catalogLink.retailer.name
+    },
+    tags: ['catalog', 'request', 'update']
+  });
+
+  return updated;
+}
+
+/**
+ * Get request counts by status for a user (for dashboard)
+ */
+export async function getRequestCountsByStatus(assignedToId?: string) {
+  const where: Prisma.CatalogRequestWhereInput = assignedToId ? { assignedToId } : {};
+
+  const counts = await prisma.catalogRequest.groupBy({
+    by: ['status'],
+    where,
+    _count: true
+  });
+
+  const result: Record<string, number> = {
+    NEW: 0,
+    CONTACTED: 0,
+    QUOTED: 0,
+    CLOSED: 0
+  };
+
+  for (const count of counts) {
+    result[count.status] = count._count;
+  }
+
+  return result;
 }

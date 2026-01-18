@@ -14,7 +14,8 @@ import {
   HelpCircle,
   X,
   ChevronRight,
-  Link as LinkIcon
+  Link as LinkIcon,
+  Inbox
 } from 'lucide-react';
 
 interface MobileMoreSheetProps {
@@ -38,6 +39,14 @@ const menuItems: MenuItem[] = [
     label: 'Catalog Links',
     icon: LinkIcon,
     description: 'Retailer sales catalogs',
+    adminOnly: false,
+    repAllowed: true
+  },
+  {
+    href: '/ops/catalog-links/requests',
+    label: 'Requests',
+    icon: Inbox,
+    description: 'Quote and sample requests',
     adminOnly: false,
     repAllowed: true
   },

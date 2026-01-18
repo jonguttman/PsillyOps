@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { Package } from 'lucide-react';
+import { AddToCartButton } from './AddToCartButton';
 
 interface ProductCardProps {
   id: string;
@@ -13,6 +14,7 @@ interface ProductCardProps {
   stockStatus: 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK';
   catalogToken: string;
   isInternalView?: boolean;
+  showCartButtons?: boolean;
 }
 
 export function ProductCard({
@@ -24,7 +26,8 @@ export function ProductCard({
   effectivePrice,
   stockStatus,
   catalogToken,
-  isInternalView = false
+  isInternalView = false,
+  showCartButtons = true
 }: ProductCardProps) {
   const stockBadge = {
     IN_STOCK: { label: 'In Stock', className: 'bg-green-100 text-green-800' },
@@ -89,6 +92,19 @@ export function ProductCard({
             View Details
           </span>
         </div>
+
+        {/* Cart buttons - only show for non-internal views */}
+        {showCartButtons && !isInternalView && (
+          <AddToCartButton
+            product={{
+              id,
+              name,
+              sku,
+              imageUrl
+            }}
+            variant="inline"
+          />
+        )}
       </div>
     </Link>
   );
