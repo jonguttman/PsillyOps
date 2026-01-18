@@ -41,60 +41,62 @@ export function ProductCard({
     : `/catalog/${catalogToken}/product/${id}`;
 
   return (
-    <Link
-      href={productUrl}
-      className="group bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-lg hover:border-indigo-200 transition-all duration-200"
-    >
-      {/* Image */}
-      <div className="aspect-square bg-gray-100 relative overflow-hidden">
-        {imageUrl ? (
-          <img
-            src={imageUrl}
-            alt={name}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <Package className="w-16 h-16 text-gray-300" />
-          </div>
-        )}
-
-        {/* Stock badge */}
-        <div className="absolute top-3 right-3">
-          <span className={`text-xs font-medium px-2 py-1 rounded-full ${stockBadge.className}`}>
-            {stockBadge.label}
-          </span>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="p-4">
-        <p className="text-xs text-gray-500 font-mono mb-1">{sku}</p>
-        <h3 className="font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors line-clamp-2">
-          {name}
-        </h3>
-
-        {description && (
-          <p className="text-sm text-gray-500 mt-2 line-clamp-2">{description}</p>
-        )}
-
-        {/* Price */}
-        <div className="mt-4 flex items-center justify-between">
-          {effectivePrice !== null ? (
-            <span className="text-lg font-bold text-gray-900">
-              ${effectivePrice.toFixed(2)}
-            </span>
+    <div className="group bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-lg hover:border-indigo-200 transition-all duration-200">
+      {/* Clickable area - links to product detail */}
+      <Link href={productUrl} className="block">
+        {/* Image */}
+        <div className="aspect-square bg-gray-100 relative overflow-hidden">
+          {imageUrl ? (
+            <img
+              src={imageUrl}
+              alt={name}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            />
           ) : (
-            <span className="text-sm text-gray-400">Price on request</span>
+            <div className="w-full h-full flex items-center justify-center">
+              <Package className="w-16 h-16 text-gray-300" />
+            </div>
           )}
 
-          <span className="text-sm text-indigo-600 font-medium group-hover:underline">
-            View Details
-          </span>
+          {/* Stock badge */}
+          <div className="absolute top-3 right-3">
+            <span className={`text-xs font-medium px-2 py-1 rounded-full ${stockBadge.className}`}>
+              {stockBadge.label}
+            </span>
+          </div>
         </div>
 
-        {/* Cart buttons - only show for non-internal views */}
-        {showCartButtons && !isInternalView && (
+        {/* Content */}
+        <div className="p-4">
+          <p className="text-xs text-gray-500 font-mono mb-1">{sku}</p>
+          <h3 className="font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors line-clamp-2">
+            {name}
+          </h3>
+
+          {description && (
+            <p className="text-sm text-gray-500 mt-2 line-clamp-2">{description}</p>
+          )}
+
+          {/* Price */}
+          <div className="mt-4 flex items-center justify-between">
+            {effectivePrice !== null ? (
+              <span className="text-lg font-bold text-gray-900">
+                ${effectivePrice.toFixed(2)}
+              </span>
+            ) : (
+              <span className="text-sm text-gray-400">Price on request</span>
+            )}
+
+            <span className="text-sm text-indigo-600 font-medium group-hover:underline">
+              View Details
+            </span>
+          </div>
+        </div>
+      </Link>
+
+      {/* Cart buttons - OUTSIDE the Link to prevent navigation on click */}
+      {showCartButtons && !isInternalView && (
+        <div className="px-4 pb-4">
           <AddToCartButton
             product={{
               id,
@@ -104,8 +106,8 @@ export function ProductCard({
             }}
             variant="inline"
           />
-        )}
-      </div>
-    </Link>
+        </div>
+      )}
+    </div>
   );
 }

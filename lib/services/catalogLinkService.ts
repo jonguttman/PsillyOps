@@ -45,6 +45,8 @@ export interface CatalogProduct {
   sku: string;
   description: string | null;
   imageUrl: string | null;
+  whyChoose: string | null;
+  suggestedUse: string | null;
   wholesalePrice: number | null;
   effectivePrice: number | null; // After custom pricing applied
   stockStatus: 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK';
@@ -630,6 +632,8 @@ export async function getCatalogProducts(catalogLinkId: string): Promise<Catalog
       sku: true,
       publicDescription: true,
       publicImageUrl: true,
+      publicWhyChoose: true,
+      publicSuggestedUse: true,
       wholesalePrice: true
     },
     orderBy: { name: 'asc' }
@@ -679,6 +683,8 @@ export async function getCatalogProducts(catalogLinkId: string): Promise<Catalog
       sku: product.sku,
       description: product.publicDescription,
       imageUrl: product.publicImageUrl,
+      whyChoose: product.publicWhyChoose,
+      suggestedUse: product.publicSuggestedUse,
       wholesalePrice: product.wholesalePrice,
       effectivePrice,
       stockStatus,
@@ -722,6 +728,8 @@ export async function getCatalogProduct(
       sku: true,
       publicDescription: true,
       publicImageUrl: true,
+      publicWhyChoose: true,
+      publicSuggestedUse: true,
       wholesalePrice: true
     }
   });
@@ -761,6 +769,8 @@ export async function getCatalogProduct(
     sku: product.sku,
     description: product.publicDescription,
     imageUrl: product.publicImageUrl,
+    whyChoose: product.publicWhyChoose,
+    suggestedUse: product.publicSuggestedUse,
     wholesalePrice: product.wholesalePrice,
     effectivePrice,
     stockStatus,
