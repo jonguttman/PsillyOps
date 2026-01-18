@@ -17,25 +17,30 @@ import { CatalogClientWrapper } from './CatalogClientWrapper';
 
 interface PageProps {
   params: Promise<{ token: string }>;
+  searchParams: Promise<{ preview?: string }>;
 }
 
-export default async function CatalogPage({ params }: PageProps) {
+export default async function CatalogPage({ params, searchParams }: PageProps) {
   const { token } = await params;
+  const { preview } = await searchParams;
 
   // Check if viewer is an internal user (ADMIN or REP)
   const session = await auth();
   const isInternalUser = session?.user?.role === 'ADMIN' || session?.user?.role === 'REP';
+
+  // Allow preview mode to show retailer experience (via URL param)
+  const previewAsRetailer = preview === 'retailer';
 
   // Get request metadata for tracking
   const headersList = await headers();
   const ip = headersList.get('x-forwarded-for')?.split(',')[0] || undefined;
   const userAgent = headersList.get('user-agent') || undefined;
 
-  // Resolve catalog - skip tracking for internal users
+  // Resolve catalog - skip tracking for internal users (unless previewing as retailer)
   const resolution = await resolveCatalogToken(
     token,
     { ip, userAgent },
-    { skipTracking: isInternalUser }
+    { skipTracking: isInternalUser && !previewAsRetailer }
   );
 
   if (!resolution) {
@@ -46,23 +51,14 @@ export default async function CatalogPage({ params }: PageProps) {
   const products = await getCatalogProducts(resolution.id);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Show internal user banner */}
-      {isInternalUser && (
-        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 text-center">
-          <p className="text-sm text-amber-800">
-            Internal preview - this view is not counted in analytics
-          </p>
-        </div>
-      )}
-      <CatalogClientWrapper
-        token={token}
-        catalogLinkId={resolution.id}
-        displayName={resolution.displayName}
-        products={products}
-        isInternalView={isInternalUser}
-      />
-    </div>
+    <CatalogClientWrapper
+      token={token}
+      catalogLinkId={resolution.id}
+      displayName={resolution.displayName}
+      products={products}
+      isInternalUser={isInternalUser}
+      initialPreviewMode={previewAsRetailer}
+    />
   );
 }
 

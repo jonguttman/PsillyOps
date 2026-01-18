@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
 
 export interface CartItem {
   productId: string;
@@ -26,9 +26,55 @@ interface CartContextType {
 
 const CartContext = createContext<CartContextType | null>(null);
 
-export function CartProvider({ children }: { children: ReactNode }) {
+interface CartProviderProps {
+  children: ReactNode;
+  catalogToken?: string;
+}
+
+const CART_STORAGE_PREFIX = 'catalog-cart-';
+
+export function CartProvider({ children, catalogToken }: CartProviderProps) {
   const [items, setItems] = useState<CartItem[]>([]);
   const [isOpen, setIsOpen] = useState(false);
+  const [initialized, setInitialized] = useState(false);
+
+  const storageKey = catalogToken ? `${CART_STORAGE_PREFIX}${catalogToken}` : null;
+
+  // Load cart from localStorage on mount
+  useEffect(() => {
+    if (!storageKey) {
+      setInitialized(true);
+      return;
+    }
+
+    try {
+      const stored = localStorage.getItem(storageKey);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          setItems(parsed);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load cart from localStorage:', error);
+    }
+    setInitialized(true);
+  }, [storageKey]);
+
+  // Save cart to localStorage when items change
+  useEffect(() => {
+    if (!storageKey || !initialized) return;
+
+    try {
+      if (items.length > 0) {
+        localStorage.setItem(storageKey, JSON.stringify(items));
+      } else {
+        localStorage.removeItem(storageKey);
+      }
+    } catch (error) {
+      console.error('Failed to save cart to localStorage:', error);
+    }
+  }, [items, storageKey, initialized]);
 
   const addToQuote = useCallback((
     product: { id: string; name: string; sku: string; imageUrl: string | null },
@@ -112,6 +158,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const clearCart = useCallback(() => {
     setItems([]);
+    // localStorage cleanup happens via the useEffect above
   }, []);
 
   return (
