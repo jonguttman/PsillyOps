@@ -12,6 +12,7 @@ interface ProductCardProps {
   effectivePrice: number | null;
   stockStatus: 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK';
   catalogToken: string;
+  isInternalView?: boolean;
 }
 
 export function ProductCard({
@@ -22,7 +23,8 @@ export function ProductCard({
   imageUrl,
   effectivePrice,
   stockStatus,
-  catalogToken
+  catalogToken,
+  isInternalView = false
 }: ProductCardProps) {
   const stockBadge = {
     IN_STOCK: { label: 'In Stock', className: 'bg-green-100 text-green-800' },
@@ -30,9 +32,14 @@ export function ProductCard({
     OUT_OF_STOCK: { label: 'Out of Stock', className: 'bg-red-100 text-red-800' }
   }[stockStatus];
 
+  // Build product URL - add internal query param if this is an internal view
+  const productUrl = isInternalView
+    ? `/catalog/${catalogToken}/product/${id}?internal=true`
+    : `/catalog/${catalogToken}/product/${id}`;
+
   return (
     <Link
-      href={`/catalog/${catalogToken}/product/${id}`}
+      href={productUrl}
       className="group bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-lg hover:border-indigo-200 transition-all duration-200"
     >
       {/* Image */}

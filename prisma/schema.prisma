@@ -51,6 +51,7 @@ model User {
   executedAIProposals        AIProposal[]          @relation("AIProposalExecutor")
   aiSessions                 AISession[]
   catalogLinks               CatalogLink[]         @relation("CatalogLinkCreator")
+  catalogLinkEdits           CatalogLinkEdit[]     @relation("CatalogLinkEditor")
 
   @@index([email])
   @@index([role])
@@ -1574,6 +1575,7 @@ model CatalogLink {
   // Analytics relations
   productViews    CatalogProductView[]
   inquiries       CatalogInquiry[]
+  edits           CatalogLinkEdit[]
 
   @@index([token])
   @@index([retailerId])
@@ -1626,5 +1628,27 @@ model CatalogInquiry {
 
   @@index([catalogLinkId])
   @@index([status])
+  @@index([createdAt])
+}
+
+// Edit history for catalog links (audit trail)
+model CatalogLinkEdit {
+  id              String      @id @default(cuid())
+  catalogLinkId   String
+  catalogLink     CatalogLink @relation(fields: [catalogLinkId], references: [id], onDelete: Cascade)
+
+  // Who made the edit
+  editedById      String
+  editedBy        User        @relation("CatalogLinkEditor", fields: [editedById], references: [id])
+
+  // What was changed
+  fieldName       String      // e.g., "displayName", "expiresAt", "productSubset"
+  oldValue        String?     // JSON string of old value
+  newValue        String?     // JSON string of new value
+
+  createdAt       DateTime    @default(now())
+
+  @@index([catalogLinkId])
+  @@index([editedById])
   @@index([createdAt])
 }

@@ -289,7 +289,89 @@ export async function updateCatalogLink(id: string, params: UpdateCatalogLinkPar
     tags: ['catalog', 'update']
   });
 
+  // Create detailed edit records for audit trail (if userId provided)
+  if (userId) {
+    const edits: { fieldName: string; oldValue: string | null; newValue: string | null }[] = [];
+
+    // Check each field for changes
+    if (params.displayName !== undefined && params.displayName !== existing.displayName) {
+      edits.push({
+        fieldName: 'displayName',
+        oldValue: existing.displayName || null,
+        newValue: params.displayName || null
+      });
+    }
+
+    if (params.customPricing !== undefined) {
+      const oldVal = JSON.stringify(existing.customPricing);
+      const newVal = params.customPricing === null ? null : JSON.stringify(params.customPricing);
+      if (oldVal !== newVal) {
+        edits.push({
+          fieldName: 'customPricing',
+          oldValue: oldVal === 'null' ? null : oldVal,
+          newValue: newVal
+        });
+      }
+    }
+
+    if (params.productSubset !== undefined) {
+      const oldVal = JSON.stringify(existing.productSubset);
+      const newVal = params.productSubset === null ? null : JSON.stringify(params.productSubset);
+      if (oldVal !== newVal) {
+        edits.push({
+          fieldName: 'productSubset',
+          oldValue: oldVal === 'null' ? null : oldVal,
+          newValue: newVal
+        });
+      }
+    }
+
+    if (params.expiresAt !== undefined) {
+      const oldVal = existing.expiresAt?.toISOString() || null;
+      const newVal = params.expiresAt?.toISOString() || null;
+      if (oldVal !== newVal) {
+        edits.push({
+          fieldName: 'expiresAt',
+          oldValue: oldVal,
+          newValue: newVal
+        });
+      }
+    }
+
+    if (params.status !== undefined && params.status !== existing.status) {
+      edits.push({
+        fieldName: 'status',
+        oldValue: existing.status,
+        newValue: params.status
+      });
+    }
+
+    // Create edit records
+    if (edits.length > 0) {
+      await prisma.catalogLinkEdit.createMany({
+        data: edits.map(edit => ({
+          catalogLinkId: id,
+          editedById: userId,
+          ...edit
+        }))
+      });
+    }
+  }
+
   return updated;
+}
+
+/**
+ * Get edit history for a catalog link (admin only)
+ */
+export async function getCatalogLinkEdits(catalogLinkId: string) {
+  return prisma.catalogLinkEdit.findMany({
+    where: { catalogLinkId },
+    include: {
+      editedBy: { select: { id: true, name: true, role: true } }
+    },
+    orderBy: { createdAt: 'desc' }
+  });
 }
 
 /**
@@ -375,10 +457,14 @@ export async function listCatalogLinks(options?: {
 
 /**
  * Resolve a catalog token and track the view
+ * @param token - The catalog token
+ * @param metadata - Optional IP and user agent for tracking
+ * @param options - Optional settings (skipTracking: true for internal/admin views)
  */
 export async function resolveCatalogToken(
   token: string,
-  metadata?: { ip?: string; userAgent?: string }
+  metadata?: { ip?: string; userAgent?: string },
+  options?: { skipTracking?: boolean }
 ): Promise<CatalogLinkResolution | null> {
   if (!isValidTokenFormat(token)) {
     return null;
@@ -411,32 +497,34 @@ export async function resolveCatalogToken(
     return null;
   }
 
-  // Track the view
-  await prisma.catalogLink.update({
-    where: { id: link.id },
-    data: {
-      viewCount: { increment: 1 },
-      lastViewedAt: new Date()
-    }
-  });
+  // Track the view (skip for internal/admin views)
+  if (!options?.skipTracking) {
+    await prisma.catalogLink.update({
+      where: { id: link.id },
+      data: {
+        viewCount: { increment: 1 },
+        lastViewedAt: new Date()
+      }
+    });
 
-  // Log the view
-  await logAction({
-    entityType: ActivityEntity.CATALOG_LINK,
-    entityId: link.id,
-    action: 'catalog_viewed',
-    ipAddress: metadata?.ip,
-    userAgent: metadata?.userAgent,
-    summary: `Catalog viewed for ${link.retailer.name}`,
-    metadata: {
-      token: link.token,
-      retailerId: link.retailerId,
-      retailerName: link.retailer.name,
-      viewCount: link.viewCount + 1,
-      surface: 'public'
-    },
-    tags: ['catalog', 'view', 'public']
-  });
+    // Log the view
+    await logAction({
+      entityType: ActivityEntity.CATALOG_LINK,
+      entityId: link.id,
+      action: 'catalog_viewed',
+      ipAddress: metadata?.ip,
+      userAgent: metadata?.userAgent,
+      summary: `Catalog viewed for ${link.retailer.name}`,
+      metadata: {
+        token: link.token,
+        retailerId: link.retailerId,
+        retailerName: link.retailer.name,
+        viewCount: link.viewCount + 1,
+        surface: 'public'
+      },
+      tags: ['catalog', 'view', 'public']
+    });
+  }
 
   return {
     id: link.id,
@@ -627,12 +715,22 @@ export async function getCatalogProduct(
 
 /**
  * Track a product view in the catalog
+ * @param catalogLinkId - The catalog link ID
+ * @param productId - The product ID
+ * @param metadata - Optional IP and user agent
+ * @param options - Optional settings (skipTracking: true for internal views)
  */
 export async function trackProductView(
   catalogLinkId: string,
   productId: string,
-  metadata?: { ip?: string; userAgent?: string }
+  metadata?: { ip?: string; userAgent?: string },
+  options?: { skipTracking?: boolean }
 ) {
+  // Skip tracking for internal views
+  if (options?.skipTracking) {
+    return null;
+  }
+
   const link = await prisma.catalogLink.findUnique({
     where: { id: catalogLinkId },
     include: { retailer: { select: { name: true } } }
@@ -998,11 +1096,20 @@ export async function getAggregateAnalytics() {
 
 /**
  * Track PDF download
+ * @param catalogLinkId - The catalog link ID
+ * @param metadata - Optional IP and user agent
+ * @param options - Optional settings (skipTracking: true for internal views)
  */
 export async function trackPdfDownload(
   catalogLinkId: string,
-  metadata?: { ip?: string; userAgent?: string }
+  metadata?: { ip?: string; userAgent?: string },
+  options?: { skipTracking?: boolean }
 ) {
+  // Skip tracking for internal views
+  if (options?.skipTracking) {
+    return;
+  }
+
   const link = await prisma.catalogLink.findUnique({
     where: { id: catalogLinkId },
     include: { retailer: { select: { name: true } } }

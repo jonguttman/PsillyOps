@@ -20,32 +20,38 @@ interface CatalogClientWrapperProps {
   catalogLinkId: string;
   displayName: string;
   products: Product[];
+  isInternalView?: boolean;
 }
 
 export function CatalogClientWrapper({
   token,
   catalogLinkId,
   displayName,
-  products
+  products,
+  isInternalView = false
 }: CatalogClientWrapperProps) {
   const [downloading, setDownloading] = useState(false);
 
   const handleDownloadPdf = async () => {
     setDownloading(true);
     try {
-      const response = await fetch(`/api/catalog/${token}/pdf`);
+      // Add internal param to skip tracking for admin/rep views
+      const url = isInternalView
+        ? `/api/catalog/${token}/pdf?internal=true`
+        : `/api/catalog/${token}/pdf`;
+      const response = await fetch(url);
       if (!response.ok) {
         throw new Error('Failed to generate PDF');
       }
 
       const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
+      const blobUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
+      a.href = blobUrl;
       a.download = `catalog-${displayName.replace(/[^a-zA-Z0-9]/g, '-')}.pdf`;
       document.body.appendChild(a);
       a.click();
-      window.URL.revokeObjectURL(url);
+      window.URL.revokeObjectURL(blobUrl);
       document.body.removeChild(a);
     } catch (error) {
       console.error('PDF download error:', error);
@@ -93,7 +99,7 @@ export function CatalogClientWrapper({
 
       {/* Main content */}
       <main className="max-w-6xl mx-auto px-4 py-8">
-        <ProductGrid products={products} catalogToken={token} />
+        <ProductGrid products={products} catalogToken={token} isInternalView={isInternalView} />
       </main>
 
       {/* Footer */}

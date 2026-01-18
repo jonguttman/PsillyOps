@@ -49,10 +49,12 @@ export async function GET(
     const products = await getCatalogProducts(catalogLink.id);
     const displayName = catalogLink.displayName || catalogLink.retailer.name;
 
-    // Track the download
+    // Track the download (skip for internal/admin views)
+    const { searchParams } = new URL(req.url);
+    const isInternal = searchParams.get('internal') === 'true';
     const ip = req.headers.get('x-forwarded-for')?.split(',')[0] || undefined;
     const userAgent = req.headers.get('user-agent') || undefined;
-    await trackPdfDownload(catalogLink.id, { ip, userAgent });
+    await trackPdfDownload(catalogLink.id, { ip, userAgent }, { skipTracking: isInternal });
 
     // Generate PDF
     const pdfBuffer = await generateCatalogPdf(displayName, products);
