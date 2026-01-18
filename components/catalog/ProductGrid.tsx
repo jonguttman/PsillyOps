@@ -17,12 +17,13 @@ interface Product {
 interface ProductGridProps {
   products: Product[];
   catalogToken: string;
+  isInternalView?: boolean;
 }
 
 type SortOption = 'name' | 'price-asc' | 'price-desc';
 type StockFilter = 'all' | 'in-stock' | 'available';
 
-export function ProductGrid({ products, catalogToken }: ProductGridProps) {
+export function ProductGrid({ products, catalogToken, isInternalView = false }: ProductGridProps) {
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<SortOption>('name');
   const [stockFilter, setStockFilter] = useState<StockFilter>('all');
@@ -122,6 +123,7 @@ export function ProductGrid({ products, catalogToken }: ProductGridProps) {
               key={product.id}
               {...product}
               catalogToken={catalogToken}
+              isInternalView={isInternalView}
             />
           ))}
         </div>

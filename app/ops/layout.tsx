@@ -19,10 +19,9 @@ export default async function OpsLayout({
     redirect('/login');
   }
 
-  // Reps use separate portal
-  if (session.user.role === 'REP') {
-    redirect('/rep');
-  }
+  // Note: REP access control is handled by middleware.ts
+  // REPs can access specific /ops routes (e.g., /ops/catalog-links)
+  // Middleware redirects REPs to /rep for non-allowed routes
 
   return (
     <>

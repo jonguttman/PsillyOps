@@ -69,6 +69,15 @@ export async function middleware(req: NextRequest) {
     }
   }
 
+  // REP users can access specific /ops routes (catalog-links)
+  const repAllowedOpsRoutes = ['/ops/catalog-links'];
+  if (pathname.startsWith('/ops') && userRole === 'REP') {
+    const isAllowedRoute = repAllowedOpsRoutes.some(route => pathname.startsWith(route));
+    if (!isAllowedRoute) {
+      return NextResponse.redirect(new URL('/rep', req.url));
+    }
+  }
+
   return NextResponse.next();
 }
 

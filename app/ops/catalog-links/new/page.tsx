@@ -3,11 +3,18 @@
  */
 
 import { prisma } from '@/lib/db/prisma';
+import { auth } from '@/lib/auth/auth';
+import { redirect } from 'next/navigation';
 import { NewCatalogLinkForm } from './NewCatalogLinkForm';
 
-async function getRetailers() {
+async function getRetailers(userId: string, userRole: string) {
+  // REPs only see their assigned retailers; ADMINs see all
+  const whereClause = userRole === 'ADMIN'
+    ? { active: true }
+    : { active: true, salesRepId: userId };
+
   return prisma.retailer.findMany({
-    where: { active: true },
+    where: whereClause,
     select: { id: true, name: true },
     orderBy: { name: 'asc' }
   });
@@ -22,7 +29,18 @@ async function getProducts() {
 }
 
 export default async function NewCatalogLinkPage() {
-  const [retailers, products] = await Promise.all([getRetailers(), getProducts()]);
+  const session = await auth();
+  if (!session?.user) {
+    redirect('/login');
+  }
+
+  const { id: userId, role: userRole } = session.user;
+  const isAdmin = userRole === 'ADMIN';
+
+  const [retailers, products] = await Promise.all([
+    getRetailers(userId, userRole),
+    getProducts()
+  ]);
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
@@ -33,7 +51,12 @@ export default async function NewCatalogLinkPage() {
         </p>
       </div>
 
-      <NewCatalogLinkForm retailers={retailers} products={products} />
+      <NewCatalogLinkForm
+        retailers={retailers}
+        products={products}
+        isAdmin={isAdmin}
+        currentUserId={userId}
+      />
     </div>
   );
 }

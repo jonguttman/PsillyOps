@@ -3,17 +3,18 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { 
-  Settings, 
-  Shield, 
-  QrCode, 
-  Activity, 
+import {
+  Settings,
+  Shield,
+  QrCode,
+  Activity,
   Users,
   Dna,
   Building2,
   HelpCircle,
   X,
-  ChevronRight
+  ChevronRight,
+  Link as LinkIcon
 } from 'lucide-react';
 
 interface MobileMoreSheetProps {
@@ -28,13 +29,22 @@ interface MenuItem {
   icon: typeof Settings;
   description: string;
   adminOnly?: boolean;
+  repAllowed?: boolean;
 }
 
 const menuItems: MenuItem[] = [
-  { 
-    href: '/ops/settings', 
-    label: 'Settings', 
-    icon: Settings, 
+  {
+    href: '/ops/catalog-links',
+    label: 'Catalog Links',
+    icon: LinkIcon,
+    description: 'Retailer sales catalogs',
+    adminOnly: false,
+    repAllowed: true
+  },
+  {
+    href: '/ops/settings',
+    label: 'Settings',
+    icon: Settings,
     description: 'System configuration',
     adminOnly: true
   },
@@ -111,9 +121,11 @@ export function MobileMoreSheet({ isOpen, onClose, userRole }: MobileMoreSheetPr
   }, [isOpen]);
 
   // Filter items based on user role
-  const visibleItems = menuItems.filter(item => 
-    !item.adminOnly || userRole === 'ADMIN'
-  );
+  const visibleItems = menuItems.filter(item => {
+    if (userRole === 'ADMIN') return true;
+    if (userRole === 'REP') return item.repAllowed && !item.adminOnly;
+    return !item.adminOnly;
+  });
 
   // Close on escape key
   useEffect(() => {

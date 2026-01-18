@@ -2,7 +2,7 @@
  * Product Detail Page
  *
  * Shows detailed product information with inquiry form.
- * Tracks product views for analytics.
+ * Tracks product views for analytics (skips for internal users).
  */
 
 import { notFound } from 'next/navigation';
@@ -18,10 +18,15 @@ import { InquiryForm } from '@/components/catalog/InquiryForm';
 
 interface PageProps {
   params: Promise<{ token: string; productId: string }>;
+  searchParams: Promise<{ internal?: string }>;
 }
 
-export default async function ProductDetailPage({ params }: PageProps) {
+export default async function ProductDetailPage({ params, searchParams }: PageProps) {
   const { token, productId } = await params;
+  const { internal } = await searchParams;
+
+  // Check if this is an internal (admin/rep) view
+  const isInternalView = internal === 'true';
 
   // Get request metadata for tracking
   const headersList = await headers();
@@ -47,8 +52,8 @@ export default async function ProductDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  // Track the product view
-  await trackProductView(catalogLink.id, productId, { ip, userAgent });
+  // Track the product view (skip for internal views)
+  await trackProductView(catalogLink.id, productId, { ip, userAgent }, { skipTracking: isInternalView });
 
   const displayName = catalogLink.displayName || catalogLink.retailer.name;
 
@@ -80,6 +85,15 @@ export default async function ProductDetailPage({ params }: PageProps) {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Internal preview banner */}
+      {isInternalView && (
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 text-center">
+          <p className="text-sm text-amber-800">
+            Internal preview - this view is not counted in analytics
+          </p>
+        </div>
+      )}
+
       {/* Header */}
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-4xl mx-auto px-4 py-4">
