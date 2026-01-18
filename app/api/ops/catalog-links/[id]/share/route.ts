@@ -7,8 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { Resend } from 'resend';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth/authOptions';
+import { auth } from '@/lib/auth/auth';
 import { getCatalogLink, buildCatalogUrl } from '@/lib/services/catalogLinkService';
 import { logAction } from '@/lib/services/loggingService';
 import { ActivityEntity } from '@prisma/client';
@@ -33,7 +32,7 @@ export async function POST(
 ) {
   try {
     // Auth check
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

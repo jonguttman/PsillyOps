@@ -6,16 +6,15 @@
  */
 
 import { Suspense } from 'react';
-import { getServerSession } from 'next-auth';
 import { redirect } from 'next/navigation';
-import { authOptions } from '@/lib/auth/authOptions';
+import { auth } from '@/lib/auth/auth';
 import { listCatalogRequests, getRequestCountsByStatus } from '@/lib/services/catalogLinkService';
 import { RequestsClient } from './RequestsClient';
 
 export const dynamic = 'force-dynamic';
 
 export default async function CatalogRequestsPage() {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
 
   if (!session?.user) {
     redirect('/login');
