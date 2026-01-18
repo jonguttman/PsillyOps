@@ -32,6 +32,17 @@ export default async function CatalogRequestsPage() {
     getRequestCountsByStatus(assignedToId)
   ]);
 
+  // Serialize dates for client component
+  const serializedRequests = requests.map(r => ({
+    ...r,
+    createdAt: r.createdAt.toISOString(),
+    updatedAt: r.updatedAt.toISOString(),
+    items: r.items.map(item => ({
+      ...item,
+      createdAt: item.createdAt.toISOString()
+    }))
+  }));
+
   return (
     <div className="p-6">
       <div className="mb-6">
@@ -43,7 +54,7 @@ export default async function CatalogRequestsPage() {
 
       <Suspense fallback={<div>Loading...</div>}>
         <RequestsClient
-          initialRequests={requests}
+          initialRequests={serializedRequests}
           initialTotal={total}
           initialCounts={counts}
           userRole={session.user.role}
