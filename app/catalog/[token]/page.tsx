@@ -14,16 +14,17 @@ import {
   getCatalogProducts,
   getExpiredCatalogInfo
 } from '@/lib/services/catalogLinkService';
+import { trackIntroSheetScan } from '@/lib/services/introSheetService';
 import { CatalogClientWrapper } from './CatalogClientWrapper';
 
 interface PageProps {
   params: Promise<{ token: string }>;
-  searchParams: Promise<{ preview?: string }>;
+  searchParams: Promise<{ preview?: string; ref?: string }>;
 }
 
 export default async function CatalogPage({ params, searchParams }: PageProps) {
   const { token } = await params;
-  const { preview } = await searchParams;
+  const { preview, ref } = await searchParams;
 
   // Check if viewer is an internal user (ADMIN or REP)
   const session = await auth();
@@ -59,6 +60,11 @@ export default async function CatalogPage({ params, searchParams }: PageProps) {
 
   // Get products with custom pricing applied
   const products = await getCatalogProducts(resolution.id);
+
+  // Track intro sheet scans (when accessed via QR code with ref=intro_sheet)
+  if (ref === 'intro_sheet') {
+    await trackIntroSheetScan(resolution.id, { ip, userAgent });
+  }
 
   return (
     <CatalogClientWrapper

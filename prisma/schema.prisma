@@ -53,6 +53,7 @@ model User {
   catalogLinks               CatalogLink[]         @relation("CatalogLinkCreator")
   catalogLinkEdits           CatalogLinkEdit[]     @relation("CatalogLinkEditor")
   catalogRequestsAssigned    CatalogRequest[]      @relation("CatalogRequestAssignee")
+  createdIntroSheets         RetailerIntroSheet[]  @relation("IntroSheetCreator")
 
   @@index([email])
   @@index([role])
@@ -422,6 +423,7 @@ model Retailer {
   orders          RetailerOrder[]
   catalogLinks    CatalogLink[]
   renewalRequests RenewalRequest[]
+  introSheets     RetailerIntroSheet[]
 
   @@index([salesRepId])
   @@index([name])
@@ -1107,6 +1109,7 @@ enum ActivityEntity {
   LOCATION
   SYSTEM
   CATALOG_LINK
+  INTRO_SHEET
 }
 
 enum ProductionRunStatus {
@@ -1592,6 +1595,7 @@ model CatalogLink {
   inquiries       CatalogInquiry[]
   edits           CatalogLinkEdit[]
   requests        CatalogRequest[]
+  introSheets     RetailerIntroSheet[]
 
   @@index([token])
   @@index([retailerId])
@@ -1747,4 +1751,29 @@ model RenewalRequest {
   @@index([sourceToken])
   @@index([retailerId])
   @@index([requestedAt])
+}
+
+// Retailer intro sheet PDF tracking
+model RetailerIntroSheet {
+  id              String      @id @default(cuid())
+
+  // Associations
+  retailerId      String
+  retailer        Retailer    @relation(fields: [retailerId], references: [id])
+  catalogLinkId   String
+  catalogLink     CatalogLink @relation(fields: [catalogLinkId], references: [id])
+
+  // Generation metadata
+  createdById     String
+  createdBy       User        @relation("IntroSheetCreator", fields: [createdById], references: [id])
+  createdAt       DateTime    @default(now())
+
+  // Tracking (updated when QR scanned with ref=intro_sheet)
+  firstScannedAt  DateTime?
+  scanCount       Int         @default(0)
+
+  @@index([retailerId])
+  @@index([catalogLinkId])
+  @@index([createdById])
+  @@index([createdAt])
 }

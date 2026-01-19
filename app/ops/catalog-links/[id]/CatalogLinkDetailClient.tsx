@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { QrCode, Copy, ExternalLink, Check, Trash2 } from 'lucide-react';
+import { QrCode, Copy, ExternalLink, Check, Trash2, FileText } from 'lucide-react';
 import { CatalogLinkStatus } from '@prisma/client';
 
 interface CatalogLinkDetailClientProps {
@@ -21,6 +21,7 @@ export function CatalogLinkDetailClient({
   const router = useRouter();
   const [copied, setCopied] = useState(false);
   const [revoking, setRevoking] = useState(false);
+  const [generatingIntroSheet, setGeneratingIntroSheet] = useState(false);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(catalogUrl);
@@ -45,6 +46,45 @@ export function CatalogLinkDetailClient({
       alert('Failed to revoke catalog link');
     } finally {
       setRevoking(false);
+    }
+  };
+
+  const handleGenerateIntroSheet = async () => {
+    setGeneratingIntroSheet(true);
+    try {
+      const res = await fetch('/api/ops/intro-sheets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ catalogLinkId: linkId })
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        alert(error.error || 'Failed to generate intro sheet');
+        return;
+      }
+
+      // Download the PDF
+      const blob = await res.blob();
+      const contentDisposition = res.headers.get('Content-Disposition');
+      let filename = 'intro-sheet.pdf';
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="(.+)"/);
+        if (match) filename = match[1];
+      }
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      alert('Failed to generate intro sheet');
+    } finally {
+      setGeneratingIntroSheet(false);
     }
   };
 
@@ -80,6 +120,18 @@ export function CatalogLinkDetailClient({
         <QrCode className="w-4 h-4" />
         QR Code
       </a>
+
+      {/* Generate Intro Sheet */}
+      {status === 'ACTIVE' && (
+        <button
+          onClick={handleGenerateIntroSheet}
+          disabled={generatingIntroSheet}
+          className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+        >
+          <FileText className="w-4 h-4" />
+          {generatingIntroSheet ? 'Generating...' : 'Intro Sheet'}
+        </button>
+      )}
 
       {/* Revoke */}
       {status === 'ACTIVE' && (
