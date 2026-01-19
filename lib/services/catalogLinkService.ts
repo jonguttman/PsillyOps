@@ -56,6 +56,14 @@ export interface CatalogProduct {
   availableQuantity: number;
 }
 
+export interface CatalogCategory {
+  id: string;
+  name: string;
+  description: string | null;
+  displayOrder: number;
+  products: CatalogProduct[];
+}
+
 export interface CreateInquiryParams {
   catalogLinkId: string;
   contactName: string;
@@ -1534,6 +1542,160 @@ export async function getRequestCountsByStatus(assignedToId?: string) {
 
   for (const count of counts) {
     result[count.status] = count._count;
+  }
+
+  return result;
+}
+
+// ========================================
+// CATALOG CATEGORIES WITH PRODUCTS
+// ========================================
+
+/**
+ * Get catalog products grouped by category for carousel display
+ * Returns categories with their products, applying custom pricing and filtering by categorySubset
+ */
+export async function getCatalogCategoriesWithProducts(catalogLinkId: string): Promise<CatalogCategory[]> {
+  const link = await prisma.catalogLink.findUnique({
+    where: { id: catalogLinkId },
+    select: {
+      customPricing: true,
+      productSubset: true,
+      categorySubset: true
+    }
+  });
+
+  if (!link) {
+    throw new AppError(ErrorCodes.NOT_FOUND, 'Catalog link not found');
+  }
+
+  const customPricing = link.customPricing as Record<string, number> | null;
+  const productSubset = link.productSubset as string[] | null;
+  const categorySubset = link.categorySubset as string[] | null;
+
+  // Build category filter
+  const categoryWhere: Prisma.ProductCategoryWhereInput = {
+    active: true
+  };
+
+  // If categorySubset is specified, only show those categories
+  if (categorySubset && categorySubset.length > 0) {
+    categoryWhere.id = { in: categorySubset };
+  }
+
+  // Fetch categories with their products
+  const categories = await prisma.productCategory.findMany({
+    where: categoryWhere,
+    orderBy: { displayOrder: 'asc' },
+    include: {
+      products: {
+        include: {
+          product: {
+            select: {
+              id: true,
+              name: true,
+              sku: true,
+              publicDescription: true,
+              publicImageUrl: true,
+              publicWhyChoose: true,
+              publicSuggestedUse: true,
+              wholesalePrice: true,
+              active: true
+            }
+          }
+        }
+      }
+    }
+  });
+
+  // Get all product IDs for inventory lookup
+  const allProductIds = categories.flatMap(cat =>
+    cat.products.map(p => p.product.id)
+  );
+
+  // Get inventory levels for stock status
+  const inventory = await prisma.inventoryItem.groupBy({
+    by: ['productId'],
+    where: {
+      productId: { in: allProductIds },
+      type: 'PRODUCT',
+      status: 'AVAILABLE'
+    },
+    _sum: {
+      quantityOnHand: true,
+      quantityReserved: true
+    }
+  });
+
+  const inventoryMap = new Map(
+    inventory.map(i => [
+      i.productId,
+      {
+        available: (i._sum.quantityOnHand || 0) - (i._sum.quantityReserved || 0)
+      }
+    ])
+  );
+
+  // Transform to CatalogCategory format
+  const result: CatalogCategory[] = [];
+
+  for (const category of categories) {
+    // Filter and transform products
+    const catalogProducts: CatalogProduct[] = [];
+
+    for (const assignment of category.products) {
+      const product = assignment.product;
+
+      // Skip inactive products or those without wholesale pricing
+      if (!product.active || product.wholesalePrice === null) {
+        continue;
+      }
+
+      // If using legacy productSubset (no categorySubset), filter by product IDs
+      if ((!categorySubset || categorySubset.length === 0) && productSubset && productSubset.length > 0) {
+        if (!productSubset.includes(product.id)) {
+          continue;
+        }
+      }
+
+      const inv = inventoryMap.get(product.id);
+      const availableQuantity = inv?.available || 0;
+      const effectivePrice = customPricing?.[product.id] ?? product.wholesalePrice;
+
+      let stockStatus: 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK';
+      if (availableQuantity <= 0) {
+        stockStatus = 'OUT_OF_STOCK';
+      } else if (availableQuantity < 10) {
+        stockStatus = 'LOW_STOCK';
+      } else {
+        stockStatus = 'IN_STOCK';
+      }
+
+      catalogProducts.push({
+        id: product.id,
+        name: product.name,
+        sku: product.sku,
+        description: product.publicDescription,
+        imageUrl: product.publicImageUrl,
+        whyChoose: product.publicWhyChoose,
+        suggestedUse: product.publicSuggestedUse,
+        wholesalePrice: product.wholesalePrice,
+        effectivePrice,
+        stockStatus,
+        availableQuantity
+      });
+    }
+
+    // Only include categories with products
+    if (catalogProducts.length > 0) {
+      result.push({
+        id: category.id,
+        name: category.name,
+        description: category.description,
+        displayOrder: category.displayOrder,
+        products: catalogProducts
+      });
+    }
   }
 
   return result;
