@@ -59,7 +59,10 @@ export async function POST(request: NextRequest) {
     // Return PDF with download headers
     const filename = `intro-sheet-${result.retailerName.replace(/[^a-zA-Z0-9]/g, '-')}.pdf`;
 
-    return new NextResponse(result.pdfBuffer, {
+    // Convert Buffer to Uint8Array for NextResponse compatibility
+    const pdfData = new Uint8Array(result.pdfBuffer);
+
+    return new NextResponse(pdfData, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
