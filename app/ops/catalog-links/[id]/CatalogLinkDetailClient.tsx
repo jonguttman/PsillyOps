@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { QrCode, Copy, ExternalLink, Check, Trash2, FileText } from 'lucide-react';
+import { QrCode, Copy, ExternalLink, Check, Trash2, FileText, ChevronDown } from 'lucide-react';
 import { CatalogLinkStatus } from '@prisma/client';
 
 interface CatalogLinkDetailClientProps {
@@ -22,6 +22,19 @@ export function CatalogLinkDetailClient({
   const [copied, setCopied] = useState(false);
   const [revoking, setRevoking] = useState(false);
   const [generatingIntroSheet, setGeneratingIntroSheet] = useState(false);
+  const [showIntroSheetMenu, setShowIntroSheetMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setShowIntroSheetMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(catalogUrl);
@@ -49,13 +62,14 @@ export function CatalogLinkDetailClient({
     }
   };
 
-  const handleGenerateIntroSheet = async () => {
+  const handleGenerateIntroSheet = async (format: 'full' | 'half' = 'full') => {
     setGeneratingIntroSheet(true);
+    setShowIntroSheetMenu(false);
     try {
       const res = await fetch('/api/ops/intro-sheets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ catalogLinkId: linkId })
+        body: JSON.stringify({ catalogLinkId: linkId, format })
       });
 
       if (!res.ok) {
@@ -67,7 +81,7 @@ export function CatalogLinkDetailClient({
       // Download the PDF
       const blob = await res.blob();
       const contentDisposition = res.headers.get('Content-Disposition');
-      let filename = 'intro-sheet.pdf';
+      let filename = format === 'half' ? 'intro-sheet-half.pdf' : 'intro-sheet.pdf';
       if (contentDisposition) {
         const match = contentDisposition.match(/filename="(.+)"/);
         if (match) filename = match[1];
@@ -121,16 +135,36 @@ export function CatalogLinkDetailClient({
         QR Code
       </a>
 
-      {/* Generate Intro Sheet */}
+      {/* Generate Intro Sheet - Dropdown */}
       {status === 'ACTIVE' && (
-        <button
-          onClick={handleGenerateIntroSheet}
-          disabled={generatingIntroSheet}
-          className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
-        >
-          <FileText className="w-4 h-4" />
-          {generatingIntroSheet ? 'Generating...' : 'Intro Sheet'}
-        </button>
+        <div className="relative" ref={menuRef}>
+          <button
+            onClick={() => setShowIntroSheetMenu(!showIntroSheetMenu)}
+            disabled={generatingIntroSheet}
+            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+          >
+            <FileText className="w-4 h-4" />
+            {generatingIntroSheet ? 'Generating...' : 'Intro Sheet'}
+            <ChevronDown className="w-3 h-3" />
+          </button>
+
+          {showIntroSheetMenu && !generatingIntroSheet && (
+            <div className="absolute z-10 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg">
+              <button
+                onClick={() => handleGenerateIntroSheet('full')}
+                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 rounded-t-lg"
+              >
+                Full Page (8.5" × 11")
+              </button>
+              <button
+                onClick={() => handleGenerateIntroSheet('half')}
+                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 rounded-b-lg border-t border-gray-100"
+              >
+                Half Page Leave-Behind
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Revoke */}

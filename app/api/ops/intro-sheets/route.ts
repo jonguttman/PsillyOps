@@ -8,14 +8,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { auth } from '@/lib/auth/auth';
-import { generateIntroSheet, listIntroSheets } from '@/lib/services/introSheetService';
+import { generateIntroSheet, generateHalfPageIntroSheet, listIntroSheets } from '@/lib/services/introSheetService';
 
 // ========================================
 // POST - Generate Intro Sheet PDF
 // ========================================
 
 const generateSchema = z.object({
-  catalogLinkId: z.string().min(1, 'Catalog link ID is required')
+  catalogLinkId: z.string().min(1, 'Catalog link ID is required'),
+  format: z.enum(['full', 'half']).optional().default('full')
 });
 
 export async function POST(request: NextRequest) {
@@ -48,16 +49,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { catalogLinkId } = validation.data;
+    const { catalogLinkId, format } = validation.data;
 
-    // Generate the intro sheet
-    const result = await generateIntroSheet({
-      catalogLinkId,
-      createdById: session.user.id
-    });
+    // Generate the intro sheet (full or half-page variant)
+    const result = format === 'half'
+      ? await generateHalfPageIntroSheet({ catalogLinkId, createdById: session.user.id })
+      : await generateIntroSheet({ catalogLinkId, createdById: session.user.id });
 
     // Return PDF with download headers
-    const filename = `intro-sheet-${result.retailerName.replace(/[^a-zA-Z0-9]/g, '-')}.pdf`;
+    const formatSuffix = format === 'half' ? '-half' : '';
+    const filename = `intro-sheet${formatSuffix}-${result.retailerName.replace(/[^a-zA-Z0-9]/g, '-')}.pdf`;
 
     // Convert Buffer to Uint8Array for NextResponse compatibility
     const pdfData = new Uint8Array(result.pdfBuffer);
