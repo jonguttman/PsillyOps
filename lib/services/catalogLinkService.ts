@@ -78,12 +78,25 @@ export interface CatalogAnalytics {
   recentActivity: { date: Date; action: string; details: string }[];
 }
 
+// Sample purpose enum matching Prisma schema
+export type SamplePurpose =
+  | 'EMPLOYEE_TRAINING'
+  | 'CUSTOMER_SAMPLING'
+  | 'STORE_DISPLAY'
+  | 'PRODUCT_EVALUATION'
+  | 'REPLACEMENT'
+  | 'OTHER';
+
 // Cart/Request types
 export interface CartItem {
   productId: string;
   itemType: 'QUOTE' | 'SAMPLE';
   quantity: number;
-  sampleReason?: string; // Required for SAMPLE type
+  // DEPRECATED: Use samplePurpose instead
+  sampleReason?: string;
+  // New structured fields
+  samplePurpose?: SamplePurpose;
+  samplePurposeNotes?: string;
 }
 
 export interface SubmitCatalogRequestParams {
@@ -1276,10 +1289,10 @@ export async function submitCatalogRequest(params: SubmitCatalogRequestParams) {
     throw new AppError(ErrorCodes.VALIDATION_ERROR, 'At least one item is required');
   }
 
-  // Validate sample items have reasons
+  // Validate sample items have a purpose (or legacy reason for backward compatibility)
   for (const item of items) {
-    if (item.itemType === 'SAMPLE' && !item.sampleReason?.trim()) {
-      throw new AppError(ErrorCodes.VALIDATION_ERROR, 'Sample requests require a reason');
+    if (item.itemType === 'SAMPLE' && !item.samplePurpose && !item.sampleReason?.trim()) {
+      throw new AppError(ErrorCodes.VALIDATION_ERROR, 'Sample requests require a purpose');
     }
     if (item.quantity < 1) {
       throw new AppError(ErrorCodes.VALIDATION_ERROR, 'Quantity must be at least 1');
@@ -1324,7 +1337,11 @@ export async function submitCatalogRequest(params: SubmitCatalogRequestParams) {
           productId: item.productId,
           itemType: item.itemType as CatalogRequestItemType,
           quantity: item.quantity,
-          sampleReason: item.sampleReason || null
+          // Legacy field - kept for backward compatibility
+          sampleReason: item.sampleReason || null,
+          // New structured fields
+          samplePurpose: item.samplePurpose || null,
+          samplePurposeNotes: item.samplePurposeNotes || null
         }))
       }
     },

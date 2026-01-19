@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { X, ShoppingCart, Package, Minus, Plus, Trash2, Send, Loader2, ClipboardList } from 'lucide-react';
-import { useCart } from './CartContext';
+import { useCart, SamplePurpose, SAMPLE_PURPOSE_LABELS } from './CartContext';
 
 interface CartDrawerProps {
   catalogLinkId: string;
@@ -61,7 +61,10 @@ export function CartDrawer({ catalogLinkId, token }: CartDrawerProps) {
             productId: item.productId,
             itemType: item.itemType,
             quantity: item.quantity,
-            sampleReason: item.sampleReason
+            // Include both legacy and new fields for backward compatibility
+            sampleReason: item.sampleReason,
+            samplePurpose: item.samplePurpose,
+            samplePurposeNotes: item.samplePurposeNotes
           })),
           contactName: contactName.trim(),
           contactEmail: contactEmail.trim() || undefined,
@@ -212,7 +215,7 @@ export function CartDrawer({ catalogLinkId, token }: CartDrawerProps) {
                         item={item}
                         onRemove={() => removeItem(item.productId, 'SAMPLE')}
                         onUpdateQuantity={(qty) => updateQuantity(item.productId, 'SAMPLE', qty)}
-                        showReason
+                        showPurpose
                       />
                     ))}
                   </div>
@@ -330,13 +333,30 @@ interface CartItemCardProps {
     productImageUrl: string | null;
     quantity: number;
     sampleReason?: string;
+    samplePurpose?: SamplePurpose;
+    samplePurposeNotes?: string;
   };
   onRemove: () => void;
   onUpdateQuantity: (quantity: number) => void;
-  showReason?: boolean;
+  showPurpose?: boolean;
 }
 
-function CartItemCard({ item, onRemove, onUpdateQuantity, showReason }: CartItemCardProps) {
+function CartItemCard({ item, onRemove, onUpdateQuantity, showPurpose }: CartItemCardProps) {
+  // Get the display text for the purpose
+  const getPurposeDisplay = () => {
+    if (item.samplePurpose) {
+      const label = SAMPLE_PURPOSE_LABELS[item.samplePurpose];
+      if (item.samplePurpose === 'OTHER' && item.samplePurposeNotes) {
+        return `${label}: ${item.samplePurposeNotes}`;
+      }
+      return label;
+    }
+    // Fallback to legacy sampleReason
+    return item.sampleReason;
+  };
+
+  const purposeDisplay = getPurposeDisplay();
+
   return (
     <div className="flex gap-3 p-3 bg-gray-50 rounded-lg">
       {/* Image */}
@@ -359,9 +379,9 @@ function CartItemCard({ item, onRemove, onUpdateQuantity, showReason }: CartItem
         <h4 className="font-medium text-gray-900 text-sm truncate">{item.productName}</h4>
         <p className="text-xs text-gray-500 font-mono">{item.productSku}</p>
 
-        {showReason && item.sampleReason && (
+        {showPurpose && purposeDisplay && (
           <p className="text-xs text-indigo-600 mt-1 line-clamp-2">
-            Reason: {item.sampleReason}
+            {purposeDisplay}
           </p>
         )}
 

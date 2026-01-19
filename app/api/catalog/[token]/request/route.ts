@@ -13,11 +13,25 @@ import {
 } from '@/lib/services/catalogLinkService';
 import { handleApiError } from '@/lib/utils/errors';
 
+// Valid sample purposes matching the Prisma enum
+const samplePurposeEnum = z.enum([
+  'EMPLOYEE_TRAINING',
+  'CUSTOMER_SAMPLING',
+  'STORE_DISPLAY',
+  'PRODUCT_EVALUATION',
+  'REPLACEMENT',
+  'OTHER'
+]);
+
 const cartItemSchema = z.object({
   productId: z.string().min(1),
   itemType: z.enum(['QUOTE', 'SAMPLE']),
   quantity: z.number().int().min(1).max(1000),
-  sampleReason: z.string().max(500).optional()
+  // Legacy field - kept for backward compatibility
+  sampleReason: z.string().max(500).optional(),
+  // New structured fields
+  samplePurpose: samplePurposeEnum.optional(),
+  samplePurposeNotes: z.string().max(500).optional()
 });
 
 const requestSchema = z.object({
@@ -28,11 +42,13 @@ const requestSchema = z.object({
   contactPhone: z.string().max(50).optional(),
   message: z.string().max(2000).optional()
 }).refine(data => {
-  // Validate that sample items have reasons
-  return data.items.every(item =>
-    item.itemType !== 'SAMPLE' || (item.sampleReason && item.sampleReason.trim().length > 0)
-  );
-}, { message: 'Sample requests require a reason' });
+  // Validate that sample items have a purpose (or legacy reason for backward compatibility)
+  return data.items.every(item => {
+    if (item.itemType !== 'SAMPLE') return true;
+    // New items should have samplePurpose, legacy items might have sampleReason
+    return item.samplePurpose || (item.sampleReason && item.sampleReason.trim().length > 0);
+  });
+}, { message: 'Sample requests require a purpose' });
 
 export async function POST(
   req: NextRequest,

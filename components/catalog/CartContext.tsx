@@ -2,6 +2,25 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
 
+// Sample purpose enum matching Prisma schema
+export type SamplePurpose =
+  | 'EMPLOYEE_TRAINING'
+  | 'CUSTOMER_SAMPLING'
+  | 'STORE_DISPLAY'
+  | 'PRODUCT_EVALUATION'
+  | 'REPLACEMENT'
+  | 'OTHER';
+
+// Human-readable labels for each purpose
+export const SAMPLE_PURPOSE_LABELS: Record<SamplePurpose, string> = {
+  EMPLOYEE_TRAINING: 'Employee education / staff training',
+  CUSTOMER_SAMPLING: 'Customer sampling',
+  STORE_DISPLAY: 'Store display or merchandising',
+  PRODUCT_EVALUATION: 'Product evaluation before ordering',
+  REPLACEMENT: 'Replacement for damaged or missing sample',
+  OTHER: 'Other'
+};
+
 export interface CartItem {
   productId: string;
   productName: string;
@@ -9,13 +28,17 @@ export interface CartItem {
   productImageUrl: string | null;
   itemType: 'QUOTE' | 'SAMPLE';
   quantity: number;
+  // Legacy field - kept for backward compatibility
   sampleReason?: string;
+  // New structured fields
+  samplePurpose?: SamplePurpose;
+  samplePurposeNotes?: string;
 }
 
 interface CartContextType {
   items: CartItem[];
   addToQuote: (product: { id: string; name: string; sku: string; imageUrl: string | null }, quantity: number) => void;
-  addSampleRequest: (product: { id: string; name: string; sku: string; imageUrl: string | null }, quantity: number, reason: string) => void;
+  addSampleRequest: (product: { id: string; name: string; sku: string; imageUrl: string | null }, quantity: number, purpose: SamplePurpose, purposeNotes?: string) => void;
   removeItem: (productId: string, itemType: 'QUOTE' | 'SAMPLE') => void;
   updateQuantity: (productId: string, itemType: 'QUOTE' | 'SAMPLE', quantity: number) => void;
   clearCart: () => void;
@@ -52,7 +75,18 @@ export function CartProvider({ children, catalogToken }: CartProviderProps) {
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed)) {
-          setItems(parsed);
+          // Migrate legacy items that only have sampleReason
+          const migrated = parsed.map((item: CartItem) => {
+            if (item.itemType === 'SAMPLE' && item.sampleReason && !item.samplePurpose) {
+              return {
+                ...item,
+                samplePurpose: 'OTHER' as SamplePurpose,
+                samplePurposeNotes: item.sampleReason
+              };
+            }
+            return item;
+          });
+          setItems(migrated);
         }
       }
     } catch (error) {
@@ -109,7 +143,8 @@ export function CartProvider({ children, catalogToken }: CartProviderProps) {
   const addSampleRequest = useCallback((
     product: { id: string; name: string; sku: string; imageUrl: string | null },
     quantity: number,
-    reason: string
+    purpose: SamplePurpose,
+    purposeNotes?: string
   ) => {
     setItems(current => {
       // Check if already in cart
@@ -120,7 +155,12 @@ export function CartProvider({ children, catalogToken }: CartProviderProps) {
       if (existing) {
         return current.map(item =>
           item.productId === product.id && item.itemType === 'SAMPLE'
-            ? { ...item, quantity: item.quantity + quantity, sampleReason: reason }
+            ? {
+                ...item,
+                quantity: item.quantity + quantity,
+                samplePurpose: purpose,
+                samplePurposeNotes: purposeNotes
+              }
             : item
         );
       }
@@ -132,7 +172,8 @@ export function CartProvider({ children, catalogToken }: CartProviderProps) {
         productImageUrl: product.imageUrl,
         itemType: 'SAMPLE',
         quantity,
-        sampleReason: reason
+        samplePurpose: purpose,
+        samplePurposeNotes: purposeNotes
       }];
     });
     setIsOpen(true);
