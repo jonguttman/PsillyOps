@@ -45,6 +45,13 @@ export async function generateIntroSheetPdf(
 ): Promise<Buffer> {
   const { retailerName, displayName, catalogUrl, token } = params;
 
+  console.log('[introSheetPdf] Starting generation:', {
+    retailerName,
+    displayName,
+    catalogUrl,
+    token
+  });
+
   // Use displayName if provided, otherwise retailerName
   const name = displayName || retailerName;
 
@@ -52,16 +59,25 @@ export async function generateIntroSheetPdf(
   const qrUrl = `${catalogUrl}?ref=intro_sheet`;
 
   // Generate QR code as SVG
-  const qrSvg = await QRCode.toString(qrUrl, {
-    type: 'svg',
-    margin: 0,
-    color: {
-      dark: '#000000',
-      light: '#FFFFFF'
-    }
-  });
+  console.log('[introSheetPdf] Generating QR code for URL:', qrUrl);
+  let qrSvg: string;
+  try {
+    qrSvg = await QRCode.toString(qrUrl, {
+      type: 'svg',
+      margin: 0,
+      color: {
+        dark: '#000000',
+        light: '#FFFFFF'
+      }
+    });
+    console.log('[introSheetPdf] QR code generated, SVG length:', qrSvg.length);
+  } catch (qrError) {
+    console.error('[introSheetPdf] QR code generation failed:', qrError);
+    throw qrError;
+  }
 
   // Create PDF document
+  console.log('[introSheetPdf] Creating PDF document...');
   const doc = new PDFDocument({
     size: [PAGE_WIDTH, PAGE_HEIGHT],
     margin: MARGIN,
@@ -76,9 +92,16 @@ export async function generateIntroSheetPdf(
   // Collect PDF chunks
   const chunks: Buffer[] = [];
   doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+  doc.on('error', (err) => {
+    console.error('[introSheetPdf] PDFDocument stream error:', err);
+  });
 
-  const pdfComplete = new Promise<Buffer>((resolve) => {
-    doc.on('end', () => resolve(Buffer.concat(chunks)));
+  const pdfComplete = new Promise<Buffer>((resolve, reject) => {
+    doc.on('end', () => {
+      console.log('[introSheetPdf] PDF stream ended, total chunks:', chunks.length);
+      resolve(Buffer.concat(chunks));
+    });
+    doc.on('error', reject);
   });
 
   let currentY = MARGIN;
@@ -152,15 +175,18 @@ export async function generateIntroSheetPdf(
   // ========================================
   const qrX = (PAGE_WIDTH - QR_SIZE_POINTS) / 2;
 
+  console.log('[introSheetPdf] Embedding QR code at position:', { qrX, currentY, QR_SIZE_POINTS });
   try {
     SVGtoPDF(doc, qrSvg, qrX, currentY, {
       width: QR_SIZE_POINTS,
       height: QR_SIZE_POINTS,
       preserveAspectRatio: 'xMidYMid meet'
     });
+    console.log('[introSheetPdf] QR SVG embedded successfully');
   } catch (svgError) {
-    console.error('QR SVG rendering error:', svgError);
+    console.error('[introSheetPdf] SVGtoPDF error:', svgError);
     // Fallback: draw a placeholder rectangle
+    console.log('[introSheetPdf] Using fallback placeholder...');
     doc.rect(qrX, currentY, QR_SIZE_POINTS, QR_SIZE_POINTS)
       .strokeColor('#ccc')
       .lineWidth(2)
@@ -242,7 +268,15 @@ export async function generateIntroSheetPdf(
     });
 
   // Finalize PDF
+  console.log('[introSheetPdf] Finalizing PDF document...');
   doc.end();
 
-  return pdfComplete;
+  try {
+    const result = await pdfComplete;
+    console.log('[introSheetPdf] PDF generation complete, buffer size:', result.length);
+    return result;
+  } catch (finalError) {
+    console.error('[introSheetPdf] PDF finalization failed:', finalError);
+    throw finalError;
+  }
 }

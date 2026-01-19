@@ -71,7 +71,15 @@ export async function POST(request: NextRequest) {
       }
     });
   } catch (error) {
-    console.error('Intro sheet generation error:', error);
+    console.error('Intro sheet generation error:', {
+      error: error instanceof Error ? {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      } : error,
+      catalogLinkId: validation.success ? validation.data.catalogLinkId : 'validation failed',
+      userId: session?.user?.id
+    });
 
     const message = error instanceof Error ? error.message : 'Failed to generate intro sheet';
 
