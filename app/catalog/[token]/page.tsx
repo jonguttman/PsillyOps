@@ -11,7 +11,8 @@ import { headers } from 'next/headers';
 import { auth } from '@/lib/auth/auth';
 import {
   resolveCatalogToken,
-  getCatalogProducts
+  getCatalogProducts,
+  getCatalogCategoriesWithProducts
 } from '@/lib/services/catalogLinkService';
 import { CatalogClientWrapper } from './CatalogClientWrapper';
 
@@ -47,8 +48,11 @@ export default async function CatalogPage({ params, searchParams }: PageProps) {
     notFound();
   }
 
-  // Get products with custom pricing applied
+  // Get products with custom pricing applied (flat list for grid view)
   const products = await getCatalogProducts(resolution.id);
+
+  // Get products grouped by category (for carousel view)
+  const categories = await getCatalogCategoriesWithProducts(resolution.id);
 
   return (
     <CatalogClientWrapper
@@ -56,6 +60,7 @@ export default async function CatalogPage({ params, searchParams }: PageProps) {
       catalogLinkId={resolution.id}
       displayName={resolution.displayName}
       products={products}
+      categories={categories}
       isInternalUser={isInternalUser}
       initialPreviewMode={previewAsRetailer}
     />
