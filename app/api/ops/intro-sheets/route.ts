@@ -76,9 +76,7 @@ export async function POST(request: NextRequest) {
         message: error.message,
         stack: error.stack,
         name: error.name
-      } : error,
-      catalogLinkId: validation.success ? validation.data.catalogLinkId : 'validation failed',
-      userId: session?.user?.id
+      } : error
     });
 
     const message = error instanceof Error ? error.message : 'Failed to generate intro sheet';
