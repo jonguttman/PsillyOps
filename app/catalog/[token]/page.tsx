@@ -6,12 +6,13 @@
  * Internal views (ADMIN/REP) are not tracked in analytics.
  */
 
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { headers } from 'next/headers';
 import { auth } from '@/lib/auth/auth';
 import {
   resolveCatalogToken,
-  getCatalogProducts
+  getCatalogProducts,
+  getExpiredCatalogInfo
 } from '@/lib/services/catalogLinkService';
 import { CatalogClientWrapper } from './CatalogClientWrapper';
 
@@ -44,6 +45,15 @@ export default async function CatalogPage({ params, searchParams }: PageProps) {
   );
 
   if (!resolution) {
+    // Check if token exists but is expired (not revoked - revoked shows 404)
+    const expiredInfo = await getExpiredCatalogInfo(token);
+
+    if (expiredInfo) {
+      // Redirect to expired landing page with renewal form
+      redirect(`/catalog/${token}/expired`);
+    }
+
+    // Token doesn't exist or is revoked
     notFound();
   }
 

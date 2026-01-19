@@ -595,6 +595,67 @@ export async function resolveCatalogToken(
   };
 }
 
+// ========================================
+// EXPIRED CATALOG INFO
+// ========================================
+
+export interface ExpiredCatalogInfo {
+  token: string;
+  retailerId: string | null;
+  retailerName: string | null;
+  isExpired: true;
+}
+
+/**
+ * Get info for an expired catalog token
+ * Returns retailer info if token exists and is EXPIRED (not REVOKED or ACTIVE)
+ * Used to show the renewal request page for expired catalogs
+ */
+export async function getExpiredCatalogInfo(
+  token: string
+): Promise<ExpiredCatalogInfo | null> {
+  if (!isValidTokenFormat(token)) {
+    return null;
+  }
+
+  const link = await prisma.catalogLink.findUnique({
+    where: { token },
+    include: {
+      retailer: { select: { id: true, name: true } }
+    }
+  });
+
+  if (!link) {
+    return null;
+  }
+
+  // Check if expired by date (auto-update status if needed)
+  const isExpiredByDate = link.expiresAt && link.expiresAt < new Date();
+
+  if (isExpiredByDate && link.status === CatalogLinkStatus.ACTIVE) {
+    // Auto-update status to EXPIRED
+    await prisma.catalogLink.update({
+      where: { id: link.id },
+      data: { status: CatalogLinkStatus.EXPIRED }
+    });
+  }
+
+  // Only return info for EXPIRED status (not REVOKED - revoked shows 404)
+  const isExpired = isExpiredByDate || link.status === CatalogLinkStatus.EXPIRED;
+  const isRevoked = link.status === CatalogLinkStatus.REVOKED;
+
+  if (!isExpired || isRevoked) {
+    return null;
+  }
+
+  return {
+    token: link.token,
+    retailerId: link.retailerId,
+    retailerName: link.retailer.name,
+    isExpired: true
+  };
+}
+
 /**
  * Get catalog products with custom pricing applied
  */

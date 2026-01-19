@@ -421,6 +421,7 @@ model Retailer {
   salesRep        User?           @relation(fields: [salesRepId], references: [id])
   orders          RetailerOrder[]
   catalogLinks    CatalogLink[]
+  renewalRequests RenewalRequest[]
 
   @@index([salesRepId])
   @@index([name])
@@ -1720,4 +1721,30 @@ model CatalogRequestItem {
   @@index([requestId])
   @@index([productId])
   @@index([itemType])
+}
+
+// Renewal request from expired catalog landing page
+model RenewalRequest {
+  id            String    @id @default(cuid())
+
+  // Request data
+  name          String
+  store         String
+  emailOrPhone  String
+  note          String?
+
+  // Source tracking
+  sourceToken   String              // The expired token value
+  retailerId    String?             // Resolved retailer (if token was valid)
+  retailer      Retailer?           @relation(fields: [retailerId], references: [id])
+  entryPoint    String              @default("RETAIL_CATALOG_EXPIRED")
+
+  // Metadata
+  ipAddress     String?
+  userAgent     String?
+  requestedAt   DateTime            @default(now())
+
+  @@index([sourceToken])
+  @@index([retailerId])
+  @@index([requestedAt])
 }

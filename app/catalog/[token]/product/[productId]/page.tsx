@@ -5,13 +5,14 @@
  * Tracks product views for analytics (skips for internal users).
  */
 
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { headers } from 'next/headers';
 import { auth } from '@/lib/auth/auth';
 import {
   getCatalogLinkByToken,
   getCatalogProduct,
-  trackProductView
+  trackProductView,
+  getExpiredCatalogInfo
 } from '@/lib/services/catalogLinkService';
 import { ProductDetailClient } from './ProductDetailClient';
 
@@ -43,12 +44,23 @@ export default async function ProductDetailPage({ params, searchParams }: PagePr
   // Get catalog link
   const catalogLink = await getCatalogLinkByToken(token);
 
-  if (!catalogLink || catalogLink.status !== 'ACTIVE') {
+  if (!catalogLink) {
     notFound();
   }
 
-  // Check expiration
-  if (catalogLink.expiresAt && catalogLink.expiresAt < new Date()) {
+  // Check if expired or not active
+  const isExpired =
+    catalogLink.status !== 'ACTIVE' ||
+    (catalogLink.expiresAt && catalogLink.expiresAt < new Date());
+
+  if (isExpired) {
+    // Check if we should show the expired landing page (not for revoked tokens)
+    const expiredInfo = await getExpiredCatalogInfo(token);
+
+    if (expiredInfo) {
+      redirect(`/catalog/${token}/expired`);
+    }
+
     notFound();
   }
 
