@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { ShoppingCart, Beaker, X, Plus, Minus } from 'lucide-react';
-import { useCart } from './CartContext';
+import { useCart, SamplePurpose, SAMPLE_PURPOSE_LABELS } from './CartContext';
 
 interface AddToCartButtonProps {
   product: {
@@ -19,7 +19,8 @@ export function AddToCartButton({ product, variant = 'inline' }: AddToCartButton
   const [showSampleModal, setShowSampleModal] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const [sampleQuantity, setSampleQuantity] = useState(1);
-  const [sampleReason, setSampleReason] = useState('');
+  const [samplePurpose, setSamplePurpose] = useState<SamplePurpose | ''>('');
+  const [samplePurposeNotes, setSamplePurposeNotes] = useState('');
 
   const handleAddToQuote = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -40,15 +41,23 @@ export function AddToCartButton({ product, variant = 'inline' }: AddToCartButton
   };
 
   const handleSubmitSample = () => {
-    if (!sampleReason.trim()) return;
+    if (!samplePurpose) return;
     addSampleRequest({
       id: product.id,
       name: product.name,
       sku: product.sku,
       imageUrl: product.imageUrl
-    }, sampleQuantity, sampleReason.trim());
+    }, sampleQuantity, samplePurpose, samplePurpose === 'OTHER' ? samplePurposeNotes.trim() : undefined);
     setShowSampleModal(false);
-    setSampleReason('');
+    setSamplePurpose('');
+    setSamplePurposeNotes('');
+    setSampleQuantity(1);
+  };
+
+  const handleCloseModal = () => {
+    setShowSampleModal(false);
+    setSamplePurpose('');
+    setSamplePurposeNotes('');
     setSampleQuantity(1);
   };
 
@@ -96,10 +105,12 @@ export function AddToCartButton({ product, variant = 'inline' }: AddToCartButton
             product={product}
             quantity={sampleQuantity}
             setQuantity={setSampleQuantity}
-            reason={sampleReason}
-            setReason={setSampleReason}
+            purpose={samplePurpose}
+            setPurpose={setSamplePurpose}
+            purposeNotes={samplePurposeNotes}
+            setPurposeNotes={setSamplePurposeNotes}
             onSubmit={handleSubmitSample}
-            onClose={() => setShowSampleModal(false)}
+            onClose={handleCloseModal}
           />
         )}
       </div>
@@ -132,10 +143,12 @@ export function AddToCartButton({ product, variant = 'inline' }: AddToCartButton
           product={product}
           quantity={sampleQuantity}
           setQuantity={setSampleQuantity}
-          reason={sampleReason}
-          setReason={setSampleReason}
+          purpose={samplePurpose}
+          setPurpose={setSamplePurpose}
+          purposeNotes={samplePurposeNotes}
+          setPurposeNotes={setSamplePurposeNotes}
           onSubmit={handleSubmitSample}
-          onClose={() => setShowSampleModal(false)}
+          onClose={handleCloseModal}
         />
       )}
     </>
@@ -146,13 +159,15 @@ interface SampleModalProps {
   product: { name: string };
   quantity: number;
   setQuantity: (q: number) => void;
-  reason: string;
-  setReason: (r: string) => void;
+  purpose: SamplePurpose | '';
+  setPurpose: (p: SamplePurpose | '') => void;
+  purposeNotes: string;
+  setPurposeNotes: (n: string) => void;
   onSubmit: () => void;
   onClose: () => void;
 }
 
-function SampleModal({ product, quantity, setQuantity, reason, setReason, onSubmit, onClose }: SampleModalProps) {
+function SampleModal({ product, quantity, setQuantity, purpose, setPurpose, purposeNotes, setPurposeNotes, onSubmit, onClose }: SampleModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/50" />
@@ -200,20 +215,51 @@ function SampleModal({ product, quantity, setQuantity, reason, setReason, onSubm
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Why do you need this sample? <span className="text-red-500">*</span>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              What's this sample for? <span className="text-red-500">*</span>
             </label>
-            <textarea
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="e.g., Testing for store display, customer evaluation, quality check..."
-              rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              This helps us understand your needs and prioritize sample requests.
+            <div className="space-y-2">
+              {Object.entries(SAMPLE_PURPOSE_LABELS).map(([key, label]) => (
+                <label
+                  key={key}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors ${
+                    purpose === key
+                      ? 'border-indigo-600 bg-indigo-50'
+                      : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="samplePurpose"
+                    value={key}
+                    checked={purpose === key}
+                    onChange={() => setPurpose(key as SamplePurpose)}
+                    className="w-4 h-4 text-indigo-600 border-gray-300 focus:ring-indigo-500"
+                  />
+                  <span className="text-sm text-gray-700">{label}</span>
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-gray-500 mt-2">
+              This helps us prepare the right samples and support your store.
             </p>
           </div>
+
+          {/* Conditional notes field for "Other" */}
+          {purpose === 'OTHER' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Anything you'd like us to know? (optional)
+              </label>
+              <textarea
+                value={purposeNotes}
+                onChange={(e) => setPurposeNotes(e.target.value)}
+                placeholder="Let us know any additional details..."
+                rows={2}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
+              />
+            </div>
+          )}
         </div>
 
         <div className="flex gap-3 mt-6">
@@ -225,7 +271,7 @@ function SampleModal({ product, quantity, setQuantity, reason, setReason, onSubm
           </button>
           <button
             onClick={onSubmit}
-            disabled={!reason.trim()}
+            disabled={!purpose}
             className="flex-1 py-2.5 px-4 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Add to Request

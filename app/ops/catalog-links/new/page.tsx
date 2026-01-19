@@ -20,6 +20,21 @@ async function getRetailers(userId: string, userRole: string) {
   });
 }
 
+async function getCategories() {
+  return prisma.productCategory.findMany({
+    where: { active: true },
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      _count: {
+        select: { products: true }
+      }
+    },
+    orderBy: { displayOrder: 'asc' }
+  });
+}
+
 async function getProducts() {
   return prisma.product.findMany({
     where: { active: true, wholesalePrice: { not: null } },
@@ -37,8 +52,9 @@ export default async function NewCatalogLinkPage() {
   const { id: userId, role: userRole } = session.user;
   const isAdmin = userRole === 'ADMIN';
 
-  const [retailers, products] = await Promise.all([
+  const [retailers, categories, products] = await Promise.all([
     getRetailers(userId, userRole),
+    getCategories(),
     getProducts()
   ]);
 
@@ -53,6 +69,7 @@ export default async function NewCatalogLinkPage() {
 
       <NewCatalogLinkForm
         retailers={retailers}
+        categories={categories}
         products={products}
         isAdmin={isAdmin}
         currentUserId={userId}

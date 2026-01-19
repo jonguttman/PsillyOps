@@ -16,14 +16,16 @@ export interface CreateCatalogLinkParams {
   createdById: string;
   displayName?: string;
   customPricing?: Record<string, number>;
-  productSubset?: string[];
+  productSubset?: string[];  // DEPRECATED: Use categorySubset instead
+  categorySubset?: string[];
   expiresAt?: Date;
 }
 
 export interface UpdateCatalogLinkParams {
   displayName?: string;
   customPricing?: Record<string, number> | null;
-  productSubset?: string[] | null;
+  productSubset?: string[] | null;  // DEPRECATED: Use categorySubset instead
+  categorySubset?: string[] | null;
   expiresAt?: Date | null;
   status?: CatalogLinkStatus;
 }
@@ -35,7 +37,8 @@ export interface CatalogLinkResolution {
   retailerName: string;
   displayName: string;
   customPricing: Record<string, number> | null;
-  productSubset: string[] | null;
+  productSubset: string[] | null;  // DEPRECATED: Use categorySubset instead
+  categorySubset: string[] | null;
   status: CatalogLinkStatus;
 }
 
@@ -75,12 +78,25 @@ export interface CatalogAnalytics {
   recentActivity: { date: Date; action: string; details: string }[];
 }
 
+// Sample purpose enum matching Prisma schema
+export type SamplePurpose =
+  | 'EMPLOYEE_TRAINING'
+  | 'CUSTOMER_SAMPLING'
+  | 'STORE_DISPLAY'
+  | 'PRODUCT_EVALUATION'
+  | 'REPLACEMENT'
+  | 'OTHER';
+
 // Cart/Request types
 export interface CartItem {
   productId: string;
   itemType: 'QUOTE' | 'SAMPLE';
   quantity: number;
-  sampleReason?: string; // Required for SAMPLE type
+  // DEPRECATED: Use samplePurpose instead
+  sampleReason?: string;
+  // New structured fields
+  samplePurpose?: SamplePurpose;
+  samplePurposeNotes?: string;
 }
 
 export interface SubmitCatalogRequestParams {
@@ -166,7 +182,7 @@ export function isValidTokenFormat(token: string): boolean {
  * Create a new catalog link for a retailer
  */
 export async function createCatalogLink(params: CreateCatalogLinkParams) {
-  const { retailerId, createdById, displayName, customPricing, productSubset, expiresAt } = params;
+  const { retailerId, createdById, displayName, customPricing, productSubset, categorySubset, expiresAt } = params;
 
   // Verify retailer exists
   const retailer = await prisma.retailer.findUnique({
@@ -182,7 +198,20 @@ export async function createCatalogLink(params: CreateCatalogLinkParams) {
     throw new AppError(ErrorCodes.INVALID_OPERATION, 'Cannot create catalog link for inactive retailer');
   }
 
-  // Validate product subset if provided
+  // Validate category subset if provided
+  if (categorySubset && categorySubset.length > 0) {
+    const validCategories = await prisma.productCategory.findMany({
+      where: { id: { in: categorySubset }, active: true },
+      select: { id: true }
+    });
+    const validIds = validCategories.map(c => c.id);
+    const invalidIds = categorySubset.filter(id => !validIds.includes(id));
+    if (invalidIds.length > 0) {
+      throw new AppError(ErrorCodes.VALIDATION_ERROR, `Invalid category IDs: ${invalidIds.join(', ')}`);
+    }
+  }
+
+  // Validate product subset if provided (DEPRECATED)
   if (productSubset && productSubset.length > 0) {
     const validProducts = await prisma.product.findMany({
       where: { id: { in: productSubset }, active: true },
@@ -213,6 +242,7 @@ export async function createCatalogLink(params: CreateCatalogLinkParams) {
       displayName: displayName || retailer.name,
       customPricing: customPricing || undefined,
       productSubset: productSubset || undefined,
+      categorySubset: categorySubset || undefined,
       expiresAt,
       createdById
     },
@@ -233,6 +263,7 @@ export async function createCatalogLink(params: CreateCatalogLinkParams) {
       retailerName: retailer.name,
       hasCustomPricing: !!customPricing,
       hasProductSubset: !!productSubset,
+      hasCategorySubset: !!categorySubset,
       expiresAt
     },
     tags: ['catalog', 'create']
@@ -591,6 +622,7 @@ export async function resolveCatalogToken(
     displayName: link.displayName || link.retailer.name,
     customPricing: link.customPricing as Record<string, number> | null,
     productSubset: link.productSubset as string[] | null,
+    categorySubset: link.categorySubset as string[] | null,
     status: link.status
   };
 }
@@ -603,7 +635,8 @@ export async function getCatalogProducts(catalogLinkId: string): Promise<Catalog
     where: { id: catalogLinkId },
     select: {
       customPricing: true,
-      productSubset: true
+      productSubset: true,
+      categorySubset: true
     }
   });
 
@@ -613,6 +646,7 @@ export async function getCatalogProducts(catalogLinkId: string): Promise<Catalog
 
   const customPricing = link.customPricing as Record<string, number> | null;
   const productSubset = link.productSubset as string[] | null;
+  const categorySubset = link.categorySubset as string[] | null;
 
   // Build product filter
   const where: any = {
@@ -620,7 +654,16 @@ export async function getCatalogProducts(catalogLinkId: string): Promise<Catalog
     wholesalePrice: { not: null } // Only show products with wholesale pricing
   };
 
-  if (productSubset && productSubset.length > 0) {
+  // Category-based filtering takes precedence over product subset
+  if (categorySubset && categorySubset.length > 0) {
+    // Filter products that belong to any of the selected categories
+    where.categories = {
+      some: {
+        categoryId: { in: categorySubset }
+      }
+    };
+  } else if (productSubset && productSubset.length > 0) {
+    // DEPRECATED: Fall back to product subset for older links
     where.id = { in: productSubset };
   }
 
@@ -704,7 +747,8 @@ export async function getCatalogProduct(
     where: { id: catalogLinkId },
     select: {
       customPricing: true,
-      productSubset: true
+      productSubset: true,
+      categorySubset: true
     }
   });
 
@@ -714,9 +758,22 @@ export async function getCatalogProduct(
 
   const customPricing = link.customPricing as Record<string, number> | null;
   const productSubset = link.productSubset as string[] | null;
+  const categorySubset = link.categorySubset as string[] | null;
 
-  // Check if product is in subset (if subset defined)
-  if (productSubset && productSubset.length > 0 && !productSubset.includes(productId)) {
+  // Check if product is in allowed categories or product subset
+  if (categorySubset && categorySubset.length > 0) {
+    // Check if product belongs to any of the selected categories
+    const productInCategories = await prisma.productCategoryAssignment.findFirst({
+      where: {
+        productId,
+        categoryId: { in: categorySubset }
+      }
+    });
+    if (!productInCategories) {
+      return null;
+    }
+  } else if (productSubset && productSubset.length > 0 && !productSubset.includes(productId)) {
+    // DEPRECATED: Fall back to product subset for older links
     return null;
   }
 
@@ -1232,10 +1289,10 @@ export async function submitCatalogRequest(params: SubmitCatalogRequestParams) {
     throw new AppError(ErrorCodes.VALIDATION_ERROR, 'At least one item is required');
   }
 
-  // Validate sample items have reasons
+  // Validate sample items have a purpose (or legacy reason for backward compatibility)
   for (const item of items) {
-    if (item.itemType === 'SAMPLE' && !item.sampleReason?.trim()) {
-      throw new AppError(ErrorCodes.VALIDATION_ERROR, 'Sample requests require a reason');
+    if (item.itemType === 'SAMPLE' && !item.samplePurpose && !item.sampleReason?.trim()) {
+      throw new AppError(ErrorCodes.VALIDATION_ERROR, 'Sample requests require a purpose');
     }
     if (item.quantity < 1) {
       throw new AppError(ErrorCodes.VALIDATION_ERROR, 'Quantity must be at least 1');
@@ -1280,7 +1337,11 @@ export async function submitCatalogRequest(params: SubmitCatalogRequestParams) {
           productId: item.productId,
           itemType: item.itemType as CatalogRequestItemType,
           quantity: item.quantity,
-          sampleReason: item.sampleReason || null
+          // Legacy field - kept for backward compatibility
+          sampleReason: item.sampleReason || null,
+          // New structured fields
+          samplePurpose: item.samplePurpose || null,
+          samplePurposeNotes: item.samplePurposeNotes || null
         }))
       }
     },

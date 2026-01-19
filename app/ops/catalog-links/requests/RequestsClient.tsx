@@ -16,7 +16,17 @@ import {
   Phone,
   Store
 } from 'lucide-react';
-import { CatalogRequestStatus, CatalogRequestItemType } from '@prisma/client';
+import { CatalogRequestStatus, CatalogRequestItemType, SamplePurpose } from '@prisma/client';
+
+// Human-readable labels for sample purposes
+const SAMPLE_PURPOSE_LABELS: Record<SamplePurpose, string> = {
+  EMPLOYEE_TRAINING: 'Employee education / staff training',
+  CUSTOMER_SAMPLING: 'Customer sampling',
+  STORE_DISPLAY: 'Store display or merchandising',
+  PRODUCT_EVALUATION: 'Product evaluation before ordering',
+  REPLACEMENT: 'Replacement for damaged or missing sample',
+  OTHER: 'Other'
+};
 
 interface RequestItem {
   id: string;
@@ -24,6 +34,8 @@ interface RequestItem {
   itemType: CatalogRequestItemType;
   quantity: number;
   sampleReason: string | null;
+  samplePurpose: SamplePurpose | null;
+  samplePurposeNotes: string | null;
   product: {
     id: string;
     name: string;
@@ -323,9 +335,18 @@ export function RequestsClient({
                             <div className="flex-1 min-w-0">
                               <p className="font-medium text-gray-900 truncate">{item.product.name}</p>
                               <p className="text-xs text-gray-500 font-mono">{item.product.sku}</p>
-                              {item.sampleReason && (
+                              {/* Display sample purpose (new) or legacy reason */}
+                              {item.samplePurpose && (
                                 <p className="text-sm text-indigo-600 mt-1">
-                                  Reason: {item.sampleReason}
+                                  {SAMPLE_PURPOSE_LABELS[item.samplePurpose]}
+                                  {item.samplePurpose === 'OTHER' && item.samplePurposeNotes && (
+                                    <span className="text-gray-600">: {item.samplePurposeNotes}</span>
+                                  )}
+                                </p>
+                              )}
+                              {!item.samplePurpose && item.sampleReason && (
+                                <p className="text-sm text-indigo-600 mt-1">
+                                  {item.sampleReason}
                                 </p>
                               )}
                             </div>

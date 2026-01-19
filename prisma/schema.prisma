@@ -1261,6 +1261,15 @@ enum CatalogRequestItemType {
   SAMPLE
 }
 
+enum SamplePurpose {
+  EMPLOYEE_TRAINING     // Employee education / staff training
+  CUSTOMER_SAMPLING     // Customer sampling
+  STORE_DISPLAY         // Store display or merchandising
+  PRODUCT_EVALUATION    // Product evaluation before ordering
+  REPLACEMENT           // Replacement for damaged or missing sample
+  OTHER                 // Other (with optional notes)
+}
+
 model PredictionProfile {
   id             String             @id @default(cuid())
   productId      String
@@ -1602,7 +1611,11 @@ model CatalogLink {
   customPricing   Json?             // { "prod_123": 45.00, "prod_456": 89.00 }
 
   // Product subset (null = all products, array = specific product IDs)
+  // DEPRECATED: Use categorySubset instead for new links
   productSubset   Json?             // ["prod_123", "prod_456"] or null for all
+
+  // Category subset (null = all categories, array = specific category IDs)
+  categorySubset  Json?             // ["cat_123", "cat_456"] or null for all
 
   // Tracking
   viewCount       Int               @default(0)
@@ -1742,7 +1755,13 @@ model CatalogRequestItem {
 
   itemType        CatalogRequestItemType // QUOTE or SAMPLE
   quantity        Int                    // Quantity requested
-  sampleReason    String?                // Required for SAMPLE type - why they want a sample
+
+  // DEPRECATED: Use samplePurpose instead for new requests
+  sampleReason    String?                // Legacy free-text reason
+
+  // New structured sample purpose (for SAMPLE type)
+  samplePurpose      SamplePurpose?      // Why they want a sample
+  samplePurposeNotes String?             // Optional notes (used when purpose is OTHER)
 
   createdAt       DateTime               @default(now())
 
